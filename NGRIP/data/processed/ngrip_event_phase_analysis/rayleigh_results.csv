@@ -1,0 +1,4 @@
+driver,driver_label,event_type,event_label,n_events_total,n_phase_events_used,n_extrapolated_phase_events,mean_phase_rad,mean_phase_deg,mean_resultant_length,rayleigh_R,rayleigh_z,rayleigh_p
+pre,Precession index,all_transitions,All NGRIP transitions (GI + GS),69,69,0,6.204410347280513,355.4865272664708,0.1852049732837306,12.77914315657741,2.366760866902888,0.09348614592012963
+pre,Precession index,cooling,NGRIP cooling starts (GS),35,35,0,6.1820280334077475,354.20411514582423,0.16099660302331226,5.634881105815929,0.9071967164766099,0.40655404584985516
+pre,Precession index,warming,NGRIP warming starts (GI),34,34,0,6.222057117375415,356.49761271494634,0.21019959398274593,7.146786195413362,1.5022515565573822,0.2238858179233044

@@ -1,0 +1,31 @@
+dataset_id,dataset_label,model_id,term,beta,rate_ratio_per_unit
+warming,NGRIP warming starts (GI),history_climate,intercept,-1.2761101317382049,0.2791209351555608
+warming,NGRIP warming starts (GI),history_climate,same_type_history_count,0.04715460296605106,1.0482840643778348
+warming,NGRIP warming starts (GI),history_climate,lr04_scaled,1.9581823311073006,7.086434559893731
+warming,NGRIP warming starts (GI),history_climate,co2_scaled,0.6895694578707638,1.9928573394698526
+warming,NGRIP warming starts (GI),history_climate_precession,intercept,-1.05726896412459,0.34740328678450666
+warming,NGRIP warming starts (GI),history_climate_precession,same_type_history_count,-0.14477350938175274,0.8652182347333376
+warming,NGRIP warming starts (GI),history_climate_precession,lr04_scaled,2.5865451029724134,13.28379807753359
+warming,NGRIP warming starts (GI),history_climate_precession,co2_scaled,0.5133195398267991,1.670828380760468
+warming,NGRIP warming starts (GI),history_climate_precession,pre_phase_sin,-0.38705838323202113,0.6790514485510313
+warming,NGRIP warming starts (GI),history_climate_precession,pre_phase_cos,0.6113404974556841,1.842900146694532
+cooling,NGRIP cooling starts (GS),history_climate,intercept,-0.9131681664781953,0.40125097827265366
+cooling,NGRIP cooling starts (GS),history_climate,same_type_history_count,-0.21060503252111973,0.8100939644733491
+cooling,NGRIP cooling starts (GS),history_climate,lr04_scaled,-1.8620261680827215,0.1553575307831529
+cooling,NGRIP cooling starts (GS),history_climate,co2_scaled,-3.59520339444616,0.027455098393546463
+cooling,NGRIP cooling starts (GS),history_climate_precession,intercept,-0.7511913099944575,0.4718041528085312
+cooling,NGRIP cooling starts (GS),history_climate_precession,same_type_history_count,-0.35995960194869653,0.6977045114043573
+cooling,NGRIP cooling starts (GS),history_climate_precession,lr04_scaled,-1.187482063331725,0.3049882391348717
+cooling,NGRIP cooling starts (GS),history_climate_precession,co2_scaled,-3.68275726724881,0.025153524143854886
+cooling,NGRIP cooling starts (GS),history_climate_precession,pre_phase_sin,-0.2987183005509557,0.7417683357379126
+cooling,NGRIP cooling starts (GS),history_climate_precession,pre_phase_cos,0.5624076081605737,1.754892511722812
+all_transitions,All NGRIP transitions (GI + GS),history_climate,intercept,-0.7232624780910752,0.48516682501223246
+all_transitions,All NGRIP transitions (GI + GS),history_climate,same_type_history_count,0.0680931656835833,1.0704650344398692
+all_transitions,All NGRIP transitions (GI + GS),history_climate,lr04_scaled,0.2923708490251358,1.3395997147820748
+all_transitions,All NGRIP transitions (GI + GS),history_climate,co2_scaled,-0.7088562632587936,0.4922068306840134
+all_transitions,All NGRIP transitions (GI + GS),history_climate_precession,intercept,-0.5802122774998771,0.5597795253540662
+all_transitions,All NGRIP transitions (GI + GS),history_climate_precession,same_type_history_count,0.004792941522688687,1.004804446039724
+all_transitions,All NGRIP transitions (GI + GS),history_climate_precession,lr04_scaled,0.6926300996167633,1.9989661054402592
+all_transitions,All NGRIP transitions (GI + GS),history_climate_precession,co2_scaled,-0.9119579249474804,0.40173688284243625
+all_transitions,All NGRIP transitions (GI + GS),history_climate_precession,pre_phase_sin,-0.16800565658151564,0.8453490528853076
+all_transitions,All NGRIP transitions (GI + GS),history_climate_precession,pre_phase_cos,0.49350847128132463,1.638053212687357
