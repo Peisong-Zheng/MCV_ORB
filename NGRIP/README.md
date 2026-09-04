@@ -15,6 +15,10 @@ treated as independent events. If Table 2 has no separate parent row, the
 oldest lettered onset represents the start of the parent interval (for example,
 GI-1e supplies the GI-1 start).
 
+This CSV is the retained canonical analysis input. The one-off extraction code
+and intermediate transcription table are no longer required; run the analysis
+directly from this file.
+
 Table 2 ages are years before AD 2000 (`a b2k`). The analysis keeps both source
 ages and converts to the project's conventional ka BP scale (before AD 1950):
 

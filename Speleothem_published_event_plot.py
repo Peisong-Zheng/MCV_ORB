@@ -286,7 +286,7 @@ def add_material_gap(
     data_axis.text(
         (gap_start + gap_end) / 2,
         0.48,
-        f"{gap_width:.2f} ka data gap",
+            f"{gap_width:.2f} kyr data gap",
         transform=data_axis.get_xaxis_transform(),
         rotation=90,
         ha="center",
@@ -510,7 +510,7 @@ def build_figure(records: dict[str, pd.DataFrame], anchors: pd.DataFrame) -> plt
         data_axis.tick_params(axis="x", labelbottom=False)
         resolution_axis.tick_params(axis="x", labelbottom=True)
 
-    axes[-1].set_xlabel("Age (ka BP)", labelpad=5)
+    axes[-1].set_xlabel("Age (Kyr BP)", labelpad=5)
     return figure
 
 

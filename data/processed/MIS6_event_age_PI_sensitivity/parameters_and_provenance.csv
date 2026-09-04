@@ -1,0 +1,21 @@
+parameter,value,unit,note
+analysis,conditional predictive information only,,Rayleigh is not run
+rayleigh_test_run,False,,explicitly excluded from this script
+event_age_uncertainty_propagated,True,,A+ accepted realizations
+resolution_covariate_included,False,,matches the point-age MIS6/NGRIP PI model
+mc_input,data/processed/MIS6_event_age_uncertainty/mis6_event_age_realizations.csv,,wide ordered age sequences
+n_realizations,10000,sequences,all rows in the MC input
+analysis_start,132.5,Kyr BP,full binning support
+analysis_end,196.5,Kyr BP,full binning support
+bin_width,0.2,Kyr,events may share a bin
+history_window,5.0,Kyr,"older events in (t, t + window]"
+response_support_start,132.5,Kyr BP,complete history only
+response_support_end,191.5,Kyr BP,complete history only
+reduced_model_terms,same_type_history_count+lr04_scaled+co2_scaled,,same as MIS6/NGRIP PI
+full_model_terms,same_type_history_count+lr04_scaled+co2_scaled+pre_phase_sin+pre_phase_cos,,adds precession sine and cosine
+PI_definition,in-sample nested Poisson log-likelihood gain,,not mutual information estimated by cross-validation
+p_value_method,nominal asymptotic chi-square LRT,,not recalibrated by the age MC
+decision_fraction_interpretation,fraction of age realizations retaining a criterion,,"robustness proportion, not a new Monte Carlo p value"
+optimizer,toolbox.poisson.fit_binned_poisson_arrays,,same bounded L-BFGS-B likelihood as baseline
+fit_cache,full 320-bin event-count vector,,8675 unique patterns
+reference_analysis,MIS6_event_phase_analysis.py,,PI definitions reused; Rayleigh functions not called

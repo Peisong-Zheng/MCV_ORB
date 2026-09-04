@@ -1,0 +1,20 @@
+parameter,value,unit,note
+analysis_start,132.5,Kyr BP,rounded inward from continuous proxy coverage
+analysis_end,196.5,Kyr BP,rounded inward from continuous proxy coverage
+bin_width,0.2,Kyr,Poisson event-count bins
+history_window,5.0,Kyr,older warming events
+catalogue_event_count,21,events,all treated as warming
+predictive_event_count,20,events,oldest-edge incomplete-history bins excluded
+reduced_model_terms,same_type_history_count+lr04_scaled+co2_scaled,,matches NGRIP
+full_model_terms,same_type_history_count+lr04_scaled+co2_scaled+pre_phase_sin+pre_phase_cos,,matches NGRIP
+reference_analysis,NGRIP/ngrip_event_phase_analysis.py,,source of the Rayleigh and conditional-PI model definition
+NGRIP_resolution_covariate_included,False,,confirmed from the NGRIP reduced/full model terms
+resolution_covariate_included,False,,explicit quick-test choice; local proxy resolution is not a model term
+event_age_uncertainty_propagated,False,,point ages are treated as exact in this quick test
+p_value_method,nominal asymptotic chi-square LRT,,two added phase coefficients; no resampling calibration
+PI_definition,in-sample nested Poisson log-likelihood gain,,not cross-validated mutual information
+precession_phase_zero,precession-index minimum,,toolbox phase convention
+event_catalogue,data/processed/MIS6_composite_event_record/mis6_composite_event_record.csv,,provisional MIS6 composite chronology
+precession_source,data/raw/pre_1000_60_inter100.txt,,orbital input
+lr04_source,data/raw/lr04.xlsx,,climate covariate
+co2_source,data/raw/composite_co2.xlsx,,climate covariate

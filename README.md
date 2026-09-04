@@ -51,10 +51,11 @@ match automatically.
 
 ### NGRIP
 
-Rasmussen Table 2 is collapsed to 34 GI starts (warming) and 35 GS starts
-(cooling). Lettered subevents are retained in the audit table but are not
-counted as independent events. Treating all 69 GI/GS starts as one MCV catalogue
-is a pooled view of the same boundaries, not a third independent dataset.
+The retained Rasmussen Table 2 catalogue contains 34 GI starts (warming) and
+35 GS starts (cooling). Lettered source labels and parent-selection notes are
+preserved in that catalogue, but subevents are not counted independently.
+Treating all 69 GI/GS starts as one MCV catalogue is a pooled view of the same
+boundaries, not a third independent dataset.
 
 | Catalogue | Rayleigh N | Rayleigh phase | Rayleigh p | PI N | PI peak | LR p | bits/event | max/min rate | Delta AICc |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -110,9 +111,7 @@ MCV_ORB/
 ├── Barker2011_do_predictive_information_audited.py
 ├── NGRIP/
 │   ├── README.md
-│   ├── extract_rasmussen2014_table2.py
 │   ├── ngrip_event_phase_analysis.py
-│   ├── data/raw/
 │   ├── data/processed/
 │   └── figures/
 ├── data/
@@ -127,15 +126,17 @@ MCV_ORB/
 
 The source-level `toolbox/` is complete; caches are excluded. Generated Barker
 tables and figures are retained in both legacy and audited directories. NGRIP
-keeps its extraction audit table, collapsed catalogue, analysis tables and all
-three figures in PNG and PDF formats.
+keeps the collapsed event catalogue used by the analysis, its result tables,
+and all three figures in PNG and PDF formats.
 
 ## Canonical files
 
 - `Barker2011_do_predictive_information_audited.py`: preferred Barker analysis.
 - `Barker2011_do_predictive_information.py`: earlier version retained only for
   direct comparison with work completed before the audit.
-- `NGRIP/extract_rasmussen2014_table2.py`: reproducible Table 2 extraction.
+- `NGRIP/data/processed/ngrip_warming_cooling_starts.csv`: canonical retained
+  NGRIP event input; the one-off extraction code and intermediate table are not
+  required by the analysis.
 - `NGRIP/ngrip_event_phase_analysis.py`: warming, cooling and pooled NGRIP
   Rayleigh/PI analysis.
 - `toolbox/orbital_phase.py`: phase construction, sampling, Rayleigh statistics
@@ -163,9 +164,11 @@ Root `data/raw/`:
 - `obl_1000_60_inter100.txt`: obliquity input retained for the legacy Barker
   orbital summary.
 
-NGRIP-specific source:
+NGRIP retained event input:
 
-- `NGRIP/data/raw/Rasmussen2014_QSRA_Table2_source.pdf`.
+- `NGRIP/data/processed/ngrip_warming_cooling_starts.csv`: 69 published GI/GS
+  parent starts with source labels, b2k ages, converted BP ages, and selection
+  provenance.
 
 Reference article:
 
@@ -184,10 +187,9 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Extract and analyze NGRIP:
+Analyze NGRIP from the retained processed catalogue:
 
 ```bash
-python NGRIP/extract_rasmussen2014_table2.py
 python NGRIP/ngrip_event_phase_analysis.py
 ```
 
@@ -216,9 +218,8 @@ sensitivity results more clearly than the legacy comparison script.
 
 NGRIP:
 
-- `NGRIP/data/processed/rasmussen2014_table2_gi_gs_rows.csv`: all 109 GI/GS
-  Table 2 rows with parent-selection flags;
-- `NGRIP/data/processed/ngrip_warming_cooling_starts.csv`: 69 parent starts;
+- `NGRIP/data/processed/ngrip_warming_cooling_starts.csv`: canonical 69-event
+  parent-start catalogue;
 - `NGRIP/data/processed/ngrip_event_phase_analysis/analysis_summary.csv`:
   compact results shown above;
 - `NGRIP/figures/ngrip_event_phase_analysis/`: timeline, Rayleigh and PI plots.

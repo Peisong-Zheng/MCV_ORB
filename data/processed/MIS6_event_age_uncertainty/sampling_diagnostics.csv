@@ -1,0 +1,2 @@
+random_seed,requested_realizations,accepted_realizations,total_proposals,rejected_proposals,rejection_fraction,minimum_event_separation_ka,order_rule,sorting_used,max_proposals
+20260904,10000,10000,10068,68,0.00675407,0.00000000,fixed event rank; reject whole proposal if crossed,False,1000000

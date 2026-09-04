@@ -1,0 +1,5 @@
+forcing_id,forcing_label,source,mean,min,max,range
+lr04,LR04 benthic d18O,data/raw/lr04.xlsx,4.5343,3.76,4.98,1.2200000000000006
+co2,CO2,data/raw/composite_co2.xlsx,201.6475106592007,184.30751744046188,231.39623618784532,47.08871874738344
+pre_phase_sin,sin(precession phase),data/raw/pre_1000_60_inter100.txt,-0.045999562597848785,-1.0,1.0,2.0
+pre_phase_cos,cos(precession phase),data/raw/pre_1000_60_inter100.txt,-0.07836974092265428,-1.0,1.0,2.0

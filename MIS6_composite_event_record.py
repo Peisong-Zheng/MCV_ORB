@@ -33,6 +33,13 @@ ANCHORS = (
 )
 OUTPUT_DIR = ROOT / "data" / "processed" / "MIS6_composite_event_record"
 OUTPUT_CSV = OUTPUT_DIR / "mis6_composite_event_record.csv"
+AGE_CONTROL_POINTS = (
+    ROOT
+    / "data"
+    / "processed"
+    / "MIS6_event_age_uncertainty"
+    / "mis6_age_control_points.csv"
+)
 FIGURE_DIR = ROOT / "figures" / "MIS6_composite_event_record"
 FIGURE_STEM = "MIS6_composite_event_record"
 
@@ -89,13 +96,13 @@ RECORDS = (
         sheet="Huagapo_Burn_etal_2019",
         proxy="d18O",
         proxy_label=r"$\delta^{18}\mathrm{O}$ (‰ VPDB)",
-        data_source="Burn et al. (2019)",
+        data_source="Burns et al. (2019)",
         label_source="Held et al. (2024)",
         color="#1976D2",
         gradient_direction=-1,
         nominal_sigma_ka=0.100,
         sensitivity_sigmas_ka=(0.075, 0.100, 0.125),
-        plot_range_ka=(176.8, 195.2),
+        plot_range_ka=(176.7, 196.8),
     ),
     RecordSpec(
         record_id="Sofular",
@@ -108,7 +115,7 @@ RECORDS = (
         gradient_direction=1,
         nominal_sigma_ka=0.050,
         sensitivity_sigmas_ka=(0.035, 0.050, 0.075),
-        plot_range_ka=(179.2, 180.9),
+        plot_range_ka=(179.2, 181.35),
         invert_proxy_axis=True,
     ),
 )
@@ -126,13 +133,13 @@ def configure_plot_style() -> None:
             "font.family": "sans-serif",
             "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
             "mathtext.fontset": "dejavusans",
-            "font.size": 8,
-            "axes.labelsize": 8.5,
-            "axes.titlesize": 8.5,
+            "font.size": 9,
+            "axes.labelsize": 9.5,
+            "axes.titlesize": 9.5,
             "axes.titleweight": "semibold",
             "axes.linewidth": 0.7,
-            "xtick.labelsize": 7.5,
-            "ytick.labelsize": 7.5,
+            "xtick.labelsize": 8.5,
+            "ytick.labelsize": 8.5,
             "xtick.direction": "out",
             "ytick.direction": "out",
             "pdf.fonttype": 42,
@@ -608,16 +615,6 @@ def style_axis(axis: plt.Axes) -> None:
     axis.tick_params(length=3, width=0.65)
 
 
-def marker_style(quality: str, color: str) -> dict[str, object]:
-    """Distinguish stable, moderate, and review estimates without a color scale."""
-    marker = {"stable": "o", "moderate": "D", "review": "^"}[quality]
-    return {
-        "marker": marker,
-        "facecolor": color if quality == "stable" else "white",
-        "edgecolor": color,
-    }
-
-
 def draw_timeline(axis: plt.Axes, events: pd.DataFrame) -> None:
     lane = {"MF": 2.0, "Huagapo": 1.0, "Sofular": 0.0}
     for record_id, group in events.groupby("source_record", sort=False):
@@ -632,14 +629,15 @@ def draw_timeline(axis: plt.Axes, events: pd.DataFrame) -> None:
         for index, (_, event) in enumerate(group.iterrows()):
             if abs(event["event_age_ka_bp"] - 175) < 0.5:
                 label_shifts[index] -= 0.22
-            point_style = marker_style(event["event_age_qc"], spec.color)
             axis.scatter(
                 event["event_age_ka_bp"],
                 y,
                 s=20,
                 linewidth=0.8,
+                marker="o",
+                facecolor=spec.color,
+                edgecolor=spec.color,
                 zorder=3,
-                **point_style,
             )
             axis.annotate(
                 event["composite_event_display_label"],
@@ -651,7 +649,7 @@ def draw_timeline(axis: plt.Axes, events: pd.DataFrame) -> None:
                 rotation=90,
                 ha="center",
                 va="bottom",
-                fontsize=6.5,
+                fontsize=7.5,
                 color=spec.color,
                 arrowprops={
                     "arrowstyle": "-",
@@ -666,7 +664,7 @@ def draw_timeline(axis: plt.Axes, events: pd.DataFrame) -> None:
         -0.34,
         "record transition",
         color="#666666",
-        fontsize=6.5,
+        fontsize=7.5,
         ha="left",
         va="bottom",
     )
@@ -675,9 +673,9 @@ def draw_timeline(axis: plt.Axes, events: pd.DataFrame) -> None:
         ylim=(-0.45, 3.05),
         yticks=[0, 1, 2],
         yticklabels=["Sofular", "Huagapo", "MF"],
-        xlabel="Age (ka BP; older →)",
-        title="(a) Composite sequence and source records",
+        xlabel="Age (Kyr BP)",
     )
+    axis.set_title("(a) Composite sequence and source records", loc="left")
     axis.xaxis.set_major_locator(MultipleLocator(5))
     style_axis(axis)
 
@@ -691,12 +689,105 @@ def event_panel_label(event: pd.Series) -> str:
     )
 
 
+def load_age_controls(path: Path = AGE_CONTROL_POINTS) -> pd.DataFrame:
+    """Load the compact control table produced by the A+ uncertainty script."""
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Missing {path}; run MIS6_event_age_uncertainty.py first"
+        )
+    controls = pd.read_csv(path)
+    required = {
+        "record_id",
+        "stalagmite_id",
+        "age_ka_bp",
+        "age_error_2sigma_ka",
+        "shown_in_composite_figure",
+    }
+    if missing := required.difference(controls.columns):
+        raise ValueError(f"Age-control table is missing columns: {sorted(missing)}")
+    return controls
+
+
+def assign_interval_lanes(
+    centers: np.ndarray,
+    half_widths: np.ndarray,
+    padding: float = 0.0,
+) -> np.ndarray:
+    """Assign horizontal intervals to the fewest non-overlapping lanes."""
+    centers = np.asarray(centers, dtype=float)
+    half_widths = np.asarray(half_widths, dtype=float)
+    if centers.shape != half_widths.shape or centers.ndim != 1:
+        raise ValueError("Control centers and errors must be matching 1-D arrays")
+    if not np.isfinite(centers).all() or not np.isfinite(half_widths).all():
+        raise ValueError("Control intervals must be finite")
+    if (half_widths < 0).any() or padding < 0:
+        raise ValueError("Control errors and lane padding must be non-negative")
+
+    left = centers - half_widths
+    right = centers + half_widths
+    lane_ends: list[float] = []
+    lanes = np.empty(len(centers), dtype=int)
+    for index in np.lexsort((right, left)):
+        for lane, previous_right in enumerate(lane_ends):
+            if left[index] > previous_right + padding:
+                lane_ends[lane] = right[index]
+                lanes[index] = lane
+                break
+        else:
+            lanes[index] = len(lane_ends)
+            lane_ends.append(right[index])
+    return lanes
+
+
+def draw_age_control_strip(
+    axis: plt.Axes,
+    spec: RecordSpec,
+    controls: pd.DataFrame,
+) -> None:
+    """Show dated horizons near the x-axis, separate from event estimates."""
+    if controls.empty:
+        return
+    shown = controls["shown_in_composite_figure"].astype(str).str.lower().eq("true")
+    local = controls.loc[controls["record_id"].eq(spec.record_id) & shown]
+    if local.empty:
+        return
+
+    local = local.sort_values("age_ka_bp").copy()
+    padding = 0.01 * np.ptp(axis.get_xlim())
+    local["lane"] = assign_interval_lanes(
+        local["age_ka_bp"].to_numpy(float),
+        local["age_error_2sigma_ka"].to_numpy(float),
+        padding,
+    )
+    for lane, group in local.groupby("lane", sort=True):
+        y = 0.035 + 0.060 * int(lane)
+        axis.errorbar(
+            group["age_ka_bp"],
+            np.full(len(group), y),
+            xerr=group["age_error_2sigma_ka"],
+            transform=axis.get_xaxis_transform(),
+            fmt="s",
+            markersize=3.1,
+            markerfacecolor="white",
+            markeredgecolor="#555555",
+            markeredgewidth=0.65,
+            ecolor="#666666",
+            elinewidth=0.65,
+            capsize=1.5,
+            capthick=0.65,
+            linestyle="none",
+            clip_on=True,
+            zorder=3,
+        )
+
+
 def draw_record_panel(
     axis: plt.Axes,
     panel_letter: str,
     spec: RecordSpec,
     segments: list[RegularSegment],
     events: pd.DataFrame,
+    age_controls: pd.DataFrame,
 ) -> None:
     for segment in segments:
         axis.plot(
@@ -719,72 +810,74 @@ def draw_record_panel(
         )
 
     local_events = events.loc[events["source_record"].eq(spec.record_id)]
+    local_ages = local_events["event_age_ka_bp"].to_numpy(dtype=float)
+    label_shifts = np.zeros(len(local_events))
+    for index, separation in enumerate(np.diff(local_ages)):
+        if separation < 0.75:
+            label_shifts[index] -= 0.18
+            label_shifts[index + 1] += 0.18
     for index, (_, event) in enumerate(local_events.iterrows()):
-        for candidate_age in str(event["local_tuning_candidate_ages_ka_bp"]).split(";"):
-            axis.axvline(
-                float(candidate_age),
-                ymin=0.02,
-                ymax=0.09,
-                color=spec.color,
-                linewidth=0.75,
-                alpha=0.35,
-                zorder=3,
-            )
-        axis.axvline(
-            event["source_anchor_age_ka_bp"],
-            color="#777777",
-            linestyle=":",
-            linewidth=0.75,
-            zorder=2,
-        )
-        axis.axvline(
-            event["event_age_ka_bp"],
-            color=spec.color,
-            linewidth=0.75,
-            alpha=0.7,
-            zorder=2,
-        )
-        point_style = marker_style(event["event_age_qc"], spec.color)
         axis.scatter(
             event["event_age_ka_bp"],
             event["event_proxy_per_mil"],
             s=24,
             linewidth=0.9,
+            marker="o",
+            facecolor=spec.color,
+            edgecolor=spec.color,
             zorder=4,
-            **point_style,
         )
         if spec.record_id == "MF":
-            y_position = 0.97
+            y_position = 0.98 - 0.11 * (index % 2)
             rotation = 90
         else:
-            y_position = 0.97 if index % 2 == 0 else 0.78
+            y_position = 0.96 if index % 2 == 0 else 0.79
             rotation = 0
-        axis.text(
-            event["event_age_ka_bp"],
-            y_position,
+        axis.annotate(
             event_panel_label(event),
-            transform=axis.get_xaxis_transform(),
+            xy=(event["event_age_ka_bp"], event["event_proxy_per_mil"]),
+            xycoords="data",
+            xytext=(event["event_age_ka_bp"] + label_shifts[index], y_position),
+            textcoords=axis.get_xaxis_transform(),
             ha="center",
             va="top",
             rotation=rotation,
-            fontsize=6.4,
+            fontsize=7.4,
             color=spec.color,
             linespacing=0.9,
             zorder=5,
+            bbox={
+                "facecolor": "white",
+                "edgecolor": "none",
+                "alpha": 0.88,
+                "pad": 0.5,
+            },
+            arrowprops={
+                "arrowstyle": "-",
+                "color": spec.color,
+                "linewidth": 0.65,
+                "alpha": 0.72,
+            },
         )
 
     axis.set_xlim(*spec.plot_range_ka)
     axis.set_ylabel(spec.proxy_label)
-    axis.set_xlabel("Age (ka BP; older →)")
+    axis.set_xlabel("Age (Kyr BP)")
     axis_note = "; reversed y-axis" if spec.invert_proxy_axis else ""
     axis.set_title(
-        f"({panel_letter}) {spec.record_id} — {spec.data_source}; "
+        f"({panel_letter}) {spec.record_id} - {spec.data_source}; "
         f"Gaussian σ = {spec.nominal_sigma_ka * 1000:.0f} yr{axis_note}",
         loc="left",
     )
+    y_min, y_max = axis.get_ylim()
+    if spec.record_id == "Huagapo":
+        axis.set_ylim(y_min - 0.13 * (y_max - y_min), y_max)
+    elif spec.record_id == "Sofular":
+        axis.set_ylim(y_min, y_max + 0.22 * (y_max - y_min))
     if spec.invert_proxy_axis:
         axis.invert_yaxis()
     style_axis(axis)
+    draw_age_control_strip(axis, spec, age_controls)
 
 
 def plot_results(
@@ -799,11 +892,12 @@ def plot_results(
         height_ratios=[1.25, 2.0, 1.65, 1.65],
         left=0.11,
         right=0.985,
-        bottom=0.075,
-        top=0.855,
+        bottom=0.065,
+        top=0.885,
         hspace=0.50,
     )
     axes = [figure.add_subplot(grid[index, 0]) for index in range(4)]
+    age_controls = load_age_controls()
 
     draw_timeline(axes[0], events)
     for axis, letter, spec in zip(axes[1:], "bcd", RECORDS):
@@ -813,24 +907,9 @@ def plot_results(
             spec,
             segments_by_record[spec.record_id],
             events,
+            age_controls,
         )
 
-    figure.suptitle(
-        "Provisional MIS 6 composite event record",
-        x=0.11,
-        y=0.985,
-        ha="left",
-        fontsize=11,
-        fontweight="bold",
-    )
-    figure.text(
-        0.11,
-        0.957,
-        "Direction-constrained maximum gradient after light Gaussian smoothing",
-        ha="left",
-        fontsize=8,
-        color="#444444",
-    )
     legend_handles = [
         Line2D(
             [0],
@@ -845,70 +924,34 @@ def plot_results(
         Line2D(
             [0],
             [0],
-            color="#777777",
-            linestyle=":",
-            linewidth=0.8,
-            label="literature search anchor",
-        ),
-        Line2D(
-            [0],
-            [0],
-            color="#333333",
-            marker="|",
-            linestyle="none",
-            markersize=7,
-            label="local tuning candidates (not age uncertainty)",
-        ),
-        Line2D(
-            [0],
-            [0],
             marker="o",
             linestyle="none",
             markerfacecolor="#333333",
             markeredgecolor="#333333",
-            markersize=4,
-            label="event-age QC: stable",
-        ),
-        Line2D(
-            [0],
-            [0],
-            marker="D",
-            linestyle="none",
-            markerfacecolor="white",
-            markeredgecolor="#333333",
-            markersize=4,
-            label="event-age QC: moderate",
-        ),
-        Line2D(
-            [0],
-            [0],
-            marker="^",
-            linestyle="none",
-            markerfacecolor="white",
-            markeredgecolor="#333333",
             markersize=4.5,
-            label="event-age QC: review",
+            label="provisional event age (maximum gradient)",
+        ),
+        Line2D(
+            [0],
+            [0],
+            color="#666666",
+            marker="s",
+            linewidth=0.65,
+            markerfacecolor="white",
+            markeredgecolor="#555555",
+            markersize=4,
+            label="Individual U-Th date (reported ±2σ; not event-age uncertainty)",
         ),
     ]
     figure.legend(
         handles=legend_handles,
         loc="upper left",
-        bbox_to_anchor=(0.105, 0.938),
-        ncol=4,
+        bbox_to_anchor=(0.105, 0.985),
+        ncol=2,
         frameon=False,
-        fontsize=6.7,
+        fontsize=7.8,
         handlelength=2.0,
-        columnspacing=1.1,
-    )
-    figure.text(
-        0.5,
-        0.018,
-        "Short vertical ticks show local algorithm-tuning candidates, not age-model "
-        "uncertainty. Proxy changes are local, record-specific, and not directly comparable.",
-        ha="center",
-        va="bottom",
-        fontsize=6.6,
-        color="#555555",
+        columnspacing=1.3,
     )
 
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)

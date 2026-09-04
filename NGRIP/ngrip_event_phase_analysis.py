@@ -104,6 +104,8 @@ def load_events(path: Path = EVENTS_CSV) -> pd.DataFrame:
         raise ValueError(f"Unexpected event counts: {counts}")
     if events["event_label"].duplicated().any():
         raise ValueError("Event labels must be unique within the catalogue.")
+    if not np.allclose(events["age_ka_b2k"], events["age_yr_b2k"] / 1000.0):
+        raise ValueError("The ka b2k ages must equal the year b2k ages / 1000.")
     if not np.allclose(events["age_ka_bp"], events["age_ka_b2k"] - 0.05):
         raise ValueError("The b2k-to-BP conversion must subtract 0.05 ka.")
     if (
