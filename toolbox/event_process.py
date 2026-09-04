@@ -33,17 +33,12 @@ def add_same_type_history(
 
         cumulative = np.concatenate([[0.0], np.cumsum(counts)])
         left = np.searchsorted(centers, centers + 1e-9, side="right")
-        right = np.searchsorted(
-            centers, centers + history_window_ka, side="right"
-        )
+        right = np.searchsorted(centers, centers + history_window_ka, side="right")
         history = cumulative[right] - cumulative[left]
 
         coverage = np.minimum(centers[-1], centers + history_window_ka) - centers
         bin_width_ka = float(np.nanmedian(group["dt_ka"].to_numpy(dtype=float)))
         group[HISTORY_TERM] = history
-        group["same_type_history_rate_per_kyr"] = history / history_window_ka
-        group["same_type_history_window_ka"] = float(history_window_ka)
-        group["same_type_history_coverage_ka"] = coverage
         group["same_type_history_complete"] = coverage >= (
             history_window_ka - 0.5 * bin_width_ka
         )

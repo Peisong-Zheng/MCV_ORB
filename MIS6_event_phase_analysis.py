@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Quick Rayleigh and conditional-PI test of the 21 MIS6 warming events.
+"""Rayleigh and conditional-PI analysis of the 21 MIS 6 warming events.
 
 The model definition follows ``NGRIP/ngrip_event_phase_analysis.py``.  All
 events are treated as one warming catalogue.  Proxy sampling resolution and
@@ -17,8 +17,25 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from toolbox import event_inputs, event_process as predictive, poisson
-from toolbox.model_stats import nested_likelihood_metrics
+from toolbox.mis6_pi import (
+    ANALYSIS_END_KA,
+    ANALYSIS_START_KA,
+    BIN_WIDTH_KA,
+    DATASET_ID,
+    EVENTS_CSV,
+    EVENT_COLOR,
+    EVENT_LABEL,
+    EVENT_TYPE,
+    FULL_MODEL_ID,
+    FULL_TERMS,
+    HISTORY_WINDOW_KA,
+    REDUCED_MODEL_ID,
+    REDUCED_TERMS,
+    RESOLUTION_COVARIATE_INCLUDED,
+    load_events,
+    phase_rate_multiplier,
+    run_predictive_information,
+)
 from toolbox.orbital_phase import (
     build_phase_series,
     build_rayleigh_results,
@@ -35,33 +52,8 @@ from toolbox.project_config import (
 
 
 RUN_NAME = "MIS6_event_phase_analysis"
-EVENTS_CSV = (
-    PROJECT_ROOT
-    / "data/processed/MIS6_composite_event_record/mis6_composite_event_record.csv"
-)
 OUT_DATA_DIR = PROJECT_ROOT / "data/processed" / RUN_NAME
 OUT_FIG_DIR = PROJECT_ROOT / "figures" / RUN_NAME
-
-# Match the NGRIP PI choices while using the explicit support of this quick test.
-# Rounded inward from continuous MF/Huagapo coverage (~132.411--196.584 Kyr BP)
-# so unobserved time is not treated as zero-event exposure.
-ANALYSIS_START_KA = 132.5
-ANALYSIS_END_KA = 196.5
-BIN_WIDTH_KA = 0.2
-HISTORY_WINDOW_KA = 5.0
-
-DATASET_ID = "mis6_warming"
-EVENT_TYPE = "warming"
-EVENT_LABEL = "MIS 6 composite warming events"
-EVENT_COLOR = "#C43C39"
-
-# NGRIP uses these exact nested models.  No proxy-resolution term is present.
-REDUCED_TERMS = (predictive.HISTORY_TERM, *predictive.CLIMATE_TERMS)
-FULL_TERMS = REDUCED_TERMS + predictive.PHASE_TERMS
-REDUCED_MODEL_ID = "history_climate"
-FULL_MODEL_ID = "history_climate_precession"
-COMPARISON_ID = "precession_after_history_climate"
-RESOLUTION_COVARIATE_INCLUDED = False
 
 
 def configure_plot_style() -> None:
@@ -85,57 +77,6 @@ def configure_plot_style() -> None:
     )
 
 
-def load_events(path: Path = EVENTS_CSV) -> pd.DataFrame:
-    """Load and validate the provisional 21-event composite chronology."""
-
-    events = pd.read_csv(path)
-    required = {
-        "composite_event_id",
-        "composite_event_label",
-        "event_age_ka_bp",
-        "event_age_status",
-        "source_record",
-    }
-    missing = required.difference(events.columns)
-    if missing:
-        raise ValueError(f"Event catalogue is missing columns: {sorted(missing)}")
-
-    events = events.copy()
-    events["event_age_ka_bp"] = pd.to_numeric(
-        events["event_age_ka_bp"], errors="coerce"
-    )
-    if len(events) != 21:
-        raise ValueError(f"Expected 21 MIS6 events, found {len(events)}.")
-    if events["event_age_ka_bp"].isna().any():
-        raise ValueError("Every MIS6 event must have a finite event age.")
-    if events["composite_event_id"].duplicated().any():
-        raise ValueError("Composite event IDs must be unique.")
-    if events["composite_event_label"].duplicated().any():
-        raise ValueError("Composite event labels must be unique.")
-    if events["event_age_ka_bp"].duplicated().any():
-        raise ValueError("Composite event ages must be unique.")
-    if not events["event_age_ka_bp"].between(
-        ANALYSIS_START_KA, ANALYSIS_END_KA, inclusive="both"
-    ).all():
-        raise ValueError("At least one event lies outside the analysis support.")
-
-    events = events.sort_values("event_age_ka_bp").reset_index(drop=True)
-    events["event_type"] = EVENT_TYPE
-    return events
-
-
-def build_event_dataset(events: pd.DataFrame) -> event_inputs.EventDataset:
-    """Represent all 21 events as one warming catalogue."""
-
-    return event_inputs.EventDataset(
-        dataset_id=DATASET_ID,
-        label=EVENT_LABEL,
-        color=EVENT_COLOR,
-        ages_ka=events["event_age_ka_bp"].to_numpy(dtype=float),
-        source=str(EVENTS_CSV.relative_to(PROJECT_ROOT)),
-    )
-
-
 def run_rayleigh(events: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, object]:
     """Sample precession phase and run the shared finite-sample Rayleigh test."""
 
@@ -156,100 +97,6 @@ def run_rayleigh(events: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, obje
     return event_phases, rayleigh, phase_product
 
 
-def run_predictive_information(events: pd.DataFrame) -> dict[str, object]:
-    """Fit the NGRIP reduced/full Poisson models without resolution."""
-
-    if RESOLUTION_COVARIATE_INCLUDED or any(
-        "resolution" in term.lower() for term in FULL_TERMS
-    ):
-        raise RuntimeError("This quick test must not include a resolution covariate.")
-
-    binned, scale_summary, phase_extrema = event_inputs.build_binned_inputs(
-        [build_event_dataset(events)],
-        analysis_start_ka=ANALYSIS_START_KA,
-        analysis_end_ka=ANALYSIS_END_KA,
-        bin_width_ka=BIN_WIDTH_KA,
-        lr04_path=LR04_XLSX,
-        co2_path=CO2_XLSX,
-        precession_path=PRE_TXT,
-        project_root=PROJECT_ROOT,
-    )
-    binned = predictive.add_same_type_history(binned, HISTORY_WINDOW_KA)
-    fit_frame = predictive.model_frame(binned)
-
-    models = [
-        poisson.fit_poisson_model(
-            fit_frame,
-            REDUCED_MODEL_ID,
-            REDUCED_TERMS,
-            "Catalogue history + LR04 + CO2",
-        ),
-        poisson.fit_poisson_model(
-            fit_frame,
-            FULL_MODEL_ID,
-            FULL_TERMS,
-            "Catalogue history + LR04 + CO2 + precession phase",
-        ),
-    ]
-    model_summary = poisson.build_model_summary(models, fit_frame)
-    coefficients = poisson.build_coefficient_table(models)
-    reduced, full = models
-    metrics = nested_likelihood_metrics(
-        loglik_full=full.log_likelihood,
-        loglik_reduced=reduced.log_likelihood,
-        df=len(full.beta) - len(reduced.beta),
-        n_bins=len(fit_frame),
-        n_events=int(fit_frame["event_count"].sum()),
-        aicc_full=full.aicc,
-        aicc_reduced=reduced.aicc,
-    )
-    likelihood_tests = pd.DataFrame(
-        [
-            {
-                "dataset_id": DATASET_ID,
-                "dataset_label": EVENT_LABEL,
-                "comparison_id": COMPARISON_ID,
-                "question": "Does precession phase add information after history, LR04, and CO2?",
-                "reduced_model_id": REDUCED_MODEL_ID,
-                "full_model_id": FULL_MODEL_ID,
-                **metrics,
-                "p_value_method": "nominal asymptotic chi-square LRT",
-                "reject_LR_at_0p05": metrics["LR_p_value"] < 0.05,
-                "likelihood_nesting_ok": metrics["ll_gain_nats"] >= -1e-8,
-                "resolution_covariate_included": False,
-                "event_age_uncertainty_propagated": False,
-            }
-        ]
-    )
-
-    if not model_summary["converged"].all():
-        raise RuntimeError("At least one predictive model did not converge.")
-    if not likelihood_tests["likelihood_nesting_ok"].all():
-        raise RuntimeError("The full-model likelihood is below the reduced model.")
-    clipping = model_summary[["n_eta_clipped_low", "n_eta_clipped_high"]]
-    if (clipping > 0).any().any():
-        raise RuntimeError("At least one predictive model used eta clipping.")
-
-    return {
-        "binned": binned,
-        "fit_frame": fit_frame,
-        "scale_summary": scale_summary,
-        "phase_extrema": phase_extrema,
-        "model_summary": model_summary,
-        "coefficients": coefficients,
-        "likelihood_tests": likelihood_tests,
-    }
-
-
-def phase_rate_multiplier(
-    phase_deg: np.ndarray, beta_sin: float, beta_cos: float
-) -> np.ndarray:
-    """Return the fitted multiplicative contribution of precession phase."""
-
-    theta = np.deg2rad(np.asarray(phase_deg, dtype=float))
-    return np.exp(beta_sin * np.sin(theta) + beta_cos * np.cos(theta))
-
-
 def build_analysis_summary(
     events: pd.DataFrame,
     rayleigh: pd.DataFrame,
@@ -263,6 +110,9 @@ def build_analysis_summary(
     fit_frame = pi["fit_frame"]
     full = model_summary.query("model_id == @FULL_MODEL_ID").iloc[0]
     test = likelihood_tests.iloc[0]
+    n_eta_clipped = int(
+        model_summary[["n_eta_clipped_low", "n_eta_clipped_high"]].to_numpy(int).sum()
+    )
     return pd.DataFrame(
         [
             {
@@ -273,19 +123,20 @@ def build_analysis_summary(
                 "n_catalogue_events": len(events),
                 "n_rayleigh_events": int(ray["n_phase_events_used"]),
                 "rayleigh_mean_phase_deg": float(ray["mean_phase_deg"]),
-                "rayleigh_mean_resultant_length": float(
-                    ray["mean_resultant_length"]
-                ),
+                "rayleigh_mean_resultant_length": float(ray["mean_resultant_length"]),
+                "rayleigh_R": float(ray["rayleigh_R"]),
+                "rayleigh_z": float(ray["rayleigh_z"]),
                 "rayleigh_p": float(ray["rayleigh_p"]),
                 "rayleigh_significant_0p05": float(ray["rayleigh_p"]) < 0.05,
+                "n_rayleigh_extrapolated_events": int(
+                    ray["n_extrapolated_phase_events"]
+                ),
                 "n_predictive_bins": int(len(fit_frame)),
                 "n_predictive_events": int(test["n_events"]),
                 "predictive_support_start_ka_bp": float(
                     fit_frame["bin_start_ka"].min()
                 ),
-                "predictive_support_end_ka_bp": float(
-                    fit_frame["bin_end_ka"].max()
-                ),
+                "predictive_support_end_ka_bp": float(fit_frame["bin_end_ka"].max()),
                 "predictive_preferred_phase_deg": float(
                     full["pre_phase_preferred_deg"]
                 ),
@@ -295,10 +146,14 @@ def build_analysis_summary(
                 "predictive_LR": float(test["LR_statistic"]),
                 "predictive_nominal_LR_p": float(test["LR_p_value"]),
                 "predictive_significant_0p05": float(test["LR_p_value"]) < 0.05,
+                "predictive_log_likelihood_reduced": float(test["loglik_reduced"]),
+                "predictive_log_likelihood_full": float(test["loglik_full"]),
                 "predictive_bits_per_event": float(test["info_bits_per_event"]),
                 "predictive_delta_AICc_full_minus_reduced": float(
                     test["delta_AICc_full_minus_reduced"]
                 ),
+                "predictive_likelihood_nesting_ok": bool(test["likelihood_nesting_ok"]),
+                "predictive_eta_clipping_count": n_eta_clipped,
                 "resolution_covariate_included": False,
                 "event_age_uncertainty_propagated": False,
                 "all_models_converged": bool(model_summary["converged"].all()),
@@ -329,9 +184,7 @@ def plot_timeline(
         label=EVENT_LABEL,
         zorder=3,
     )
-    axes[1].vlines(
-        events["event_age_ka_bp"], 0.0, 1.0, color=EVENT_COLOR, lw=1.15
-    )
+    axes[1].vlines(events["event_age_ka_bp"], 0.0, 1.0, color=EVENT_COLOR, lw=1.15)
     axes[0].set_ylabel("Precession index")
     axes[0].set_title("MIS 6 composite warming events and precession", loc="left")
     axes[0].legend(
@@ -415,9 +268,9 @@ def save_figure(fig: plt.Figure, stem: str) -> None:
     plt.close(fig)
 
 
-def build_parameters(events: pd.DataFrame, fit_frame: pd.DataFrame) -> pd.DataFrame:
-    """Record the quick-test assumptions and provenance."""
-
+def build_parameters(events: pd.DataFrame, pi: dict[str, object]) -> pd.DataFrame:
+    """Record model choices, source files, and predictor scaling."""
+    fit_frame = pi["fit_frame"]
     rows = [
         (
             "analysis_start",
@@ -458,13 +311,13 @@ def build_parameters(events: pd.DataFrame, fit_frame: pd.DataFrame) -> pd.DataFr
             "resolution_covariate_included",
             False,
             "",
-            "explicit quick-test choice; local proxy resolution is not a model term",
+            "deliberately omitted; local proxy resolution is not a model term",
         ),
         (
             "event_age_uncertainty_propagated",
             False,
             "",
-            "point ages are treated as exact in this quick test",
+            "point ages are treated as exact in this analysis",
         ),
         (
             "p_value_method",
@@ -490,15 +343,89 @@ def build_parameters(events: pd.DataFrame, fit_frame: pd.DataFrame) -> pd.DataFr
             "",
             "provisional MIS6 composite chronology",
         ),
-        ("precession_source", str(PRE_TXT.relative_to(PROJECT_ROOT)), "", "orbital input"),
-        ("lr04_source", str(LR04_XLSX.relative_to(PROJECT_ROOT)), "", "climate covariate"),
-        ("co2_source", str(CO2_XLSX.relative_to(PROJECT_ROOT)), "", "climate covariate"),
+        (
+            "precession_source",
+            str(PRE_TXT.relative_to(PROJECT_ROOT)),
+            "",
+            "orbital input",
+        ),
+        (
+            "lr04_source",
+            str(LR04_XLSX.relative_to(PROJECT_ROOT)),
+            "",
+            "climate covariate",
+        ),
+        (
+            "co2_source",
+            str(CO2_XLSX.relative_to(PROJECT_ROOT)),
+            "",
+            "climate covariate",
+        ),
     ]
+
+    # Scaling depends on the analysis interval, so keep it beside the model setup.
+    forcing_units = {
+        "lr04": "per mil",
+        "co2": "ppm",
+        "pre_phase_sin": "dimensionless",
+        "pre_phase_cos": "dimensionless",
+    }
+    for forcing in pi["scale_summary"].itertuples(index=False):
+        values = (
+            f"mean={forcing.mean:.12g}; min={forcing.min:.12g}; "
+            f"max={forcing.max:.12g}; range={forcing.range:.12g}"
+        )
+        rows.append(
+            (
+                f"forcing_scale_{forcing.forcing_id}",
+                values,
+                forcing_units[str(forcing.forcing_id)],
+                str(forcing.source),
+            )
+        )
     return pd.DataFrame(rows, columns=["parameter", "value", "unit", "note"])
 
 
+def compact_event_phases(event_phases: pd.DataFrame) -> pd.DataFrame:
+    """Keep one readable phase record for each composite event."""
+    columns = {
+        "event_index": "composite_event_id",
+        "event_age_ka": "event_age_ka_bp",
+        "orbital_value_at_event": "precession_index_at_event",
+        "phase_deg": "precession_phase_deg",
+        "phase_fraction": "precession_phase_fraction",
+        "phase_extrapolated": "phase_extrapolated",
+    }
+    return event_phases.loc[:, list(columns)].rename(columns=columns)
+
+
+def compact_coefficients(coefficients: pd.DataFrame) -> pd.DataFrame:
+    """Keep model terms and their fitted effects without repeated labels."""
+    columns = ["model_id", "term", "beta", "rate_ratio_per_unit"]
+    return coefficients.loc[:, columns].copy()
+
+
+def write_outputs(
+    events: pd.DataFrame,
+    event_phases: pd.DataFrame,
+    pi: dict[str, object],
+    summary: pd.DataFrame,
+    output_dir: Path = OUT_DATA_DIR,
+) -> None:
+    """Write the four tables retained for the point-age experiment."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    tables = {
+        "analysis_summary.csv": summary,
+        "event_precession_phases.csv": compact_event_phases(event_phases),
+        "predictive_coefficients.csv": compact_coefficients(pi["coefficients"]),
+        "parameters_and_provenance.csv": build_parameters(events, pi),
+    }
+    for filename, table in tables.items():
+        table.to_csv(output_dir / filename, index=False)
+
+
 def main() -> None:
-    """Run the quick test and write auditable tables and figures."""
+    """Run the point-age analysis and write its retained outputs."""
 
     configure_plot_style()
     events = load_events()
@@ -506,21 +433,7 @@ def main() -> None:
     pi = run_predictive_information(events)
     summary = build_analysis_summary(events, rayleigh, pi)
 
-    OUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    outputs = {
-        "event_precession_phases.csv": event_phases,
-        "rayleigh_results.csv": rayleigh,
-        "predictive_binned_inputs_model_support.csv": pi["fit_frame"],
-        "predictive_model_summary.csv": pi["model_summary"],
-        "predictive_coefficients.csv": pi["coefficients"],
-        "predictive_likelihood_tests.csv": pi["likelihood_tests"],
-        "forcing_scale_summary.csv": pi["scale_summary"],
-        "precession_phase_extrema.csv": pi["phase_extrema"],
-        "analysis_summary.csv": summary,
-        "parameters_and_provenance.csv": build_parameters(events, pi["fit_frame"]),
-    }
-    for filename, frame in outputs.items():
-        frame.to_csv(OUT_DATA_DIR / filename, index=False)
+    write_outputs(events, event_phases, pi, summary)
 
     save_figure(
         plot_timeline(events, event_phases, phase_product),
@@ -532,11 +445,9 @@ def main() -> None:
         driver="pre",
         event_colors={EVENT_TYPE: EVENT_COLOR},
         annotate_mean_phase=True,
+        show_panel_labels=False,
     )
     polar.set_size_inches(5.4, 4.8)
-    for text_artist in polar.axes[0].texts:
-        if text_artist.get_text() == "a":
-            text_artist.remove()
     polar.text(
         0.5,
         0.015,

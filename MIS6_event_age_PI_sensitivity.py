@@ -21,8 +21,7 @@ from matplotlib.lines import Line2D
 import numpy as np
 import pandas as pd
 
-import MIS6_event_phase_analysis as baseline
-from toolbox import event_process as predictive, poisson
+from toolbox import event_process as predictive, mis6_pi, poisson
 from toolbox.model_stats import nested_likelihood_metrics
 from toolbox.project_config import PROJECT_ROOT
 
@@ -36,13 +35,31 @@ OUT_DATA_DIR = PROJECT_ROOT / "data" / "processed" / RUN_NAME
 OUT_FIG_DIR = PROJECT_ROOT / "figures" / RUN_NAME
 REALIZATION_OUTPUT = OUT_DATA_DIR / "mis6_event_age_pi_realizations.csv"
 SUMMARY_OUTPUT = OUT_DATA_DIR / "mis6_event_age_pi_summary.csv"
-ORIGINAL_OUTPUT = OUT_DATA_DIR / "original_event_sequence_pi.csv"
-DIAGNOSTIC_OUTPUT = OUT_DATA_DIR / "fit_diagnostics.csv"
 PARAMETER_OUTPUT = OUT_DATA_DIR / "parameters_and_provenance.csv"
 FIGURE_STEM = RUN_NAME
 PNG_DPI = 600
-N_EVENTS = 21
+N_EVENTS = mis6_pi.N_EVENTS
 P_THRESHOLD = 0.05
+
+
+def configure_plot_style() -> None:
+    """Use the same journal-scale typography as the point-age analysis."""
+    plt.rcParams.update(
+        {
+            "font.family": "sans-serif",
+            "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
+            "font.size": 10,
+            "axes.labelsize": 10,
+            "axes.titlesize": 10.5,
+            "xtick.labelsize": 9,
+            "ytick.labelsize": 9,
+            "legend.fontsize": 9,
+            "axes.linewidth": 0.8,
+            "pdf.fonttype": 42,
+            "ps.fonttype": 42,
+            "savefig.facecolor": "white",
+        }
+    )
 
 
 @dataclass(frozen=True)
@@ -65,7 +82,7 @@ def event_age_columns() -> list[str]:
 
 
 def load_age_realizations(path: Path = MC_INPUT) -> pd.DataFrame:
-    """Load ordered A+ sequences and enforce their input contract."""
+    """Load the ordered A+ sequences and check the assumptions used below."""
     draws = pd.read_csv(path)
     required = {"realization_id", *event_age_columns()}
     if missing := required.difference(draws.columns):
@@ -79,7 +96,7 @@ def load_age_realizations(path: Path = MC_INPUT) -> pd.DataFrame:
     if not np.all(np.diff(ages, axis=1) > 0):
         raise ValueError("Every realized event sequence must preserve event order")
     if not (
-        (ages >= baseline.ANALYSIS_START_KA) & (ages <= baseline.ANALYSIS_END_KA)
+        (ages >= mis6_pi.ANALYSIS_START_KA) & (ages <= mis6_pi.ANALYSIS_END_KA)
     ).all():
         raise ValueError(
             "At least one realized age lies outside the PI binning support"
@@ -119,12 +136,12 @@ def fit_count_pattern(counts: np.ndarray, context: PIContext) -> dict[str, objec
     """Fit the reduced and phase-augmented models for one binned catalogue."""
     y = counts[context.complete_history]
     reduced = poisson.fit_binned_poisson_arrays(
-        design_matrix_for_counts(counts, context, baseline.REDUCED_TERMS),
+        design_matrix_for_counts(counts, context, mis6_pi.REDUCED_TERMS),
         y,
         context.dt_fit,
     )
     full = poisson.fit_binned_poisson_arrays(
-        design_matrix_for_counts(counts, context, baseline.FULL_TERMS),
+        design_matrix_for_counts(counts, context, mis6_pi.FULL_TERMS),
         y,
         context.dt_fit,
     )
@@ -138,56 +155,52 @@ def fit_count_pattern(counts: np.ndarray, context: PIContext) -> dict[str, objec
         aicc_reduced=reduced.aicc,
     )
 
-    beta_sin = float(full.beta[1 + baseline.FULL_TERMS.index("pre_phase_sin")])
-    beta_cos = float(full.beta[1 + baseline.FULL_TERMS.index("pre_phase_cos")])
+    beta_sin = float(full.beta[1 + mis6_pi.FULL_TERMS.index("pre_phase_sin")])
+    beta_cos = float(full.beta[1 + mis6_pi.FULL_TERMS.index("pre_phase_cos")])
     amplitude = float(np.hypot(beta_sin, beta_cos))
     preferred = float(np.degrees(np.mod(np.arctan2(beta_sin, beta_cos), 2 * np.pi)))
+    n_eta_clipped = sum(
+        (
+            reduced.n_eta_clipped_low,
+            reduced.n_eta_clipped_high,
+            full.n_eta_clipped_low,
+            full.n_eta_clipped_high,
+        )
+    )
     return {
-        "n_catalogue_events": int(counts.sum()),
         "n_predictive_bins": len(y),
         "n_predictive_events": int(y.sum()),
         "max_events_in_single_bin": int(counts.max()),
         "reduced_converged": reduced.converged,
         "full_converged": full.converged,
-        "reduced_log_likelihood": reduced.log_likelihood,
-        "full_log_likelihood": full.log_likelihood,
-        **metrics,
+        "loglik_reduced": metrics["loglik_reduced"],
+        "loglik_full": metrics["loglik_full"],
+        "info_bits_per_event": metrics["info_bits_per_event"],
+        "LR_statistic": metrics["LR_statistic"],
         "nominal_LR_p": metrics["LR_p_value"],
-        "nominal_LR_p_lt_0p05": metrics["LR_p_value"] < P_THRESHOLD,
-        "reduced_AICc": reduced.aicc,
-        "full_AICc": full.aicc,
-        "beta_pre_phase_sin": beta_sin,
-        "beta_pre_phase_cos": beta_cos,
-        "pre_phase_amplitude": amplitude,
+        "delta_AICc_full_minus_reduced": metrics["delta_AICc_full_minus_reduced"],
         "pre_phase_preferred_deg": preferred,
         "pre_phase_rate_ratio_max_vs_min": float(np.exp(2 * amplitude)),
         "likelihood_nesting_ok": metrics["ll_gain_nats"] >= -1e-8,
-        "reduced_n_eta_clipped_low": reduced.n_eta_clipped_low,
-        "reduced_n_eta_clipped_high": reduced.n_eta_clipped_high,
-        "full_n_eta_clipped_low": full.n_eta_clipped_low,
-        "full_n_eta_clipped_high": full.n_eta_clipped_high,
+        "n_eta_clipped": int(n_eta_clipped),
     }
 
 
 def validate_fast_reference(
     result: dict[str, object], reference: dict[str, object]
 ) -> None:
-    """Prove that the reusable-array path reproduces the existing PI analysis."""
+    """Check the cached-fit implementation against the point-age PI result."""
     model_summary = reference["model_summary"].set_index("model_id")
     likelihood = reference["likelihood_tests"].iloc[0]
     comparisons = {
-        "reduced_log_likelihood": model_summary.loc[
-            baseline.REDUCED_MODEL_ID, "log_likelihood"
-        ],
-        "full_log_likelihood": model_summary.loc[
-            baseline.FULL_MODEL_ID, "log_likelihood"
-        ],
+        "loglik_reduced": model_summary.loc[mis6_pi.REDUCED_MODEL_ID, "log_likelihood"],
+        "loglik_full": model_summary.loc[mis6_pi.FULL_MODEL_ID, "log_likelihood"],
         "LR_statistic": likelihood["LR_statistic"],
         "nominal_LR_p": likelihood["LR_p_value"],
         "info_bits_per_event": likelihood["info_bits_per_event"],
         "delta_AICc_full_minus_reduced": likelihood["delta_AICc_full_minus_reduced"],
         "pre_phase_preferred_deg": model_summary.loc[
-            baseline.FULL_MODEL_ID, "pre_phase_preferred_deg"
+            mis6_pi.FULL_MODEL_ID, "pre_phase_preferred_deg"
         ],
     }
     for name, expected in comparisons.items():
@@ -198,17 +211,17 @@ def validate_fast_reference(
 def build_pi_context(
     original_events: pd.DataFrame,
 ) -> tuple[PIContext, dict[str, object], dict[str, object]]:
-    """Load fixed forcings once and validate the fast path on the original ages."""
-    reference = baseline.run_predictive_information(original_events)
+    """Load fixed forcings once and prepare the arrays shared by all draws."""
+    reference = mis6_pi.run_predictive_information(original_events)
     binned = reference["binned"].sort_values("bin_center_ka").reset_index(drop=True)
     centers = binned["bin_center_ka"].to_numpy(float)
     edges = np.concatenate(
         [binned["bin_start_ka"].to_numpy(float), [binned["bin_end_ka"].iloc[-1]]]
     )
     left = np.searchsorted(centers, centers + 1e-9, side="right")
-    right = np.searchsorted(centers, centers + baseline.HISTORY_WINDOW_KA, side="right")
+    right = np.searchsorted(centers, centers + mis6_pi.HISTORY_WINDOW_KA, side="right")
     complete = binned["same_type_history_complete"].to_numpy(bool)
-    fixed_terms = set(baseline.FULL_TERMS).difference({predictive.HISTORY_TERM})
+    fixed_terms = set(mis6_pi.FULL_TERMS).difference({predictive.HISTORY_TERM})
     context = PIContext(
         bin_edges=edges,
         bin_centers=centers,
@@ -286,22 +299,38 @@ def fit_realizations(
                     (~results["likelihood_nesting_ok"].astype(bool)).sum()
                 ),
                 "n_realizations_with_eta_clipping": int(
-                    results[
-                        [
-                            "reduced_n_eta_clipped_low",
-                            "reduced_n_eta_clipped_high",
-                            "full_n_eta_clipped_low",
-                            "full_n_eta_clipped_high",
-                        ]
-                    ]
-                    .gt(0)
-                    .any(axis=1)
-                    .sum()
+                    results["n_eta_clipped"].gt(0).sum()
                 ),
             }
         ]
     )
     return results, diagnostics
+
+
+def compact_realization_results(results: pd.DataFrame) -> pd.DataFrame:
+    """Keep the per-sequence quantities needed to inspect PI sensitivity."""
+    compact = results.assign(
+        all_models_converged=(
+            results["reduced_converged"].astype(bool)
+            & results["full_converged"].astype(bool)
+        ),
+        eta_clipping_used=results["n_eta_clipped"].gt(0),
+    )
+    columns = [
+        "realization_id",
+        "n_predictive_events",
+        "max_events_in_single_bin",
+        "LR_statistic",
+        "nominal_LR_p",
+        "info_bits_per_event",
+        "delta_AICc_full_minus_reduced",
+        "pre_phase_preferred_deg",
+        "pre_phase_rate_ratio_max_vs_min",
+        "all_models_converged",
+        "likelihood_nesting_ok",
+        "eta_clipping_used",
+    ]
+    return compact.loc[:, columns].copy()
 
 
 def unwrap_around(values_deg: np.ndarray, center_deg: float) -> np.ndarray:
@@ -389,12 +418,8 @@ def build_summary(
     return pd.DataFrame(rows)
 
 
-def build_parameters(
-    draws: pd.DataFrame,
-    context: PIContext,
-    diagnostics: pd.DataFrame,
-) -> pd.DataFrame:
-    """Record all reused model choices and the deliberate omissions."""
+def build_parameters(context: PIContext, diagnostics: pd.DataFrame) -> pd.DataFrame:
+    """Record model choices, deliberate omissions, and run diagnostics."""
     rows = [
         (
             "analysis",
@@ -416,18 +441,17 @@ def build_parameters(
             "",
             "wide ordered age sequences",
         ),
-        ("n_realizations", len(draws), "sequences", "all rows in the MC input"),
         (
             "analysis_start",
-            baseline.ANALYSIS_START_KA,
+            mis6_pi.ANALYSIS_START_KA,
             "Kyr BP",
             "full binning support",
         ),
-        ("analysis_end", baseline.ANALYSIS_END_KA, "Kyr BP", "full binning support"),
-        ("bin_width", baseline.BIN_WIDTH_KA, "Kyr", "events may share a bin"),
+        ("analysis_end", mis6_pi.ANALYSIS_END_KA, "Kyr BP", "full binning support"),
+        ("bin_width", mis6_pi.BIN_WIDTH_KA, "Kyr", "events may share a bin"),
         (
             "history_window",
-            baseline.HISTORY_WINDOW_KA,
+            mis6_pi.HISTORY_WINDOW_KA,
             "Kyr",
             "older events in (t, t + window]",
         ),
@@ -445,13 +469,13 @@ def build_parameters(
         ),
         (
             "reduced_model_terms",
-            "+".join(baseline.REDUCED_TERMS),
+            "+".join(mis6_pi.REDUCED_TERMS),
             "",
             "same as MIS6/NGRIP PI",
         ),
         (
             "full_model_terms",
-            "+".join(baseline.FULL_TERMS),
+            "+".join(mis6_pi.FULL_TERMS),
             "",
             "adds precession sine and cosine",
         ),
@@ -487,11 +511,39 @@ def build_parameters(
         ),
         (
             "reference_analysis",
-            Path(baseline.__file__).name,
+            "MIS6_event_phase_analysis.py",
             "",
             "PI definitions reused; Rayleigh functions not called",
         ),
     ]
+
+    diagnostic_notes = {
+        "n_realizations": ("sequences", "all rows in the MC input"),
+        "n_unique_event_count_patterns": ("patterns", "unique 0.2-Kyr count vectors"),
+        "n_cached_reuses": ("sequences", "fits reused for duplicate count vectors"),
+        "cache_reuse_fraction": ("fraction", "share of fits served from the cache"),
+        "predictive_event_count_distribution": (
+            "events:sequences",
+            "events inside complete-history response support",
+        ),
+        "n_realizations_with_multiple_events_in_one_bin": (
+            "sequences",
+            "at least one 0.2-Kyr bin contains multiple events",
+        ),
+        "n_nonconverged_reduced": ("fits", "reduced-model optimizer failures"),
+        "n_nonconverged_full": ("fits", "full-model optimizer failures"),
+        "n_likelihood_nesting_failures": (
+            "fits",
+            "full-model likelihood below reduced-model likelihood",
+        ),
+        "n_realizations_with_eta_clipping": (
+            "sequences",
+            "at least one fitted linear predictor reached a clipping bound",
+        ),
+    }
+    run = diagnostics.iloc[0]
+    for parameter, (unit, note) in diagnostic_notes.items():
+        rows.append((parameter, run[parameter], unit, note))
     return pd.DataFrame(rows, columns=["parameter", "value", "unit", "note"])
 
 
@@ -517,8 +569,7 @@ def validate_results(results: pd.DataFrame, draws: pd.DataFrame) -> None:
         raise RuntimeError(
             "At least one full-model likelihood is below its reduced model"
         )
-    clip_columns = [column for column in results if "n_eta_clipped" in column]
-    if results[clip_columns].gt(0).any().any():
+    if results["n_eta_clipped"].gt(0).any():
         raise RuntimeError("At least one Monte Carlo PI fit used eta clipping")
 
 
@@ -527,7 +578,7 @@ def plot_sensitivity(
     original: dict[str, object],
 ) -> tuple[Path, Path]:
     """Show the main conditional-PI distributions against the point-age result."""
-    baseline.configure_plot_style()
+    configure_plot_style()
     phase_center = float(original["pre_phase_preferred_deg"])
     panels = [
         (
@@ -644,22 +695,39 @@ def plot_sensitivity(
     return png_path, pdf_path
 
 
+def write_outputs(
+    realization_results: pd.DataFrame,
+    summary: pd.DataFrame,
+    parameters: pd.DataFrame,
+    output_dir: Path = OUT_DATA_DIR,
+) -> None:
+    """Write the compact realization metrics, summary, and run metadata."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    realization_results.to_csv(
+        output_dir / REALIZATION_OUTPUT.name,
+        index=False,
+        float_format="%.9g",
+    )
+    summary.to_csv(
+        output_dir / SUMMARY_OUTPUT.name,
+        index=False,
+        float_format="%.9g",
+    )
+    parameters.to_csv(output_dir / PARAMETER_OUTPUT.name, index=False)
+
+
 def main() -> None:
     """Run PI on the original ages and every accepted A+ realization."""
-    original_events = baseline.load_events()
+    original_events = mis6_pi.load_events()
     draws = load_age_realizations()
     context, original, _ = build_pi_context(original_events)
     results, diagnostics = fit_realizations(draws, context, show_progress=True)
     validate_results(results, draws)
+    realization_output = compact_realization_results(results)
     summary = build_summary(results, original)
-    parameters = build_parameters(draws, context, diagnostics)
+    parameters = build_parameters(context, diagnostics)
 
-    OUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    results.to_csv(REALIZATION_OUTPUT, index=False, float_format="%.9g")
-    summary.to_csv(SUMMARY_OUTPUT, index=False, float_format="%.9g")
-    pd.DataFrame([original]).to_csv(ORIGINAL_OUTPUT, index=False, float_format="%.9g")
-    diagnostics.to_csv(DIAGNOSTIC_OUTPUT, index=False, float_format="%.9g")
-    parameters.to_csv(PARAMETER_OUTPUT, index=False)
+    write_outputs(realization_output, summary, parameters)
     png_path, pdf_path = plot_sensitivity(results, original)
 
     p_fraction = results["nominal_LR_p"].lt(P_THRESHOLD).mean()

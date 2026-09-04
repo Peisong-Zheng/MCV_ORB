@@ -20,10 +20,10 @@ and intermediate transcription table are no longer required; run the analysis
 directly from this file.
 
 Table 2 ages are years before AD 2000 (`a b2k`). The analysis keeps both source
-ages and converts to the project's conventional ka BP scale (before AD 1950):
+ages and converts to the project's conventional Kyr BP scale (before AD 1950):
 
 ```text
-age_ka_BP = age_yr_b2k / 1000 - 0.05
+age_ka_bp = age_yr_b2k / 1000 - 0.05    # values are in Kyr BP
 ```
 
 ## Analysis
@@ -40,20 +40,20 @@ degrees. The finite-sample Rayleigh approximation in `toolbox/orbital_phase.py`
 is applied to warming starts, cooling starts, and all 69 GI/GS transitions
 treated as one combined MCV-event catalogue.
 
-The predictive-information (PI) analysis represents each catalogue as 0.2 ka
-Poisson event-count bins over 12--120 ka BP. For the directional catalogues,
+The predictive-information (PI) analysis represents each catalogue as 0.2 Kyr
+Poisson event-count bins over 12--120 Kyr BP. For the directional catalogues,
 the history term counts earlier events of the same direction. For the combined
 catalogue, it counts any earlier GI or GS transition. Each catalogue compares
 the same two nested models:
 
 ```text
-reduced = 5 ka prior-event history within that catalogue + LR04 + CO2
+reduced = 5 Kyr prior-event history within that catalogue + LR04 + CO2
 full    = reduced + sin(precession phase) + cos(precession phase)
 ```
 
 The Cheng sampling-resolution term is deliberately omitted: these are
 published NGRIP stratigraphic boundaries, not events detected from the Cheng
-record. Bins at the oldest edge without a complete 5 ka history are excluded,
+record. Bins at the oldest edge without a complete 5 Kyr history are excluded,
 leaving 33 warming, 34 cooling, and 67 combined events in the PI fits.
 
 ## Results
@@ -94,7 +94,15 @@ linear-predictor clipping occurred.
 
 ## Outputs
 
-Analysis tables are in `data/processed/ngrip_event_phase_analysis/`.
+Analysis tables are in `data/processed/ngrip_event_phase_analysis/`:
+
+- `analysis_summary.csv`: Rayleigh and conditional-PI results;
+- `event_precession_phases.csv`: one row per physical GI/GS boundary;
+- `predictive_coefficients.csv`: fitted reduced/full model coefficients; and
+- `parameters_and_provenance.csv`: analysis choices and input provenance.
+
+Per-bin predictors, orbital extrema, and intermediate likelihood tables are
+deterministic and are rebuilt in memory rather than retained as separate CSVs.
 
 Figures are in `figures/ngrip_event_phase_analysis/`:
 

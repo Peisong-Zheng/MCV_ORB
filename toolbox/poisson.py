@@ -90,7 +90,9 @@ def eta_clip_diagnostics(beta: np.ndarray, x: np.ndarray) -> dict[str, float | i
     }
 
 
-def binned_poisson_loglik(beta: np.ndarray, x: np.ndarray, y: np.ndarray, dt: np.ndarray) -> float:
+def binned_poisson_loglik(
+    beta: np.ndarray, x: np.ndarray, y: np.ndarray, dt: np.ndarray
+) -> float:
     """Poisson log likelihood for binned counts with a log-duration offset.
 
     The fitted model is for a per-kyr event rate,
@@ -122,7 +124,9 @@ def negative_binned_poisson_loglik(
     return float(value)
 
 
-def fitted_rate_and_mu(beta: np.ndarray, x: np.ndarray, dt: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def fitted_rate_and_mu(
+    beta: np.ndarray, x: np.ndarray, dt: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
     """Convert fitted coefficients into rates per kyr and expected bin counts."""
 
     eta = clip_linear_predictor(linear_predictor(beta, x))
@@ -239,7 +243,9 @@ def fit_poisson_model(
     )
 
 
-def model_lookup(models: list[FittedPoissonModel]) -> dict[tuple[str, str], FittedPoissonModel]:
+def model_lookup(
+    models: list[FittedPoissonModel],
+) -> dict[tuple[str, str], FittedPoissonModel]:
     """Index fitted models by event dataset and model identifier."""
 
     return {(model.dataset_id, model.model_id): model for model in models}
@@ -257,7 +263,11 @@ def build_model_summary(
     for model in models:
         subset = binned_inputs[binned_inputs["dataset_id"].eq(model.dataset_id)]
         y = subset["event_count"].to_numpy(dtype=float)
-        width = float(bin_width_ka) if bin_width_ka is not None else float(np.nanmedian(subset["dt_ka"]))
+        width = (
+            float(bin_width_ka)
+            if bin_width_ka is not None
+            else float(np.nanmedian(subset["dt_ka"]))
+        )
         row = {
             "dataset_id": model.dataset_id,
             "dataset_label": model.dataset_label,
@@ -297,7 +307,9 @@ def build_model_summary(
         rows.append(row)
 
     summary = pd.DataFrame(rows)
-    summary["delta_AICc"] = summary["AICc"] - summary.groupby("dataset_id")["AICc"].transform("min")
+    summary["delta_AICc"] = summary["AICc"] - summary.groupby("dataset_id")[
+        "AICc"
+    ].transform("min")
     summary["rank_AICc"] = summary.groupby("dataset_id")["AICc"].rank(method="first")
     return summary.sort_values(["dataset_id", "AICc"]).reset_index(drop=True)
 
@@ -319,33 +331,4 @@ def build_coefficient_table(models: list[FittedPoissonModel]) -> pd.DataFrame:
                     "rate_ratio_per_unit": float(np.exp(beta)),
                 }
             )
-    return pd.DataFrame(rows)
-
-
-def build_fitted_rate_table(models: list[FittedPoissonModel], binned_inputs: pd.DataFrame) -> pd.DataFrame:
-    """Write fitted rates back onto the original bin grid for plotting/export."""
-
-    rows = []
-    keep_cols = [
-        "dataset_id",
-        "dataset_label",
-        "bin_start_ka",
-        "bin_end_ka",
-        "bin_center_ka",
-        "dt_ka",
-        "event_count",
-    ]
-    for model in models:
-        subset = binned_inputs[binned_inputs["dataset_id"].eq(model.dataset_id)].copy()
-        for idx, (_, row) in enumerate(subset.iterrows()):
-            out = {col: row[col] for col in keep_cols}
-            out.update(
-                {
-                    "model_id": model.model_id,
-                    "model_label": model.model_label,
-                    "lambda_per_kyr": float(model.fitted_rate_per_kyr[idx]),
-                    "expected_events_per_bin": float(model.fitted_mu_per_bin[idx]),
-                }
-            )
-            rows.append(out)
     return pd.DataFrame(rows)

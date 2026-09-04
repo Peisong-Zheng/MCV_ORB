@@ -42,8 +42,10 @@ isotope series.
 
 ## Outputs
 
-- `NGRIP/data/processed/rasmussen2014_table2_gi_gs_rows.csv`: traceable Table 2
-  GI/GS transcription, including subevent rows and selection flags.
+> **Archived plan note.** The one-off Table 2 transcription and extraction
+> code were removed after the collapsed catalogue below was verified. See
+> `NGRIP/README.md` for the current retained outputs.
+
 - `NGRIP/data/processed/ngrip_warming_cooling_starts.csv`: one collapsed parent
   start per GI/GS event, used by the analysis.
 - `NGRIP/data/processed/ngrip_event_phase_analysis/`: sampled phases, Rayleigh
@@ -63,4 +65,3 @@ isotope series.
   and no fitted linear-predictor clipping.
 - Run focused tests, compile the script, execute the full analysis, inspect all
   CSV summaries, and visually inspect each generated figure.
-

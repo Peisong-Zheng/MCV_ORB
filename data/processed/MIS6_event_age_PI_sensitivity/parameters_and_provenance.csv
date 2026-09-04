@@ -4,7 +4,6 @@ rayleigh_test_run,False,,explicitly excluded from this script
 event_age_uncertainty_propagated,True,,A+ accepted realizations
 resolution_covariate_included,False,,matches the point-age MIS6/NGRIP PI model
 mc_input,data/processed/MIS6_event_age_uncertainty/mis6_event_age_realizations.csv,,wide ordered age sequences
-n_realizations,10000,sequences,all rows in the MC input
 analysis_start,132.5,Kyr BP,full binning support
 analysis_end,196.5,Kyr BP,full binning support
 bin_width,0.2,Kyr,events may share a bin
@@ -19,3 +18,13 @@ decision_fraction_interpretation,fraction of age realizations retaining a criter
 optimizer,toolbox.poisson.fit_binned_poisson_arrays,,same bounded L-BFGS-B likelihood as baseline
 fit_cache,full 320-bin event-count vector,,8675 unique patterns
 reference_analysis,MIS6_event_phase_analysis.py,,PI definitions reused; Rayleigh functions not called
+n_realizations,10000,sequences,all rows in the MC input
+n_unique_event_count_patterns,8675,patterns,unique 0.2-Kyr count vectors
+n_cached_reuses,1325,sequences,fits reused for duplicate count vectors
+cache_reuse_fraction,0.13249999999999995,fraction,share of fits served from the cache
+predictive_event_count_distribution,19:62;20:9938,events:sequences,events inside complete-history response support
+n_realizations_with_multiple_events_in_one_bin,24,sequences,at least one 0.2-Kyr bin contains multiple events
+n_nonconverged_reduced,0,fits,reduced-model optimizer failures
+n_nonconverged_full,0,fits,full-model optimizer failures
+n_likelihood_nesting_failures,0,fits,full-model likelihood below reduced-model likelihood
+n_realizations_with_eta_clipping,0,sequences,at least one fitted linear predictor reached a clipping bound

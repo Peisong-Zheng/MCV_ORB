@@ -9,8 +9,8 @@ reduced_model_terms,same_type_history_count+lr04_scaled+co2_scaled,,matches NGRI
 full_model_terms,same_type_history_count+lr04_scaled+co2_scaled+pre_phase_sin+pre_phase_cos,,matches NGRIP
 reference_analysis,NGRIP/ngrip_event_phase_analysis.py,,source of the Rayleigh and conditional-PI model definition
 NGRIP_resolution_covariate_included,False,,confirmed from the NGRIP reduced/full model terms
-resolution_covariate_included,False,,explicit quick-test choice; local proxy resolution is not a model term
-event_age_uncertainty_propagated,False,,point ages are treated as exact in this quick test
+resolution_covariate_included,False,,deliberately omitted; local proxy resolution is not a model term
+event_age_uncertainty_propagated,False,,point ages are treated as exact in this analysis
 p_value_method,nominal asymptotic chi-square LRT,,two added phase coefficients; no resampling calibration
 PI_definition,in-sample nested Poisson log-likelihood gain,,not cross-validated mutual information
 precession_phase_zero,precession-index minimum,,toolbox phase convention
@@ -18,3 +18,7 @@ event_catalogue,data/processed/MIS6_composite_event_record/mis6_composite_event_
 precession_source,data/raw/pre_1000_60_inter100.txt,,orbital input
 lr04_source,data/raw/lr04.xlsx,,climate covariate
 co2_source,data/raw/composite_co2.xlsx,,climate covariate
+forcing_scale_lr04,mean=4.5343; min=3.76; max=4.98; range=1.22,per mil,data/raw/lr04.xlsx
+forcing_scale_co2,mean=201.647510659; min=184.30751744; max=231.396236188; range=47.0887187474,ppm,data/raw/composite_co2.xlsx
+forcing_scale_pre_phase_sin,mean=-0.0459995625978; min=-1; max=1; range=2,dimensionless,data/raw/pre_1000_60_inter100.txt
+forcing_scale_pre_phase_cos,mean=-0.0783697409227; min=-1; max=1; range=2,dimensionless,data/raw/pre_1000_60_inter100.txt

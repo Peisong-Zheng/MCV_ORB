@@ -33,7 +33,8 @@ ANCHORS = (
 )
 OUTPUT_DIR = ROOT / "data" / "processed" / "MIS6_composite_event_record"
 OUTPUT_CSV = OUTPUT_DIR / "mis6_composite_event_record.csv"
-AGE_CONTROL_POINTS = (
+# Canonical literature transcription used for the U-Th markers in this figure.
+AGE_CONTROL_TABLE = (
     ROOT
     / "data"
     / "processed"
@@ -50,6 +51,34 @@ SENSITIVITY_SEARCH_HALF_WIDTHS_KA = (0.3, 0.4, 0.5)
 CHANGE_INNER_KA = 0.05
 CHANGE_OUTER_KA = 0.15
 PNG_DPI = 600
+
+# QC thresholds describe this detector sweep; they are not age uncertainties.
+MODERATE_TUNING_SPAN_YR = 50
+REVIEW_TUNING_SPAN_YR = 150
+MODERATE_RESOLUTION_YR = 75
+REVIEW_RESOLUTION_YR = 100
+TWO_STAGE_MF_EVENTS = {"6.10", "6.14"}
+
+EXPORT_COLUMNS = (
+    "composite_event_id",
+    "composite_event_number",
+    "composite_event_label",
+    "event_age_ka_bp",
+    "event_age_status",
+    "source_record",
+    "source_event_label",
+    "source_anchor_age_ka_bp",
+    "proxy",
+    "data_source",
+    "label_source",
+    "local_tuning_age_min_ka_bp",
+    "local_tuning_age_max_ka_bp",
+    "event_age_qc",
+    "local_median_resolution_yr",
+    "local_flank_change_young_minus_old_per_mil",
+    "local_change_qc",
+    "peak_gradient_per_mil_per_ka",
+)
 
 
 @dataclass(frozen=True)
@@ -336,35 +365,222 @@ def local_resolution_years(segment: RegularSegment, event_age: float) -> float:
     return float(np.median(np.diff(nearby)) * 1000)
 
 
-def classify_result(
+def classify_event_age(
     record_id: str,
     source_label: str,
     tuning_span_yr: float,
     resolution_yr: float,
     boundary_proximity: bool,
 ) -> tuple[str, str]:
+    """Classify how stable an event pick is under the local parameter sweep."""
+    two_stage = record_id == "MF" and source_label in TWO_STAGE_MF_EVENTS
     notes = []
-    two_stage = record_id == "MF" and source_label in {"6.10", "6.14"}
     if two_stage:
         notes.append("two-stage transition")
-    if tuning_span_yr > 150:
+    if tuning_span_yr > REVIEW_TUNING_SPAN_YR:
         notes.append("parameter-sensitive age")
-    elif tuning_span_yr > 50:
+    elif tuning_span_yr > MODERATE_TUNING_SPAN_YR:
         notes.append("moderate parameter sensitivity")
-    if resolution_yr > 100:
+    if resolution_yr > REVIEW_RESOLUTION_YR:
         notes.append("sparse local sampling")
-    elif resolution_yr > 75:
+    elif resolution_yr > MODERATE_RESOLUTION_YR:
         notes.append("coarse local sampling")
     if boundary_proximity:
         notes.append("near continuous-segment boundary; local change is edge-sensitive")
 
-    if two_stage or tuning_span_yr > 150 or resolution_yr > 100 or boundary_proximity:
+    if (
+        two_stage
+        or tuning_span_yr > REVIEW_TUNING_SPAN_YR
+        or resolution_yr > REVIEW_RESOLUTION_YR
+        or boundary_proximity
+    ):
         quality = "review"
-    elif tuning_span_yr > 50 or resolution_yr > 75:
+    elif (
+        tuning_span_yr > MODERATE_TUNING_SPAN_YR
+        or resolution_yr > MODERATE_RESOLUTION_YR
+    ):
         quality = "moderate"
     else:
         quality = "stable"
-    return quality, "; ".join(notes) if notes else "stable under tested parameters"
+    note = "; ".join(notes) if notes else "stable under tested parameters"
+    return quality, note
+
+
+def find_tuning_ages(
+    spec: RecordSpec,
+    segment: RegularSegment,
+    anchor_age: float,
+    record_anchor_ages: np.ndarray,
+) -> np.ndarray:
+    """Repeat the pick across the 3 x 3 smoothing/window sensitivity grid."""
+    tuning_ages = []
+    for sigma_ka in spec.sensitivity_sigmas_ka:
+        for half_width_ka in SENSITIVITY_SEARCH_HALF_WIDTHS_KA:
+            bounds = search_bounds(
+                anchor_age, record_anchor_ages, segment, half_width_ka
+            )
+            _, candidate_age = pick_gradient_peak(spec, segment, sigma_ka, bounds)
+            tuning_ages.append(candidate_age)
+    return np.asarray(tuning_ages)
+
+
+def summarize_tuning_ages(tuning_ages: np.ndarray) -> dict[str, object]:
+    """Describe the spread of event picks across detector settings."""
+    unique_ages = np.unique(np.round(tuning_ages, 3))
+    tuning_min = float(tuning_ages.min())
+    tuning_max = float(tuning_ages.max())
+    return {
+        "local_tuning_candidate_ages_ka_bp": ";".join(
+            f"{age:.3f}" for age in unique_ages
+        ),
+        "local_tuning_age_min_ka_bp": tuning_min,
+        "local_tuning_age_max_ka_bp": tuning_max,
+        "local_tuning_span_yr": (tuning_max - tuning_min) * 1000,
+        "local_tuning_structure": (
+            "multimodal" if np.any(np.diff(unique_ages) > 0.1) else "single_cluster"
+        ),
+        "local_tuning_range_type": (
+            "algorithm_parameter_sweep_not_age_model_uncertainty"
+        ),
+    }
+
+
+def measure_local_change(
+    segment: RegularSegment,
+    spec: RecordSpec,
+    event_index: int,
+    event_age: float,
+    search_interval: tuple[float, float],
+):
+    """Measure the signed proxy shift on the two flanks of an event pick."""
+    curve = segment.smoothed[spec.nominal_sigma_ka]
+    young_bounds = (event_age - CHANGE_OUTER_KA, event_age - CHANGE_INNER_KA)
+    old_bounds = (event_age + CHANGE_INNER_KA, event_age + CHANGE_OUTER_KA)
+    young_mask = (segment.grid_age >= young_bounds[0]) & (
+        segment.grid_age <= young_bounds[1]
+    )
+    old_mask = (segment.grid_age >= old_bounds[0]) & (segment.grid_age <= old_bounds[1])
+    if not young_mask.any() or not old_mask.any():
+        raise ValueError(f"Cannot calculate flanking proxy levels for {event_age}")
+
+    young_level = float(np.median(curve[young_mask]))
+    old_level = float(np.median(curve[old_mask]))
+    young_count = int(segment.raw["age_ka_bp"].between(*young_bounds).sum())
+    old_count = int(segment.raw["age_ka_bp"].between(*old_bounds).sum())
+    minimum_flank_count = min(young_count, old_count)
+    boundary_distance_yr = (
+        min(event_age - segment.grid_age[0], segment.grid_age[-1] - event_age) * 1000
+    )
+    boundary_proximity = (
+        boundary_distance_yr < max(CHANGE_OUTER_KA, 4 * spec.nominal_sigma_ka) * 1000
+    )
+    if boundary_proximity or minimum_flank_count < 2:
+        local_change_qc = "review"
+    elif minimum_flank_count < 3:
+        local_change_qc = "moderate"
+    else:
+        local_change_qc = "stable"
+
+    local_change_note = f"minimum {minimum_flank_count} raw observations in a flank"
+    if boundary_proximity:
+        local_change_note += "; segment-edge smoothing applies"
+
+    diagnostics = {
+        "observations_in_search_window": int(
+            segment.raw["age_ka_bp"].between(*search_interval).sum()
+        ),
+        "young_flank_observations": young_count,
+        "old_flank_observations": old_count,
+        "distance_to_segment_boundary_yr": boundary_distance_yr,
+        "event_proxy_per_mil": float(curve[event_index]),
+        "young_flank_proxy_per_mil": young_level,
+        "old_flank_proxy_per_mil": old_level,
+        "local_flank_change_young_minus_old_per_mil": young_level - old_level,
+        "local_transition_magnitude_per_mil": abs(young_level - old_level),
+        "local_median_resolution_yr": local_resolution_years(segment, event_age),
+        "local_change_qc": local_change_qc,
+        "local_change_note": local_change_note,
+        "peak_gradient_per_mil_per_ka": float(
+            segment.gradients[spec.nominal_sigma_ka][event_index]
+        ),
+    }
+    return diagnostics, boundary_proximity
+
+
+def estimate_event(
+    anchor,
+    record_anchor_ages: np.ndarray,
+    segments_by_record: dict[str, list[RegularSegment]],
+):
+    """Locate one event and collect the quantities used downstream."""
+    record_id = str(anchor.record_id)
+    spec = RECORD_BY_ID[record_id]
+    anchor_age = float(anchor.anchor_age_ka_bp)
+    segment = segment_containing(segments_by_record[record_id], anchor_age)
+    nominal_bounds = search_bounds(
+        anchor_age,
+        record_anchor_ages,
+        segment,
+        NOMINAL_SEARCH_HALF_WIDTH_KA,
+    )
+    event_index, event_age = pick_gradient_peak(
+        spec,
+        segment,
+        spec.nominal_sigma_ka,
+        nominal_bounds,
+    )
+
+    tuning = summarize_tuning_ages(
+        find_tuning_ages(spec, segment, anchor_age, record_anchor_ages)
+    )
+    change, boundary_proximity = measure_local_change(
+        segment, spec, event_index, event_age, nominal_bounds
+    )
+    source_label = str(anchor.source_event_display_label)
+    event_age_qc, qc_note = classify_event_age(
+        record_id,
+        source_label,
+        float(tuning["local_tuning_span_yr"]),
+        float(change["local_median_resolution_yr"]),
+        boundary_proximity,
+    )
+    composite_label = str(anchor.composite_event_display_label)
+    composite_number = int(composite_label.split(".")[-1])
+
+    return {
+        "composite_event_id": f"MIS6_DO_{composite_number:02d}",
+        "composite_event_number": composite_number,
+        "composite_event_display_label": composite_label,
+        "event_age_ka_bp": event_age,
+        "event_age_status": "provisional_algorithmic_estimate",
+        "source_record": record_id,
+        "source_event_id": (
+            f"{anchor.label_scheme}_{record_id}_{source_label.replace('.', '_')}"
+        ),
+        "source_event_label": anchor.event_label,
+        "source_event_display_label": source_label,
+        "source_anchor_age_ka_bp": anchor_age,
+        "source_anchor_type": anchor.anchor_type,
+        "source_anchor_offset_yr": (event_age - anchor_age) * 1000,
+        "proxy": spec.proxy,
+        "data_source": spec.data_source,
+        "label_source": spec.label_source,
+        "expected_gradient_direction": (
+            "negative" if spec.gradient_direction < 0 else "positive"
+        ),
+        "smoothing_sigma_yr": spec.nominal_sigma_ka * 1000,
+        "search_half_width_yr": NOMINAL_SEARCH_HALF_WIDTH_KA * 1000,
+        "effective_search_min_ka_bp": nominal_bounds[0],
+        "effective_search_max_ka_bp": nominal_bounds[1],
+        **tuning,
+        "event_age_qc": event_age_qc,
+        **change,
+        "qc_note": qc_note,
+        "method": (
+            "gap-bounded 1 yr interpolation; Gaussian smoothing; "
+            "expected-direction maximum gradient; local tuning sweep"
+        ),
+    }
 
 
 def estimate_events(
@@ -372,162 +588,19 @@ def estimate_events(
     segments_by_record: dict[str, list[RegularSegment]],
 ) -> pd.DataFrame:
     """Estimate one transition age and proxy change for every selected event."""
-    results = []
-    for _, anchor in anchors.iterrows():
-        record_id = str(anchor["record_id"])
-        spec = RECORD_BY_ID[record_id]
-        anchor_age = float(anchor["anchor_age_ka_bp"])
-        record_anchors = (
-            anchors.loc[anchors["record_id"].eq(record_id), "anchor_age_ka_bp"]
-            .sort_values()
-            .to_numpy(dtype=float)
+    anchor_ages_by_record = {
+        record_id: group["anchor_age_ka_bp"].sort_values().to_numpy(dtype=float)
+        for record_id, group in anchors.groupby("record_id", sort=False)
+    }
+    events = [
+        estimate_event(
+            anchor,
+            anchor_ages_by_record[str(anchor.record_id)],
+            segments_by_record,
         )
-        segment = segment_containing(segments_by_record[record_id], anchor_age)
-        nominal_bounds = search_bounds(
-            anchor_age,
-            record_anchors,
-            segment,
-            NOMINAL_SEARCH_HALF_WIDTH_KA,
-        )
-        event_index, event_age = pick_gradient_peak(
-            spec,
-            segment,
-            spec.nominal_sigma_ka,
-            nominal_bounds,
-        )
-
-        tuning_ages = []
-        for sigma_ka in spec.sensitivity_sigmas_ka:
-            for half_width_ka in SENSITIVITY_SEARCH_HALF_WIDTHS_KA:
-                bounds = search_bounds(
-                    anchor_age, record_anchors, segment, half_width_ka
-                )
-                _, candidate_age = pick_gradient_peak(spec, segment, sigma_ka, bounds)
-                tuning_ages.append(candidate_age)
-        unique_tuning_ages = np.unique(np.round(tuning_ages, 3))
-        tuning_min = float(min(tuning_ages))
-        tuning_max = float(max(tuning_ages))
-        tuning_span_yr = (tuning_max - tuning_min) * 1000
-        tuning_structure = (
-            "multimodal"
-            if np.any(np.diff(unique_tuning_ages) > 0.1)
-            else "single_cluster"
-        )
-
-        curve = segment.smoothed[spec.nominal_sigma_ka]
-        gradient = segment.gradients[spec.nominal_sigma_ka]
-        young_mask = (segment.grid_age >= event_age - CHANGE_OUTER_KA) & (
-            segment.grid_age <= event_age - CHANGE_INNER_KA
-        )
-        old_mask = (segment.grid_age >= event_age + CHANGE_INNER_KA) & (
-            segment.grid_age <= event_age + CHANGE_OUTER_KA
-        )
-        if not young_mask.any() or not old_mask.any():
-            raise ValueError(f"Cannot calculate flanking proxy levels for {event_age}")
-        young_level = float(np.median(curve[young_mask]))
-        old_level = float(np.median(curve[old_mask]))
-        proxy_change = young_level - old_level
-        resolution_yr = local_resolution_years(segment, event_age)
-        observations = int(segment.raw["age_ka_bp"].between(*nominal_bounds).sum())
-        young_observations = int(
-            segment.raw["age_ka_bp"]
-            .between(event_age - CHANGE_OUTER_KA, event_age - CHANGE_INNER_KA)
-            .sum()
-        )
-        old_observations = int(
-            segment.raw["age_ka_bp"]
-            .between(event_age + CHANGE_INNER_KA, event_age + CHANGE_OUTER_KA)
-            .sum()
-        )
-        boundary_distance_yr = (
-            min(event_age - segment.grid_age[0], segment.grid_age[-1] - event_age)
-            * 1000
-        )
-        boundary_proximity = (
-            boundary_distance_yr
-            < max(CHANGE_OUTER_KA, 4 * spec.nominal_sigma_ka) * 1000
-        )
-        composite_label = str(anchor["composite_event_display_label"])
-        composite_number = int(composite_label.split(".")[-1])
-        source_display_label = str(anchor["source_event_display_label"])
-        event_age_qc, qc_note = classify_result(
-            record_id,
-            source_display_label,
-            tuning_span_yr,
-            resolution_yr,
-            boundary_proximity,
-        )
-        minimum_flank_observations = min(young_observations, old_observations)
-        if boundary_proximity or minimum_flank_observations < 2:
-            local_change_qc = "review"
-        elif minimum_flank_observations < 3:
-            local_change_qc = "moderate"
-        else:
-            local_change_qc = "stable"
-        local_change_note = (
-            f"minimum {minimum_flank_observations} raw observations in a flank"
-            + ("; segment-edge smoothing applies" if boundary_proximity else "")
-        )
-
-        results.append(
-            {
-                "composite_event_id": f"MIS6_DO_{composite_number:02d}",
-                "composite_event_number": composite_number,
-                "composite_event_display_label": composite_label,
-                "event_age_ka_bp": event_age,
-                "event_age_status": "provisional_algorithmic_estimate",
-                "source_record": record_id,
-                "source_event_id": (
-                    f"{anchor['label_scheme']}_{record_id}_"
-                    f"{source_display_label.replace('.', '_')}"
-                ),
-                "source_event_label": anchor["event_label"],
-                "source_event_display_label": source_display_label,
-                "source_anchor_age_ka_bp": anchor_age,
-                "source_anchor_type": anchor["anchor_type"],
-                "source_anchor_offset_yr": (event_age - anchor_age) * 1000,
-                "proxy": spec.proxy,
-                "data_source": spec.data_source,
-                "label_source": spec.label_source,
-                "expected_gradient_direction": (
-                    "negative" if spec.gradient_direction < 0 else "positive"
-                ),
-                "smoothing_sigma_yr": spec.nominal_sigma_ka * 1000,
-                "search_half_width_yr": NOMINAL_SEARCH_HALF_WIDTH_KA * 1000,
-                "effective_search_min_ka_bp": nominal_bounds[0],
-                "effective_search_max_ka_bp": nominal_bounds[1],
-                "local_tuning_candidate_ages_ka_bp": ";".join(
-                    f"{age:.3f}" for age in unique_tuning_ages
-                ),
-                "local_tuning_age_min_ka_bp": tuning_min,
-                "local_tuning_age_max_ka_bp": tuning_max,
-                "local_tuning_span_yr": tuning_span_yr,
-                "local_tuning_structure": tuning_structure,
-                "local_tuning_range_type": (
-                    "algorithm_parameter_sweep_not_age_model_uncertainty"
-                ),
-                "event_age_qc": event_age_qc,
-                "local_median_resolution_yr": resolution_yr,
-                "observations_in_search_window": observations,
-                "young_flank_observations": young_observations,
-                "old_flank_observations": old_observations,
-                "distance_to_segment_boundary_yr": boundary_distance_yr,
-                "event_proxy_per_mil": float(curve[event_index]),
-                "young_flank_proxy_per_mil": young_level,
-                "old_flank_proxy_per_mil": old_level,
-                "local_flank_change_young_minus_old_per_mil": proxy_change,
-                "local_transition_magnitude_per_mil": abs(proxy_change),
-                "local_change_qc": local_change_qc,
-                "local_change_note": local_change_note,
-                "peak_gradient_per_mil_per_ka": float(gradient[event_index]),
-                "qc_note": qc_note,
-                "method": (
-                    "gap-bounded 1 yr interpolation; Gaussian smoothing; "
-                    "expected-direction maximum gradient; local tuning sweep"
-                ),
-            }
-        )
-    return pd.DataFrame(results).sort_values("event_age_ka_bp").reset_index(drop=True)
+        for anchor in anchors.itertuples(index=False)
+    ]
+    return pd.DataFrame(events).sort_values("event_age_ka_bp").reset_index(drop=True)
 
 
 def validate_results(events: pd.DataFrame) -> None:
@@ -549,13 +622,15 @@ def validate_results(events: pd.DataFrame) -> None:
         "effective_search_max_ka_bp",
         "local_tuning_age_min_ka_bp",
         "local_tuning_age_max_ka_bp",
+        "local_median_resolution_yr",
+        "event_proxy_per_mil",
         "local_flank_change_young_minus_old_per_mil",
         "peak_gradient_per_mil_per_ka",
     ]
     if not np.isfinite(events[numeric_columns].to_numpy(dtype=float)).all():
         raise ValueError("The event table contains non-finite results")
-    if not (
-        events["event_age_ka_bp"]
+    if (
+        not events["event_age_ka_bp"]
         .between(
             events["effective_search_min_ka_bp"],
             events["effective_search_max_ka_bp"],
@@ -572,31 +647,42 @@ def validate_results(events: pd.DataFrame) -> None:
         .all()
     ):
         raise ValueError("A nominal estimate is absent from its local tuning sweep")
-    direction = events["expected_gradient_direction"].map(
-        {"negative": -1, "positive": 1}
+    direction = events["source_record"].map(
+        {record.record_id: record.gradient_direction for record in RECORDS}
     )
     if not (events["peak_gradient_per_mil_per_ka"] * direction > 0).all():
         raise ValueError("An estimated event violates its expected gradient direction")
+    allowed_qc = {"stable", "moderate", "review"}
+    if not set(events["event_age_qc"]).issubset(allowed_qc):
+        raise ValueError("Unexpected event-age QC class")
+    if not set(events["local_change_qc"]).issubset(allowed_qc):
+        raise ValueError("Unexpected local-change QC class")
 
 
 def export_events(events: pd.DataFrame, path: Path) -> None:
-    """Write a readable table while keeping 0.001 ka audit precision."""
+    """Write the compact event catalogue used by downstream analyses."""
     output = events.copy()
     output["composite_event_display_label"] = (
         "MIS " + output["composite_event_display_label"]
     )
     output = output.rename(
         columns={"composite_event_display_label": "composite_event_label"}
-    ).drop(columns="source_event_display_label")
-    numeric = lambda column: pd.api.types.is_numeric_dtype(output[column])
+    )
+    output = output.loc[:, list(EXPORT_COLUMNS)]
+
+    def is_numeric(column: str) -> bool:
+        return pd.api.types.is_numeric_dtype(output[column])
+
     age_columns = [
-        column for column in output if column.endswith("_ka_bp") and numeric(column)
+        column for column in output if column.endswith("_ka_bp") and is_numeric(column)
     ]
     year_columns = [
-        column for column in output if column.endswith("_yr") and numeric(column)
+        column for column in output if column.endswith("_yr") and is_numeric(column)
     ]
     proxy_columns = [
-        column for column in output if column.endswith("_per_mil") and numeric(column)
+        column
+        for column in output
+        if column.endswith("_per_mil") and is_numeric(column)
     ]
     output[age_columns] = output[age_columns].round(3)
     output[year_columns] = output[year_columns].round(1)
@@ -615,17 +701,23 @@ def style_axis(axis: plt.Axes) -> None:
     axis.tick_params(length=3, width=0.65)
 
 
+def close_event_label_shifts(event_ages: np.ndarray) -> np.ndarray:
+    """Separate labels for event picks less than 0.75 Kyr apart."""
+    shifts = np.zeros(len(event_ages))
+    for index, separation in enumerate(np.diff(event_ages)):
+        if separation < 0.75:
+            shifts[index] -= 0.18
+            shifts[index + 1] += 0.18
+    return shifts
+
+
 def draw_timeline(axis: plt.Axes, events: pd.DataFrame) -> None:
     lane = {"MF": 2.0, "Huagapo": 1.0, "Sofular": 0.0}
     for record_id, group in events.groupby("source_record", sort=False):
         spec = RECORD_BY_ID[record_id]
         y = lane[record_id]
         ages = group["event_age_ka_bp"].to_numpy(dtype=float)
-        label_shifts = np.zeros(len(group))
-        for index, separation in enumerate(np.diff(ages)):
-            if separation < 0.75:
-                label_shifts[index] -= 0.18
-                label_shifts[index + 1] += 0.18
+        label_shifts = close_event_label_shifts(ages)
         for index, (_, event) in enumerate(group.iterrows()):
             if abs(event["event_age_ka_bp"] - 175) < 0.5:
                 label_shifts[index] -= 0.22
@@ -689,12 +781,10 @@ def event_panel_label(event: pd.Series) -> str:
     )
 
 
-def load_age_controls(path: Path = AGE_CONTROL_POINTS) -> pd.DataFrame:
-    """Load the compact control table produced by the A+ uncertainty script."""
+def load_age_controls(path: Path = AGE_CONTROL_TABLE) -> pd.DataFrame:
+    """Load the fixed control-point table used in the composite figure."""
     if not path.exists():
-        raise FileNotFoundError(
-            f"Missing {path}; run MIS6_event_age_uncertainty.py first"
-        )
+        raise FileNotFoundError(f"Age-control table not found: {path}")
     controls = pd.read_csv(path)
     required = {
         "record_id",
@@ -781,13 +871,8 @@ def draw_age_control_strip(
         )
 
 
-def draw_record_panel(
-    axis: plt.Axes,
-    panel_letter: str,
-    spec: RecordSpec,
-    segments: list[RegularSegment],
-    events: pd.DataFrame,
-    age_controls: pd.DataFrame,
+def draw_record_curves(
+    axis: plt.Axes, spec: RecordSpec, segments: list[RegularSegment]
 ) -> None:
     for segment in segments:
         axis.plot(
@@ -809,13 +894,11 @@ def draw_record_panel(
             zorder=2,
         )
 
+
+def draw_record_events(axis: plt.Axes, spec: RecordSpec, events: pd.DataFrame) -> None:
     local_events = events.loc[events["source_record"].eq(spec.record_id)]
     local_ages = local_events["event_age_ka_bp"].to_numpy(dtype=float)
-    label_shifts = np.zeros(len(local_events))
-    for index, separation in enumerate(np.diff(local_ages)):
-        if separation < 0.75:
-            label_shifts[index] -= 0.18
-            label_shifts[index + 1] += 0.18
+    label_shifts = close_event_label_shifts(local_ages)
     for index, (_, event) in enumerate(local_events.iterrows()):
         axis.scatter(
             event["event_age_ka_bp"],
@@ -860,6 +943,8 @@ def draw_record_panel(
             },
         )
 
+
+def format_record_panel(axis: plt.Axes, panel_letter: str, spec: RecordSpec) -> None:
     axis.set_xlim(*spec.plot_range_ka)
     axis.set_ylabel(spec.proxy_label)
     axis.set_xlabel("Age (Kyr BP)")
@@ -877,40 +962,24 @@ def draw_record_panel(
     if spec.invert_proxy_axis:
         axis.invert_yaxis()
     style_axis(axis)
+
+
+def draw_record_panel(
+    axis: plt.Axes,
+    panel_letter: str,
+    spec: RecordSpec,
+    segments: list[RegularSegment],
+    events: pd.DataFrame,
+    age_controls: pd.DataFrame,
+) -> None:
+    draw_record_curves(axis, spec, segments)
+    draw_record_events(axis, spec, events)
+    format_record_panel(axis, panel_letter, spec)
     draw_age_control_strip(axis, spec, age_controls)
 
 
-def plot_results(
-    events: pd.DataFrame,
-    segments_by_record: dict[str, list[RegularSegment]],
-) -> tuple[Path, Path]:
-    configure_plot_style()
-    figure = plt.figure(figsize=(180 / 25.4, 236 / 25.4))
-    grid = figure.add_gridspec(
-        4,
-        1,
-        height_ratios=[1.25, 2.0, 1.65, 1.65],
-        left=0.11,
-        right=0.985,
-        bottom=0.065,
-        top=0.885,
-        hspace=0.50,
-    )
-    axes = [figure.add_subplot(grid[index, 0]) for index in range(4)]
-    age_controls = load_age_controls()
-
-    draw_timeline(axes[0], events)
-    for axis, letter, spec in zip(axes[1:], "bcd", RECORDS):
-        draw_record_panel(
-            axis,
-            letter,
-            spec,
-            segments_by_record[spec.record_id],
-            events,
-            age_controls,
-        )
-
-    legend_handles = [
+def figure_legend_handles() -> list[Line2D]:
+    return [
         Line2D(
             [0],
             [0],
@@ -943,8 +1012,41 @@ def plot_results(
             label="Individual U-Th date (reported ±2σ; not event-age uncertainty)",
         ),
     ]
+
+
+def build_figure(
+    events: pd.DataFrame,
+    segments_by_record: dict[str, list[RegularSegment]],
+    age_controls: pd.DataFrame,
+) -> plt.Figure:
+    """Build the event timeline and the three source-record diagnostics."""
+    configure_plot_style()
+    figure = plt.figure(figsize=(180 / 25.4, 236 / 25.4))
+    grid = figure.add_gridspec(
+        4,
+        1,
+        height_ratios=[1.25, 2.0, 1.65, 1.65],
+        left=0.11,
+        right=0.985,
+        bottom=0.065,
+        top=0.885,
+        hspace=0.50,
+    )
+    axes = [figure.add_subplot(grid[index, 0]) for index in range(4)]
+
+    draw_timeline(axes[0], events)
+    for axis, letter, spec in zip(axes[1:], "bcd", RECORDS):
+        draw_record_panel(
+            axis,
+            letter,
+            spec,
+            segments_by_record[spec.record_id],
+            events,
+            age_controls,
+        )
+
     figure.legend(
-        handles=legend_handles,
+        handles=figure_legend_handles(),
         loc="upper left",
         bbox_to_anchor=(0.105, 0.985),
         ncol=2,
@@ -953,7 +1055,11 @@ def plot_results(
         handlelength=2.0,
         columnspacing=1.3,
     )
+    return figure
 
+
+def save_figure(figure: plt.Figure) -> tuple[Path, Path]:
+    """Save the publication PDF and high-resolution review PNG."""
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)
     png_path = FIGURE_DIR / f"{FIGURE_STEM}.png"
     pdf_path = FIGURE_DIR / f"{FIGURE_STEM}.pdf"
@@ -970,7 +1076,6 @@ def plot_results(
         dpi=PNG_DPI,
         metadata={"Software": Path(__file__).name},
     )
-    plt.close(figure)
     return png_path, pdf_path
 
 
@@ -989,7 +1094,10 @@ def main() -> None:
     events = estimate_events(selected_anchors, segments_by_record)
     validate_results(events)
     export_events(events, OUTPUT_CSV)
-    png_path, pdf_path = plot_results(events, segments_by_record)
+    age_controls = load_age_controls()
+    figure = build_figure(events, segments_by_record, age_controls)
+    png_path, pdf_path = save_figure(figure)
+    plt.close(figure)
 
     review = events.loc[
         events["event_age_qc"].eq("review"), "composite_event_display_label"

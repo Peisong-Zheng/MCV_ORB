@@ -1,2 +1,0 @@
-driver,driver_label,event_type,event_label,n_events_total,n_phase_events_used,n_extrapolated_phase_events,mean_phase_rad,mean_phase_deg,mean_resultant_length,rayleigh_R,rayleigh_z,rayleigh_p
-pre,Precession index,warming,MIS 6 composite warming events,21,21,0,5.596381797326611,320.64905753065284,0.27503001194603616,5.775630250866759,1.5884716568917725,0.20590351870721588

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Propagate a simple A+ age uncertainty for the MIS 6 event sequence.
+"""Propagate A+ age uncertainty through the MIS 6 event sequence.
 
-Each proposal draws one chronology state and one event-picking configuration
-per source record. Chronology uncertainty is evaluated at the resulting pick.
-Proposals that reverse the fixed 21-event order are rejected, never re-sorted.
+For each source record, one Monte Carlo proposal combines a shared chronology
+shift with one of the nine event-picking settings. Proposals that change the
+fixed order of the 21 events are rejected rather than sorted afterwards.
 """
 
 from __future__ import annotations
@@ -25,22 +25,16 @@ import MIS6_composite_event_record as detector
 
 ROOT = Path(__file__).resolve().parent
 OUTPUT_DIR = ROOT / "data" / "processed" / "MIS6_event_age_uncertainty"
-CONTROL_OUTPUT = OUTPUT_DIR / "mis6_age_control_points.csv"
+AGE_CONTROLS = OUTPUT_DIR / "mis6_age_control_points.csv"
 SUMMARY_OUTPUT = OUTPUT_DIR / "mis6_event_age_uncertainty_summary.csv"
 REALIZATION_OUTPUT = OUTPUT_DIR / "mis6_event_age_realizations.csv"
-DEFINITION_PICK_OUTPUT = OUTPUT_DIR / "mis6_event_definition_picks.csv"
-PARAMETER_OUTPUT = OUTPUT_DIR / "record_uncertainty_parameters.csv"
-DIAGNOSTIC_OUTPUT = OUTPUT_DIR / "sampling_diagnostics.csv"
+PROVENANCE_OUTPUT = OUTPUT_DIR / "parameters_and_provenance.csv"
 FIGURE_DIR = ROOT / "figures" / "MIS6_event_age_uncertainty"
 FIGURE_STEM = "MIS6_event_age_uncertainty"
 PNG_DPI = 600
 
 FOHLMEISTER_STACK_FILENAME = "Fohlmeister J et al-2023-data-mf_d18o_stack.txt"
-FOHLMEISTER_STACK_CANDIDATES = (
-    ROOT / "data" / "raw" / FOHLMEISTER_STACK_FILENAME,
-    Path("/Users/pz/Nutstore Files/论文-同步-Dell-XPS13-2022-11-03")
-    / FOHLMEISTER_STACK_FILENAME,
-)
+FOHLMEISTER_STACK = ROOT / "data" / "raw" / FOHLMEISTER_STACK_FILENAME
 
 N_REALIZATIONS = 10_000
 RANDOM_SEED = 20260904
@@ -52,228 +46,50 @@ RECORD_ORDER = ("MF", "Huagapo", "Sofular")
 
 @dataclass(frozen=True)
 class PickState:
-    """All event picks and local chronology sigmas for one record setting."""
+    """Event ages and chronology errors for one record and detector setting."""
 
     event_indices: np.ndarray
     pick_ages: np.ndarray
     chronology_sigmas: np.ndarray
 
 
-def build_age_control_points() -> pd.DataFrame:
-    """Return only the U-Th controls needed for the selected late events.
+def load_age_controls(path: Path = AGE_CONTROLS) -> pd.DataFrame:
+    """Load the fixed U-Th control points transcribed from the source files."""
+    if not path.exists():
+        raise FileNotFoundError(f"Missing age-control table: {path}")
 
-    Huagapo controls enter the A+ calculation directly. Sofular controls are
-    retained as the evidence behind a transparent local-error approximation;
-    they are not misrepresented as controls on the published iscam stack.
-    """
-    common_hua = {
-        "record_id": "Huagapo",
-        "cave": "Huagapo Cave",
-        "stalagmite_id": "P10-H2",
-        "dating_sample_id": "not listed separately",
-        "uncertainty_level": "2sigma",
-        "age_model_method": "linear interpolation between U-Th dates",
-        "a_plus_use": "direct interpolation of the reported 2sigma error",
-        "source_study": "Burns et al. (2019)",
-        "source_filename": "41598_2018_37854_MOESM1_ESM.pdf",
-        "source_locator": "Supplementary Table S1, p. 3",
-        "source_unit_note": "age and error converted from yr BP to Kyr BP",
-        "shown_in_composite_figure": True,
-    }
-    common_sof = {
-        "record_id": "Sofular",
-        "cave": "Sofular Cave",
-        "uncertainty_level": "2sigma",
-        "age_model_method": (
-            "U-Th controls for individual StalAge models; composite stack "
-            "developed with iscam"
-        ),
-        "a_plus_use": (
-            "supports this study's fixed local 1sigma approximation of 0.375 Kyr; "
-            "not a published stack uncertainty"
-        ),
-        "source_study": "Held et al. (2024)",
-        "source_filename": "41467_2024_45507_MOESM3_ESM.xlsx",
-        "source_locator": "assigned below by stalagmite; row 142 states 2sigma",
-    }
-
-    rows = [
-        # Huagapo brackets for MIS 6.17, 6.20, and 6.21.
-        {
-            **common_hua,
-            "control_id": "HUA_P10H2_D135",
-            "depth_mm": 135.0,
-            "age_ka_bp": 177.519,
-            "age_error_2sigma_ka": 0.567,
-            "used_for_event_ids": "MIS6_DO_17",
-            "bracket_role": "younger",
-        },
-        {
-            **common_hua,
-            "control_id": "HUA_P10H2_D180",
-            "depth_mm": 180.0,
-            "age_ka_bp": 179.429,
-            "age_error_2sigma_ka": 0.819,
-            "used_for_event_ids": "MIS6_DO_17",
-            "bracket_role": "older",
-        },
-        {
-            **common_hua,
-            "control_id": "HUA_P10H2_D503",
-            "depth_mm": 503.0,
-            "age_ka_bp": 190.419,
-            "age_error_2sigma_ka": 0.575,
-            "used_for_event_ids": "MIS6_DO_20",
-            "bracket_role": "younger",
-        },
-        {
-            **common_hua,
-            "control_id": "HUA_P10H2_D595",
-            "depth_mm": 595.0,
-            "age_ka_bp": 190.909,
-            "age_error_2sigma_ka": 0.667,
-            "used_for_event_ids": "MIS6_DO_20",
-            "bracket_role": "older",
-        },
-        {
-            **common_hua,
-            "control_id": "HUA_P10H2_D902",
-            "depth_mm": 902.0,
-            "age_ka_bp": 194.262,
-            "age_error_2sigma_ka": 0.674,
-            "used_for_event_ids": "MIS6_DO_21",
-            "bracket_role": "younger",
-        },
-        {
-            **common_hua,
-            "control_id": "HUA_P10H2_D1005",
-            "depth_mm": 1005.0,
-            "age_ka_bp": 195.931,
-            "age_error_2sigma_ka": 0.783,
-            "used_for_event_ids": "MIS6_DO_21",
-            "bracket_role": "older",
-        },
-        # Both Sofular component records bracket the two selected stack events.
-        {
-            **common_sof,
-            "control_id": "SOF_SO4_M9",
-            "stalagmite_id": "So-4",
-            "dating_sample_id": "So4-M9",
-            "depth_mm": 967.0,
-            "age_ka_bp": 176.102399,
-            "age_error_2sigma_ka": 0.702634,
-            "used_for_event_ids": "MIS6_DO_18",
-            "bracket_role": "younger",
-            "source_unit_note": "reported corrected age and 2sigma error in Kyr",
-            "shown_in_composite_figure": False,
-        },
-        {
-            **common_sof,
-            "control_id": "SOF_SO4_M10",
-            "stalagmite_id": "So-4",
-            "dating_sample_id": "So4-M10",
-            "depth_mm": 1014.0,
-            "age_ka_bp": 179.935830,
-            "age_error_2sigma_ka": 0.670912,
-            "used_for_event_ids": "MIS6_DO_18;MIS6_DO_19",
-            "bracket_role": "older for 18; younger for 19",
-            "source_unit_note": "reported corrected age and 2sigma error in Kyr",
-            "shown_in_composite_figure": True,
-        },
-        {
-            **common_sof,
-            "control_id": "SOF_SO4_M23",
-            "stalagmite_id": "So-4",
-            "dating_sample_id": "So4-M23",
-            "depth_mm": 1045.0,
-            "age_ka_bp": 180.513866,
-            "age_error_2sigma_ka": 0.775462,
-            "used_for_event_ids": "MIS6_DO_19",
-            "bracket_role": "older",
-            "source_unit_note": "reported corrected age and 2sigma error in Kyr",
-            "shown_in_composite_figure": True,
-        },
-        {
-            **common_sof,
-            "control_id": "SOF_SO57_3",
-            "stalagmite_id": "So-57",
-            "dating_sample_id": "So57-3",
-            "depth_mm": 377.5,
-            "age_ka_bp": 177.120951,
-            "age_error_2sigma_ka": 0.698652,
-            "used_for_event_ids": "MIS6_DO_18",
-            "bracket_role": "younger",
-            "source_unit_note": "source cells converted from yr to Kyr",
-            "shown_in_composite_figure": False,
-        },
-        {
-            **common_sof,
-            "control_id": "SOF_SO57_4",
-            "stalagmite_id": "So-57",
-            "dating_sample_id": "So57-4",
-            "depth_mm": 485.0,
-            "age_ka_bp": 180.207207,
-            "age_error_2sigma_ka": 0.600960,
-            "used_for_event_ids": "MIS6_DO_18;MIS6_DO_19",
-            "bracket_role": "older for 18; younger for 19",
-            "source_unit_note": "source cells converted from yr to Kyr",
-            "shown_in_composite_figure": True,
-        },
-        {
-            **common_sof,
-            "control_id": "SOF_SO57_5",
-            "stalagmite_id": "So-57",
-            "dating_sample_id": "So57-5",
-            "depth_mm": 602.0,
-            "age_ka_bp": 183.192722,
-            "age_error_2sigma_ka": 0.722279,
-            "used_for_event_ids": "MIS6_DO_19",
-            "bracket_role": "older",
-            "source_unit_note": "source cells converted from yr to Kyr",
-            "shown_in_composite_figure": False,
-        },
-    ]
-    columns = [
+    controls = pd.read_csv(path)
+    required = {
         "control_id",
         "record_id",
         "cave",
         "stalagmite_id",
-        "dating_sample_id",
-        "depth_mm",
         "age_ka_bp",
         "age_error_2sigma_ka",
-        "uncertainty_level",
-        "age_model_method",
-        "a_plus_use",
-        "used_for_event_ids",
-        "bracket_role",
         "source_study",
         "source_filename",
-        "source_locator",
-        "source_unit_note",
         "shown_in_composite_figure",
-    ]
-    table = pd.DataFrame(rows)[columns]
-    table.loc[table["stalagmite_id"].eq("So-4"), "source_locator"] = (
-        "U_Th_Dating!O95:P97; row 142 states 2sigma"
-    )
-    table.loc[table["stalagmite_id"].eq("So-57"), "source_locator"] = (
-        "U_Th_Dating!O135:P137; row 142 states 2sigma"
-    )
-    return table.sort_values(["record_id", "stalagmite_id", "age_ka_bp"]).reset_index(
-        drop=True
-    )
+    }
+    if missing := required.difference(controls.columns):
+        raise ValueError(f"Age-control table is missing columns: {sorted(missing)}")
 
+    if len(controls) != 12 or controls["control_id"].duplicated().any():
+        raise ValueError("Expected 12 unique MIS 6 age controls")
+    if set(controls["record_id"]) != {"Huagapo", "Sofular"}:
+        raise ValueError("Age controls must contain Huagapo and Sofular records")
+    if any(Path(name).name != name for name in controls["source_filename"]):
+        raise ValueError("Control provenance must contain filenames, not paths")
 
-def resolve_fohlmeister_stack() -> Path:
-    """Use a workspace copy when present, otherwise the user-supplied source."""
-    for path in FOHLMEISTER_STACK_CANDIDATES:
-        if path.exists():
-            return path
-    locations = "\n".join(str(path) for path in FOHLMEISTER_STACK_CANDIDATES)
-    raise FileNotFoundError(
-        f"Cannot find {FOHLMEISTER_STACK_FILENAME} in:\n{locations}"
-    )
+    numeric = controls[["age_ka_bp", "age_error_2sigma_ka"]]
+    if (
+        not np.isfinite(numeric).all().all()
+        or not controls["age_error_2sigma_ka"].gt(0).all()
+    ):
+        raise ValueError("Age controls contain invalid ages or uncertainties")
+
+    return controls.sort_values(
+        ["record_id", "stalagmite_id", "age_ka_bp"]
+    ).reset_index(drop=True)
 
 
 def load_mf_age_envelope(path: Path) -> pd.DataFrame:
@@ -530,31 +346,25 @@ def sample_realizations(
     picks: pd.DataFrame,
     n_realizations: int = N_REALIZATIONS,
     seed: int = RANDOM_SEED,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, dict[str, object]]:
     """Rejection-sample complete, ordered 21-event sequences."""
     if n_realizations < 1:
         raise ValueError("n_realizations must be positive")
     states, configs = build_state_lookup(picks)
     rng = np.random.default_rng(seed)
     rows: list[dict[str, object]] = []
-    proposal_id = 0
+    n_proposals = 0
     max_proposals = max(1000, 100 * n_realizations)
 
-    while len(rows) < n_realizations and proposal_id < max_proposals:
-        proposal_id += 1
+    while len(rows) < n_realizations and n_proposals < max_proposals:
+        n_proposals += 1
         proposal = propose_realization(rng, states, configs)
         ages = proposal["sampled_ages"]
         if not is_strictly_ordered(ages):
             continue
-        z = proposal["record_z"]
-        selected = proposal["selected_configs"]
         row: dict[str, object] = {
             "realization_id": len(rows) + 1,
-            "proposal_id": proposal_id,
         }
-        for record in RECORD_ORDER:
-            row[f"{record}_algorithm_config_id"] = selected[record]
-            row[f"{record}_chronology_z"] = z[record]
         row.update(
             {
                 f"MIS6_DO_{index + 1:02d}_age_ka_bp": age
@@ -565,30 +375,23 @@ def sample_realizations(
 
     if len(rows) != n_realizations:
         raise RuntimeError(
-            f"Accepted only {len(rows)} ordered sequences after {proposal_id} proposals"
+            f"Accepted only {len(rows)} ordered sequences after {n_proposals} proposals"
         )
-    rejected = proposal_id - n_realizations
-    diagnostics = pd.DataFrame(
-        [
-            {
-                "random_seed": seed,
-                "requested_realizations": n_realizations,
-                "accepted_realizations": len(rows),
-                "total_proposals": proposal_id,
-                "rejected_proposals": rejected,
-                "rejection_fraction": rejected / proposal_id,
-                "minimum_event_separation_ka": MIN_EVENT_SEPARATION_KA,
-                "order_rule": "fixed event rank; reject whole proposal if crossed",
-                "sorting_used": False,
-                "max_proposals": max_proposals,
-            }
-        ]
-    )
-    return pd.DataFrame(rows), diagnostics
+    rejected = n_proposals - n_realizations
+    sampling = {
+        "random_seed": seed,
+        "requested_realizations": n_realizations,
+        "accepted_realizations": len(rows),
+        "total_proposals": n_proposals,
+        "rejected_proposals": rejected,
+        "rejection_fraction": rejected / n_proposals,
+        "minimum_event_separation_ka": MIN_EVENT_SEPARATION_KA,
+    }
+    return pd.DataFrame(rows), sampling
 
 
 def build_summary(picks: pd.DataFrame, draws: pd.DataFrame) -> pd.DataFrame:
-    """Summarize the non-Gaussian mixture with quantiles as primary results."""
+    """Summarize each event with method spread, chronology error, and MC bounds."""
     rows = []
     for event_id, group in picks.groupby("composite_event_id", sort=False):
         group = group.sort_values("algorithm_config_id")
@@ -601,74 +404,19 @@ def build_summary(picks: pd.DataFrame, draws: pd.DataFrame) -> pd.DataFrame:
         nominal = group.loc[group["algorithm_config_id"].eq(nominal_id)].iloc[0]
         values = draws[f"{event_id}_age_ka_bp"].to_numpy(float)
         quantiles = np.quantile(values, [0.025, 0.16, 0.5, 0.84, 0.975])
-        source_record = str(first["source_record"])
-        chronology_method = {
-            "MF": "shared-z; symmetric envelope from inferred 95% age-model bounds",
-            "Huagapo": "shared-z; linearly interpolated P10-H2 2sigma errors",
-            "Sofular": "shared-z; fixed local approximation",
-        }[source_record]
-        source_filename = {
-            "MF": FOHLMEISTER_STACK_FILENAME,
-            "Huagapo": "41598_2018_37854_MOESM1_ESM.pdf",
-            "Sofular": "41467_2024_45507_MOESM3_ESM.xlsx",
-        }[source_record]
         rows.append(
             {
                 "composite_event_id": event_id,
                 "composite_event_number": int(first["composite_event_number"]),
                 "composite_event_label": first["composite_event_label"],
-                "source_record": source_record,
+                "source_record": first["source_record"],
                 "source_event_label": first["source_event_label"],
                 "nominal_event_age_ka_bp": nominal["definition_pick_age_ka_bp"],
-                "definition_distribution": (
-                    "nine equally weighted proposal configurations; accepted "
-                    "distribution conditional on fixed event order"
-                ),
-                "definition_interpretation": (
-                    "method-sensitivity proxy; not a posterior or confidence interval"
-                ),
-                "definition_config_count": len(group),
-                "definition_unique_pick_count": group[
-                    "definition_pick_age_ka_bp"
-                ].nunique(),
-                "definition_picks_by_config_ka_bp": ";".join(
-                    f"{row.algorithm_config_id}:{row.definition_pick_age_ka_bp:.6f}"
-                    for row in group.itertuples()
-                ),
                 "definition_age_min_ka_bp": group["definition_pick_age_ka_bp"].min(),
                 "definition_age_max_ka_bp": group["definition_pick_age_ka_bp"].max(),
-                "chronology_method": chronology_method,
-                "chronology_source_filename": source_filename,
-                "chronology_support_at_nominal": nominal["chronology_support_id"],
-                "chronology_input_lower_at_nominal_approx95_ka_bp": nominal[
-                    "chronology_input_lower_approx95_ka_bp"
-                ],
-                "chronology_input_upper_at_nominal_approx95_ka_bp": nominal[
-                    "chronology_input_upper_approx95_ka_bp"
-                ],
-                "chronology_sampling_lower_at_nominal_approx95_ka_bp": nominal[
-                    "chronology_sampling_lower_approx95_ka_bp"
-                ],
-                "chronology_sampling_upper_at_nominal_approx95_ka_bp": nominal[
-                    "chronology_sampling_upper_approx95_ka_bp"
-                ],
-                "chronology_half_width_at_nominal_approx95_ka": nominal[
-                    "chronology_half_width_approx95_ka"
-                ],
-                "chronology_sigma_at_nominal_ka": nominal["chronology_sigma_ka"],
-                "source_bound_repair_at_nominal": nominal[
-                    "source_bound_repair_applied"
-                ],
-                "chronology_sigma_min_over_definition_support_ka": group[
-                    "chronology_sigma_ka"
-                ].min(),
-                "chronology_sigma_max_over_definition_support_ka": group[
-                    "chronology_sigma_ka"
-                ].max(),
-                "shared_z_group": source_record,
-                "n_accepted_realizations": len(draws),
-                "sampled_age_mean_ka_bp": values.mean(),
-                "sampled_age_sd_ka": values.std(ddof=1),
+                "chronology_sigma_nominal_ka": nominal["chronology_sigma_ka"],
+                "chronology_sigma_min_ka": group["chronology_sigma_ka"].min(),
+                "chronology_sigma_max_ka": group["chronology_sigma_ka"].max(),
                 "sampled_age_q025_ka_bp": quantiles[0],
                 "sampled_age_q16_ka_bp": quantiles[1],
                 "sampled_age_median_ka_bp": quantiles[2],
@@ -882,82 +630,164 @@ def plot_age_realizations(
     return png_path, pdf_path
 
 
-def build_parameter_table(mf_envelope: pd.DataFrame | None = None) -> pd.DataFrame:
-    """Make all conversions and deliberate omissions visible outside the code."""
+def build_provenance_table(
+    mf_envelope: pd.DataFrame,
+    sampling: dict[str, object],
+) -> pd.DataFrame:
+    """Collect method choices, source files, and sampling diagnostics."""
     rows = [
-        {
-            "record_id": "MF",
-            "event_count": 16,
-            "chronology_input": "published age_lower and age_upper curves",
-            "reported_scale": "approximately 95% age-model envelope",
-            "conversion_to_1sigma": "max distance to repaired envelope / 1.95996398454",
-            "shared_chronology_draw": "one standard-normal z for all MF events",
-            "source_study": "Fohlmeister et al. (2023)",
-            "source_filename": FOHLMEISTER_STACK_FILENAME,
-            "uncertainty_scale_source_filename": "Fohlmeister J et al-2023-SOM.pdf",
-            "notes": "bounds inferred from SOM Fig. S3; raw U-Th error not re-added",
-        },
-        {
-            "record_id": "Huagapo",
-            "event_count": 3,
-            "chronology_input": "adjacent P10-H2 U-Th control errors",
-            "reported_scale": "2sigma",
-            "conversion_to_1sigma": "linear interpolation at pick, then divide by 2",
-            "shared_chronology_draw": "one standard-normal z for all Huagapo events",
-            "source_study": "Burns et al. (2019)",
-            "source_filename": "41598_2018_37854_MOESM1_ESM.pdf",
-            "uncertainty_scale_source_filename": "41598_2018_37854_MOESM1_ESM.pdf",
-            "notes": "control errors are interpolated, not differenced",
-        },
-        {
-            "record_id": "Sofular",
-            "event_count": 2,
-            "chronology_input": "simple local approximation informed by component dates",
-            "reported_scale": "1sigma",
-            "conversion_to_1sigma": "fixed 0.375 Kyr",
-            "shared_chronology_draw": "one standard-normal z for both Sofular events",
-            "source_study": "Held et al. (2024)",
-            "source_filename": "41467_2024_45507_MOESM3_ESM.xlsx",
-            "uncertainty_scale_source_filename": "41467_2024_45507_MOESM3_ESM.xlsx",
-            "notes": "approximation, not a published iscam-stack event confidence interval",
-        },
-    ]
-    table = pd.DataFrame(rows)
-    table["definition_sampling"] = (
-        "one of nine equally weighted proposal configurations per record; "
-        "accepted draws are conditional on fixed event order"
-    )
-    table["definition_interpretation"] = (
-        "method-sensitivity proxy; not a posterior or confidence interval"
-    )
-    table["excluded_terms"] = (
-        "cross-record synchronization; proxy resolution; separate smoothing error"
-    )
-    if mf_envelope is None:
-        table["source_valid_rows"] = ""
-        table["source_unique_ages"] = ""
-        table["source_rows_needing_bound_repair"] = ""
-    else:
-        table["source_valid_rows"] = [mf_envelope.attrs["valid_row_count"], "", ""]
-        table["source_unique_ages"] = [mf_envelope.attrs["unique_age_count"], "", ""]
-        table["source_rows_needing_bound_repair"] = [
+        ("analysis", "random_seed", sampling["random_seed"], "NumPy Generator"),
+        (
+            "analysis",
+            "requested_realizations",
+            sampling["requested_realizations"],
+            "complete 21-event sequences",
+        ),
+        (
+            "analysis",
+            "accepted_realizations",
+            sampling["accepted_realizations"],
+            "complete 21-event sequences",
+        ),
+        ("analysis", "total_proposals", sampling["total_proposals"], ""),
+        ("analysis", "rejected_proposals", sampling["rejected_proposals"], ""),
+        (
+            "analysis",
+            "rejection_fraction",
+            sampling["rejection_fraction"],
+            "rejected / total proposals",
+        ),
+        (
+            "analysis",
+            "minimum_event_separation_ka",
+            sampling["minimum_event_separation_ka"],
+            "Kyr",
+        ),
+        (
+            "analysis",
+            "event_order_rule",
+            "fixed event rank; reject a complete proposal if events cross",
+            "event ages are never sorted after sampling",
+        ),
+        (
+            "analysis",
+            "definition_sampling",
+            "one of nine equally weighted detector settings per record",
+            "accepted distribution is conditional on fixed event order",
+        ),
+        (
+            "analysis",
+            "definition_interpretation",
+            "method-sensitivity proxy",
+            "not a posterior or confidence interval",
+        ),
+        (
+            "analysis",
+            "excluded_uncertainty_terms",
+            "cross-record synchronization; proxy resolution; separate smoothing error",
+            "deliberate A+ simplification",
+        ),
+        ("MF", "event_count", 16, ""),
+        (
+            "MF",
+            "chronology_input",
+            "published age_lower and age_upper curves",
+            "Fohlmeister et al. (2023)",
+        ),
+        ("MF", "reported_scale", "approximately 95% age-model envelope", ""),
+        (
+            "MF",
+            "conversion_to_1sigma",
+            "maximum distance to repaired envelope / 1.95996398454",
+            "symmetric sampling error at each event pick",
+        ),
+        (
+            "MF",
+            "shared_chronology_draw",
+            "one standard-normal z for all MF events",
+            "preserves within-record age correlation",
+        ),
+        ("MF", "source_study", "Fohlmeister et al. (2023)", ""),
+        ("MF", "source_filename", FOHLMEISTER_STACK_FILENAME, "data and age bounds"),
+        (
+            "MF",
+            "uncertainty_scale_source_filename",
+            "Fohlmeister J et al-2023-SOM.pdf",
+            "bounds interpreted from Fig. S3",
+        ),
+        (
+            "MF",
+            "source_valid_rows",
+            mf_envelope.attrs["valid_row_count"],
+            "rows with finite age bounds",
+        ),
+        (
+            "MF",
+            "source_unique_ages",
+            mf_envelope.attrs["unique_age_count"],
+            "duplicate ages merged using the outer envelope",
+        ),
+        (
+            "MF",
+            "source_rows_needing_bound_repair",
             mf_envelope.attrs["source_rows_needing_bound_repair"],
-            "",
-            "",
-        ]
-    return table
+            "nominal age lay outside the reported bound pair",
+        ),
+        ("Huagapo", "event_count", 3, ""),
+        (
+            "Huagapo",
+            "chronology_input",
+            "adjacent P10-H2 U-Th control errors",
+            "errors are interpolated, not differenced",
+        ),
+        ("Huagapo", "reported_scale", "2sigma", ""),
+        (
+            "Huagapo",
+            "conversion_to_1sigma",
+            "linear interpolation at the event pick, then divide by 2",
+            "no extrapolation beyond the dated interval",
+        ),
+        (
+            "Huagapo",
+            "shared_chronology_draw",
+            "one standard-normal z for all Huagapo events",
+            "preserves within-record age correlation",
+        ),
+        ("Huagapo", "source_study", "Burns et al. (2019)", ""),
+        (
+            "Huagapo",
+            "source_filename",
+            "41598_2018_37854_MOESM1_ESM.pdf",
+            "Supplementary Table S1",
+        ),
+        ("Sofular", "event_count", 2, ""),
+        (
+            "Sofular",
+            "chronology_input",
+            "fixed local approximation informed by component U-Th dates",
+            "not a published iscam-stack event confidence interval",
+        ),
+        ("Sofular", "reported_scale", "1sigma", ""),
+        ("Sofular", "conversion_to_1sigma", "fixed 0.375 Kyr", ""),
+        (
+            "Sofular",
+            "shared_chronology_draw",
+            "one standard-normal z for both Sofular events",
+            "preserves within-record age correlation",
+        ),
+        ("Sofular", "source_study", "Held et al. (2024)", ""),
+        (
+            "Sofular",
+            "source_filename",
+            "41467_2024_45507_MOESM3_ESM.xlsx",
+            "U_Th_Dating worksheet",
+        ),
+    ]
+    return pd.DataFrame(rows, columns=["scope", "parameter", "value", "note"])
 
 
-def validate_outputs(
-    controls: pd.DataFrame,
-    summary: pd.DataFrame,
-    draws: pd.DataFrame,
-) -> None:
-    """Fail loudly if a saved result would violate the A+ contract."""
-    if len(controls) != 12 or controls["control_id"].duplicated().any():
-        raise ValueError("The age-control table must contain 12 unique controls")
-    if any(Path(name).name != name for name in controls["source_filename"]):
-        raise ValueError("Control provenance must contain filenames, not paths")
+def validate_results(summary: pd.DataFrame, draws: pd.DataFrame) -> None:
+    """Check the event identities, sampled order, and uncertainty intervals."""
     if len(summary) != 21 or summary["composite_event_id"].duplicated().any():
         raise ValueError("The uncertainty summary must contain 21 unique events")
     if summary["composite_event_number"].tolist() != list(range(1, 22)):
@@ -983,9 +813,9 @@ def validate_outputs(
 
 
 def main() -> None:
-    """Build detector states, sample A+, and write compact audit tables."""
-    controls = build_age_control_points()
-    mf_envelope = load_mf_age_envelope(resolve_fohlmeister_stack())
+    """Run the A+ experiment and save its compact research products."""
+    controls = load_age_controls()
+    mf_envelope = load_mf_age_envelope(FOHLMEISTER_STACK)
     anchors = detector.load_selected_anchors(detector.ANCHORS)
     segments = {
         spec.record_id: detector.regularize_record(
@@ -994,26 +824,18 @@ def main() -> None:
         for spec in detector.RECORDS
     }
     picks = build_definition_picks(anchors, segments, controls, mf_envelope)
-    draws, diagnostics = sample_realizations(picks)
+    draws, sampling = sample_realizations(picks)
     summary = build_summary(picks, draws)
-    parameters = build_parameter_table(mf_envelope)
-    validate_outputs(controls, summary, draws)
+    provenance = build_provenance_table(mf_envelope, sampling)
+    validate_results(summary, draws)
     original_events = pd.read_csv(detector.OUTPUT_CSV)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    controls.to_csv(CONTROL_OUTPUT, index=False, float_format="%.6f")
-    picks.to_csv(DEFINITION_PICK_OUTPUT, index=False, float_format="%.6f")
     summary.to_csv(SUMMARY_OUTPUT, index=False, float_format="%.6f")
     draws.to_csv(REALIZATION_OUTPUT, index=False, float_format="%.6f")
-    parameters.to_csv(PARAMETER_OUTPUT, index=False)
-    diagnostics.to_csv(DIAGNOSTIC_OUTPUT, index=False, float_format="%.8f")
+    provenance.to_csv(PROVENANCE_OUTPUT, index=False)
     png_path, pdf_path = plot_age_realizations(summary, draws, original_events)
 
-    print(f"Wrote {len(controls)} age controls to {CONTROL_OUTPUT.relative_to(ROOT)}")
-    print(
-        f"Wrote {len(picks)} definition picks to "
-        f"{DEFINITION_PICK_OUTPUT.relative_to(ROOT)}"
-    )
     print(f"Wrote {len(summary)} event summaries to {SUMMARY_OUTPUT.relative_to(ROOT)}")
     print(
         f"Wrote {len(draws):,} realizations to {REALIZATION_OUTPUT.relative_to(ROOT)}"
@@ -1024,8 +846,8 @@ def main() -> None:
     )
     print(
         "Rejected "
-        f"{int(diagnostics.loc[0, 'rejected_proposals']):,} crossed proposals "
-        f"({diagnostics.loc[0, 'rejection_fraction']:.2%})"
+        f"{int(sampling['rejected_proposals']):,} crossed proposals "
+        f"({sampling['rejection_fraction']:.2%})"
     )
 
 

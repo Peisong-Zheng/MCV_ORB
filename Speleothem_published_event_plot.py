@@ -286,7 +286,7 @@ def add_material_gap(
     data_axis.text(
         (gap_start + gap_end) / 2,
         0.48,
-            f"{gap_width:.2f} kyr data gap",
+        f"{gap_width:.2f} kyr data gap",
         transform=data_axis.get_xaxis_transform(),
         rotation=90,
         ha="center",
@@ -298,10 +298,8 @@ def add_material_gap(
     )
 
 
-def build_figure(records: dict[str, pd.DataFrame], anchors: pd.DataFrame) -> plt.Figure:
-    """Build the eight-row static comparison figure."""
-    configure_plot_style()
-    figure = plt.figure(figsize=FIGURE_SIZE_INCH)
+def make_record_axes(figure: plt.Figure) -> list[tuple[plt.Axes, plt.Axes]]:
+    """Create one proxy/resolution pair for each speleothem record."""
     outer_grid = figure.add_gridspec(
         4,
         1,
@@ -311,206 +309,250 @@ def build_figure(records: dict[str, pd.DataFrame], anchors: pd.DataFrame) -> plt
         bottom=0.055,
         hspace=0.30,
     )
-    axes: list[plt.Axes] = []
-    shared_axis: plt.Axes | None = None
+    axis_pairs = []
+    shared_axis = None
     for group_index in range(4):
         pair_grid = outer_grid[group_index].subgridspec(
             2, 1, height_ratios=(3.3, 1.0), hspace=0.06
         )
-        data_axis = figure.add_subplot(pair_grid[0], sharex=shared_axis)
+        proxy_axis = figure.add_subplot(pair_grid[0], sharex=shared_axis)
         if shared_axis is None:
-            shared_axis = data_axis
+            shared_axis = proxy_axis
         resolution_axis = figure.add_subplot(pair_grid[1], sharex=shared_axis)
-        axes.extend((data_axis, resolution_axis))
-    figure.patch.set_facecolor("white")
+        axis_pairs.append((proxy_axis, resolution_axis))
+    return axis_pairs
 
-    letters = "abcd"
+
+def format_record_axes(proxy_axis: plt.Axes, resolution_axis: plt.Axes) -> None:
+    for axis in (proxy_axis, resolution_axis):
+        style_axis(axis)
+        axis.set_xlim(*AGE_RANGE_KA)
+        axis.xaxis.set_major_locator(MultipleLocator(5))
+        axis.grid(
+            True,
+            axis="x",
+            which="major",
+            color="#CBD0D6",
+            linewidth=0.45,
+            alpha=0.7,
+        )
+
+
+def add_label_band(
+    axis: plt.Axes, proxy: np.ndarray, spec: RecordSpec
+) -> tuple[float, float, float]:
+    """Reserve a pale band for literature labels, away from the proxy curve."""
+    y_min, y_max = float(np.min(proxy)), float(np.max(proxy))
+    y_span = y_max - y_min
+    if not np.isfinite(y_span) or y_span <= 0:
+        raise ValueError(f"{spec.sheet!r} has no usable proxy range")
+
+    if spec.invert_proxy_axis:
+        band_edge = y_min - LABEL_BAND_FRACTION * y_span
+        axis.axhspan(band_edge, y_min, color="#F7F8FA", linewidth=0, zorder=0)
+        axis.axhline(y_min, color="#C9CDD2", linewidth=0.55, zorder=1)
+        axis.set_ylim(y_max + 0.06 * y_span, band_edge)
+    else:
+        band_edge = y_max + LABEL_BAND_FRACTION * y_span
+        axis.axhspan(y_max, band_edge, color="#F7F8FA", linewidth=0, zorder=0)
+        axis.axhline(y_max, color="#C9CDD2", linewidth=0.55, zorder=1)
+        axis.set_ylim(y_min - 0.06 * y_span, band_edge)
+    return y_min, y_max, y_span
+
+
+def draw_event_labels(
+    axis: plt.Axes,
+    ages: np.ndarray,
+    proxy: np.ndarray,
+    event_anchors: pd.DataFrame,
+    spec: RecordSpec,
+    y_min: float,
+    y_max: float,
+    y_span: float,
+) -> None:
     label_levels = (0.13, 0.33, 0.53)
+    event_ages = event_anchors["anchor_age_ka_bp"].to_numpy(dtype=float)
+    label_ages = spread_close_label_positions(event_ages)
 
-    for panel_index, spec in enumerate(RECORD_SPECS):
-        data_axis = axes[panel_index * 2]
-        resolution_axis = axes[panel_index * 2 + 1]
-        frame = records[spec.record_id]
-        ages = frame["age_ka_bp"].to_numpy(dtype=float)
-        proxy = frame["proxy"].to_numpy(dtype=float)
-        resolution = frame["resolution_yr"].to_numpy(dtype=float)
-        local_anchors = (
+    for event_index, event in event_anchors.iterrows():
+        event_age = float(event["anchor_age_ka_bp"])
+        label_age = float(label_ages[event_index])
+        curve_y = float(np.interp(event_age, ages, proxy))
+        offset = label_levels[event_index % len(label_levels)] * y_span
+        label_y = y_min - offset if spec.invert_proxy_axis else y_max + offset
+        axis.plot(
+            [event_age, label_age],
+            [curve_y, label_y],
+            color="#6F757B",
+            linewidth=0.55,
+            linestyle=(0, (2, 2.5)),
+            alpha=0.6,
+            zorder=1.5,
+        )
+        axis.text(
+            label_age,
+            label_y,
+            str(event["display_label"]),
+            ha="center",
+            va="center",
+            fontsize=7.5,
+            color="#30343B",
+            clip_on=True,
+            zorder=4,
+        )
+
+
+def draw_proxy_panel(
+    axis: plt.Axes,
+    record: pd.DataFrame,
+    event_anchors: pd.DataFrame,
+    spec: RecordSpec,
+    panel_letter: str,
+) -> None:
+    ages = record["age_ka_bp"].to_numpy(dtype=float)
+    proxy = record["proxy"].to_numpy(dtype=float)
+    plot_with_material_gap_breaks(
+        axis,
+        ages,
+        proxy,
+        color=spec.color,
+        linewidth=1,
+        solid_capstyle="round",
+        zorder=2,
+    )
+    y_min, y_max, y_span = add_label_band(axis, proxy, spec)
+    y_ticks = MaxNLocator(nbins=5).tick_values(y_min, y_max)
+    axis.set_yticks(y_ticks[(y_ticks >= y_min) & (y_ticks <= y_max)])
+    axis.set_ylabel(spec.proxy_label, labelpad=5)
+    axis.set_title(spec.title, loc="left", pad=4, color="#202124")
+    axis.text(
+        -0.085,
+        1.015,
+        f"({panel_letter})",
+        transform=axis.transAxes,
+        ha="left",
+        va="bottom",
+        fontsize=9.5,
+        fontweight="bold",
+        color="#202124",
+        clip_on=False,
+    )
+    draw_event_labels(axis, ages, proxy, event_anchors, spec, y_min, y_max, y_span)
+
+
+def draw_resolution_panel(
+    axis: plt.Axes, record: pd.DataFrame, spec: RecordSpec
+) -> None:
+    ages = record["age_ka_bp"].to_numpy(dtype=float)
+    resolution = record["resolution_yr"].to_numpy(dtype=float)
+    plot_with_material_gap_breaks(
+        axis,
+        ages,
+        resolution,
+        color=spec.color,
+        linewidth=0.95,
+        alpha=0.96,
+        zorder=2,
+    )
+    axis.set_yscale("log")
+    axis.set_ylabel("Resolution\n(yr)", labelpad=5)
+    axis.yaxis.set_major_locator(LogLocator(base=10, numticks=6))
+    axis.yaxis.set_major_formatter(FuncFormatter(format_log_tick))
+    axis.yaxis.set_minor_locator(LogLocator(base=10, subs=(2, 5), numticks=12))
+    axis.yaxis.set_minor_formatter(NullFormatter())
+    axis.grid(
+        True,
+        axis="y",
+        which="major",
+        color="#D0D5DB",
+        linewidth=0.45,
+        alpha=0.7,
+    )
+    axis.grid(
+        True,
+        axis="y",
+        which="minor",
+        color="#E5E7EB",
+        linewidth=0.35,
+        alpha=0.55,
+    )
+
+    median_resolution = float(np.median(resolution))
+    axis.axhline(
+        median_resolution,
+        color="#50555A",
+        linewidth=0.65,
+        linestyle=(0, (4, 3)),
+        alpha=0.72,
+        zorder=3,
+    )
+    axis.text(
+        204.35,
+        median_resolution,
+        f"median {median_resolution:.1f} yr",
+        ha="right",
+        va="bottom",
+        fontsize=7.2,
+        color="#4B5055",
+        bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.8, "pad": 1.0},
+        zorder=5,
+    )
+
+
+def draw_record_pair(
+    proxy_axis: plt.Axes,
+    resolution_axis: plt.Axes,
+    record: pd.DataFrame,
+    event_anchors: pd.DataFrame,
+    spec: RecordSpec,
+    panel_letter: str,
+) -> None:
+    ages = record["age_ka_bp"].to_numpy(dtype=float)
+    if not event_anchors["anchor_age_ka_bp"].between(ages.min(), ages.max()).all():
+        raise ValueError(
+            f"At least one {spec.record_id} anchor lies outside the record"
+        )
+
+    format_record_axes(proxy_axis, resolution_axis)
+    draw_proxy_panel(proxy_axis, record, event_anchors, spec, panel_letter)
+    draw_resolution_panel(resolution_axis, record, spec)
+
+    for gap_index in np.flatnonzero(np.diff(ages) > MATERIAL_GAP_KA):
+        add_material_gap(
+            proxy_axis,
+            resolution_axis,
+            float(ages[gap_index]),
+            float(ages[gap_index + 1]),
+        )
+    proxy_axis.tick_params(axis="x", labelbottom=False)
+    resolution_axis.tick_params(axis="x", labelbottom=True)
+
+
+def build_figure(records: dict[str, pd.DataFrame], anchors: pd.DataFrame) -> plt.Figure:
+    """Build the four-record proxy and resolution comparison."""
+    configure_plot_style()
+    figure = plt.figure(figsize=FIGURE_SIZE_INCH)
+    figure.patch.set_facecolor("white")
+    axis_pairs = make_record_axes(figure)
+
+    for panel_letter, spec, (proxy_axis, resolution_axis) in zip(
+        "abcd", RECORD_SPECS, axis_pairs
+    ):
+        event_anchors = (
             anchors.loc[anchors["record_id"].eq(spec.record_id)]
             .sort_values("anchor_age_ka_bp")
             .reset_index(drop=True)
         )
-
-        if not local_anchors["anchor_age_ka_bp"].between(ages.min(), ages.max()).all():
-            raise ValueError(
-                f"At least one {spec.record_id} anchor lies outside the record"
-            )
-
-        for axis in (data_axis, resolution_axis):
-            style_axis(axis)
-            axis.set_xlim(*AGE_RANGE_KA)
-            axis.xaxis.set_major_locator(MultipleLocator(5))
-            axis.grid(
-                True,
-                axis="x",
-                which="major",
-                color="#CBD0D6",
-                linewidth=0.45,
-                alpha=0.7,
-            )
-
-        plot_with_material_gap_breaks(
-            data_axis,
-            ages,
-            proxy,
-            color=spec.color,
-            linewidth=1,
-            solid_capstyle="round",
-            zorder=2,
-        )
-
-        y_min, y_max = float(np.min(proxy)), float(np.max(proxy))
-        y_span = y_max - y_min
-        if not np.isfinite(y_span) or y_span <= 0:
-            raise ValueError(f"{spec.sheet!r} has no usable proxy range")
-
-        # A pale annotation band separates label anchors from the proxy curve.
-        if spec.invert_proxy_axis:
-            label_band_edge = y_min - LABEL_BAND_FRACTION * y_span
-            data_axis.axhspan(
-                label_band_edge, y_min, color="#F7F8FA", linewidth=0, zorder=0
-            )
-            data_axis.axhline(y_min, color="#C9CDD2", linewidth=0.55, zorder=1)
-            data_axis.set_ylim(y_max + 0.06 * y_span, label_band_edge)
-        else:
-            label_band_edge = y_max + LABEL_BAND_FRACTION * y_span
-            data_axis.axhspan(
-                y_max, label_band_edge, color="#F7F8FA", linewidth=0, zorder=0
-            )
-            data_axis.axhline(y_max, color="#C9CDD2", linewidth=0.55, zorder=1)
-            data_axis.set_ylim(y_min - 0.06 * y_span, label_band_edge)
-
-        y_tick_locator = MaxNLocator(nbins=5)
-        y_ticks = y_tick_locator.tick_values(y_min, y_max)
-        y_ticks = y_ticks[(y_ticks >= y_min) & (y_ticks <= y_max)]
-        data_axis.set_yticks(y_ticks)
-        data_axis.set_ylabel(spec.proxy_label, labelpad=5)
-        data_axis.set_title(
-            spec.title,
-            loc="left",
-            pad=4,
-            color="#202124",
-        )
-        data_axis.text(
-            -0.085,
-            1.015,
-            f"({letters[panel_index]})",
-            transform=data_axis.transAxes,
-            ha="left",
-            va="bottom",
-            fontsize=9.5,
-            fontweight="bold",
-            color="#202124",
-            clip_on=False,
-        )
-
-        event_ages = local_anchors["anchor_age_ka_bp"].to_numpy(dtype=float)
-        label_ages = spread_close_label_positions(event_ages)
-
-        for event_index, event in local_anchors.iterrows():
-            event_age = float(event["anchor_age_ka_bp"])
-            label_age = float(label_ages[event_index])
-            curve_y = float(np.interp(event_age, ages, proxy))
-            offset = label_levels[event_index % len(label_levels)] * y_span
-            label_y = y_min - offset if spec.invert_proxy_axis else y_max + offset
-            data_axis.plot(
-                [event_age, label_age],
-                [curve_y, label_y],
-                color="#6F757B",
-                linewidth=0.55,
-                linestyle=(0, (2, 2.5)),
-                alpha=0.6,
-                zorder=1.5,
-            )
-            data_axis.text(
-                label_age,
-                label_y,
-                str(event["display_label"]),
-                ha="center",
-                va="center",
-                fontsize=7.5,
-                color="#30343B",
-                clip_on=True,
-                zorder=4,
-            )
-
-        plot_with_material_gap_breaks(
+        draw_record_pair(
+            proxy_axis,
             resolution_axis,
-            ages,
-            resolution,
-            color=spec.color,
-            linewidth=0.95,
-            alpha=0.96,
-            zorder=2,
-        )
-        resolution_axis.set_yscale("log")
-        resolution_axis.set_ylabel("Resolution\n(yr)", labelpad=5)
-        resolution_axis.yaxis.set_major_locator(LogLocator(base=10, numticks=6))
-        resolution_axis.yaxis.set_major_formatter(FuncFormatter(format_log_tick))
-        resolution_axis.yaxis.set_minor_locator(
-            LogLocator(base=10, subs=(2, 5), numticks=12)
-        )
-        resolution_axis.yaxis.set_minor_formatter(NullFormatter())
-        resolution_axis.grid(
-            True,
-            axis="y",
-            which="major",
-            color="#D0D5DB",
-            linewidth=0.45,
-            alpha=0.7,
-        )
-        resolution_axis.grid(
-            True,
-            axis="y",
-            which="minor",
-            color="#E5E7EB",
-            linewidth=0.35,
-            alpha=0.55,
+            records[spec.record_id],
+            event_anchors,
+            spec,
+            panel_letter,
         )
 
-        median_resolution = float(np.median(resolution))
-        resolution_axis.axhline(
-            median_resolution,
-            color="#50555A",
-            linewidth=0.65,
-            linestyle=(0, (4, 3)),
-            alpha=0.72,
-            zorder=3,
-        )
-        resolution_axis.text(
-            204.35,
-            median_resolution,
-            f"median {median_resolution:.1f} yr",
-            ha="right",
-            va="bottom",
-            fontsize=7.2,
-            color="#4B5055",
-            bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.8, "pad": 1.0},
-            zorder=5,
-        )
-
-        gaps_ka = np.diff(ages)
-        for gap_index in np.flatnonzero(gaps_ka > MATERIAL_GAP_KA):
-            add_material_gap(
-                data_axis,
-                resolution_axis,
-                float(ages[gap_index]),
-                float(ages[gap_index + 1]),
-            )
-
-        data_axis.tick_params(axis="x", labelbottom=False)
-        resolution_axis.tick_params(axis="x", labelbottom=True)
-
-    axes[-1].set_xlabel("Age (Kyr BP)", labelpad=5)
+    axis_pairs[-1][1].set_xlabel("Age (Kyr BP)", labelpad=5)
     return figure
 
 

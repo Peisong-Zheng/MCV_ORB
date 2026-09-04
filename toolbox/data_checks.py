@@ -24,10 +24,12 @@ def require_unique_values(
     if duplicated.empty:
         return
 
-    counts = duplicated[column].value_counts(dropna=False).head(sample_size)
-    sample = ", ".join(f"{value!r} (n={count})" for value, count in counts.items())
+    duplicate_counts = duplicated[column].value_counts(dropna=False)
+    examples = duplicate_counts.head(sample_size)
+    sample = ", ".join(f"{value!r} (n={count})" for value, count in examples.items())
     raise ValueError(
         f"{context} contains duplicate {column!r} values. "
-        f"Duplicate rows: {len(duplicated)}; duplicate coordinates: {counts.size}. "
+        f"Duplicate rows: {len(duplicated)}; "
+        f"duplicate coordinates: {duplicate_counts.size}. "
         f"Examples: {sample}."
     )

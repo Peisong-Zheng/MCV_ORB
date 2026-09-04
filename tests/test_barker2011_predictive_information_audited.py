@@ -15,9 +15,21 @@ import Barker2011_do_predictive_information_audited as barker
 
 @pytest.fixture(scope="module")
 def core_analysis():
-    """Run the three primary variable-threshold catalogues once per test file."""
-
     return barker.run_core_analysis()
+
+
+@pytest.fixture(scope="module")
+def sensitivity_results(core_analysis):
+    source = barker.load_barker_source()
+    resolution = barker.load_jouzel_edc_resolution_source()
+    fixed = barker.run_core_analysis(
+        pick_column=barker.FIXED_PICK,
+        source=source,
+        resolution_source=resolution,
+    )
+    definitions = barker.build_event_definition_sensitivity(core_analysis, fixed)
+    histories = barker.build_history_sensitivity(core_analysis, source, resolution)
+    return definitions, histories
 
 
 def test_catalogue_counts_ranges_and_shared_source_rows():
@@ -128,3 +140,25 @@ def test_pi_support_is_explicitly_shorter_than_rayleigh_support(core_analysis):
     assert summary["n_rayleigh_events"].tolist() == [104, 126, 70]
     assert summary["n_pi_events"].tolist() == [103, 125, 69]
     np.testing.assert_allclose(summary["pi_support_end_ka"], [635.0, 795.0, 395.0])
+
+
+def test_event_definition_and_history_sensitivity_regression(sensitivity_results):
+    definitions, histories = sensitivity_results
+
+    assert len(definitions) == 6
+    fixed = definitions.query("event_definition == 'fixed_threshold'")
+    np.testing.assert_allclose(
+        fixed["phase_nominal_p"],
+        [0.071968142, 0.140929327, 0.042956786],
+        rtol=2e-6,
+        atol=2e-6,
+    )
+
+    assert len(histories) == 12
+    oldest_window = histories.query("history_window_ka == 20")
+    np.testing.assert_allclose(
+        oldest_window["phase_nominal_p"],
+        [0.058398938, 0.097887435, 0.045304066],
+        rtol=2e-6,
+        atol=2e-6,
+    )

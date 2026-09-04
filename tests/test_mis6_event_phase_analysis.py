@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-import numpy as np
-import pytest
 from pathlib import Path
 import sys
+
+import numpy as np
+import pandas as pd
+import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -65,18 +67,18 @@ def test_rayleigh_regression(results):
             "rayleigh_p",
         ]
     ].to_numpy(dtype=float)
-    expected = np.array(
-        [21, 320.649058, 0.275030, 5.775630, 1.588472, 0.205904]
-    )
+    expected = np.array([21, 320.649058, 0.275030, 5.775630, 1.588472, 0.205904])
     np.testing.assert_allclose(observed, expected, rtol=2e-6, atol=2e-6)
 
 
 def test_conditional_pi_regression_and_diagnostics(results):
     _, _, _, pi, summary = results
     test = pi["likelihood_tests"].iloc[0]
-    full = pi["model_summary"].loc[
-        pi["model_summary"]["model_id"].eq(analysis.FULL_MODEL_ID)
-    ].iloc[0]
+    full = (
+        pi["model_summary"]
+        .loc[pi["model_summary"]["model_id"].eq(analysis.FULL_MODEL_ID)]
+        .iloc[0]
+    )
 
     observed = np.array(
         [
@@ -104,14 +106,49 @@ def test_conditional_pi_regression_and_diagnostics(results):
     np.testing.assert_allclose(observed, expected, rtol=3e-6, atol=3e-6)
     assert pi["model_summary"]["converged"].all()
     assert test["likelihood_nesting_ok"]
-    assert not (
-        pi["model_summary"][["n_eta_clipped_low", "n_eta_clipped_high"]] > 0
-    ).any().any()
+    assert (
+        not (pi["model_summary"][["n_eta_clipped_low", "n_eta_clipped_high"]] > 0)
+        .any()
+        .any()
+    )
 
     row = summary.iloc[0]
     assert row["n_rayleigh_events"] == 21
     assert row["n_predictive_events"] == 20
     assert np.isclose(row["predictive_support_start_ka_bp"], 132.5)
     assert np.isclose(row["predictive_support_end_ka_bp"], 191.5)
+    assert np.isclose(row["rayleigh_R"], 5.775630, rtol=2e-6)
+    assert np.isclose(row["rayleigh_z"], 1.588472, rtol=2e-6)
+    assert row["n_rayleigh_extrapolated_events"] == 0
+    assert row["predictive_likelihood_nesting_ok"]
+    assert row["predictive_eta_clipping_count"] == 0
     assert not row["resolution_covariate_included"]
     assert not row["event_age_uncertainty_propagated"]
+
+
+def test_phase_outputs_are_reduced_to_four_audit_tables(results, tmp_path):
+    events, event_phases, _, pi, summary = results
+    analysis.write_outputs(events, event_phases, pi, summary, tmp_path)
+
+    assert {path.name for path in tmp_path.iterdir()} == {
+        "analysis_summary.csv",
+        "event_precession_phases.csv",
+        "predictive_coefficients.csv",
+        "parameters_and_provenance.csv",
+    }
+    phases = pd.read_csv(tmp_path / "event_precession_phases.csv")
+    assert phases.columns.tolist() == [
+        "composite_event_id",
+        "event_age_ka_bp",
+        "precession_index_at_event",
+        "precession_phase_deg",
+        "precession_phase_fraction",
+        "phase_extrapolated",
+    ]
+    coefficients = pd.read_csv(tmp_path / "predictive_coefficients.csv")
+    assert coefficients.columns.tolist() == [
+        "model_id",
+        "term",
+        "beta",
+        "rate_ratio_per_unit",
+    ]

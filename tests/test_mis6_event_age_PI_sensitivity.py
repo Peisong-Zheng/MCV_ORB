@@ -102,10 +102,34 @@ def test_summary_quantiles_and_decision_fractions_recompute(prepared):
 def test_parameters_explicitly_exclude_rayleigh_and_resolution(prepared):
     context, _, _, draws = prepared
     results, diagnostics = sensitivity.fit_realizations(draws.iloc[:2], context)
-    parameters = sensitivity.build_parameters(draws.iloc[:2], context, diagnostics)
+    parameters = sensitivity.build_parameters(context, diagnostics)
     values = parameters.set_index("parameter")["value"].astype(str).str.lower()
 
     assert values["rayleigh_test_run"] == "false"
     assert values["resolution_covariate_included"] == "false"
     assert values["event_age_uncertainty_propagated"] == "true"
+    assert int(float(values["n_realizations"])) == 2
+    assert int(float(values["n_nonconverged_full"])) == 0
     assert not any("rayleigh" in column.lower() for column in results.columns)
+
+
+def test_realization_output_is_compact_and_self_checking(prepared, tmp_path):
+    context, original, _, draws = prepared
+    results, diagnostics = sensitivity.fit_realizations(draws.iloc[:3], context)
+    compact = sensitivity.compact_realization_results(results)
+    summary = sensitivity.build_summary(results, original)
+    parameters = sensitivity.build_parameters(context, diagnostics)
+
+    assert len(compact.columns) == 12
+    assert compact["all_models_converged"].all()
+    assert compact["likelihood_nesting_ok"].all()
+    assert not compact["eta_clipping_used"].any()
+    assert "loglik_reduced" not in compact
+    assert "LR_p_value" not in compact
+
+    sensitivity.write_outputs(compact, summary, parameters, tmp_path)
+    assert {path.name for path in tmp_path.iterdir()} == {
+        "mis6_event_age_pi_realizations.csv",
+        "mis6_event_age_pi_summary.csv",
+        "parameters_and_provenance.csv",
+    }

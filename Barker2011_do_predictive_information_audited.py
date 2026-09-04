@@ -1,19 +1,9 @@
-"""Audit Barker et al. (2011) predicted D-O warming-event phase dependence.
+"""Rayleigh and conditional-PI analysis of Barker et al. (2011) events.
 
-Barker et al. inferred abrupt Greenland warming candidates from a synthetic
-Greenland-temperature record reconstructed from Antarctic ice. These are not
-independently observed Greenland events. This script asks two questions:
-
-1. Are event phases non-uniform by a Rayleigh test?
-2. Does precession phase improve a binned Poisson event-rate model after event
-   history, EDC sampling resolution, LR04, and CO2 have been included?
-
-The variable-threshold catalogue over EDC3 0--640 ka is the primary analysis.
-EDC3 0--800 ka and SpeleoAge 0--400 ka are sensitivity variants of the same
-Table S3 events, not independent replications. SpeleoAge is tuned partly to
-Chinese speleothems, so its orbital-phase result has an additional circularity
-risk. Likelihood-ratio p values are asymptotic and age uncertainty is not
-propagated; the script therefore calls them nominal p values.
+The three catalogues are overlapping views of the same synthetic Greenland
+record, not independent replications. The EDC3 0--640 Kyr variable-threshold
+catalogue is primary; other age/support and event-definition choices are
+sensitivity tests.
 """
 
 from __future__ import annotations
@@ -27,7 +17,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from toolbox import event_inputs, event_process as predictive, orbital_phase, poisson
+from toolbox import (
+    event_inputs,
+    event_process as predictive,
+    orbital_phase,
+    poisson,
+)
 from toolbox.data_checks import require_unique_values
 from toolbox.model_stats import nested_likelihood_metrics
 from toolbox.project_config import (
@@ -40,10 +35,6 @@ from toolbox.project_config import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Settings: keep the scientific choices together and easy to inspect.
-# ---------------------------------------------------------------------------
-
 RUN_NAME = "Barker2011_do_predictive_information_audited"
 OUT_DATA_DIR = PROJECT_ROOT / "data" / "processed" / RUN_NAME
 OUT_FIG_DIR = PROJECT_ROOT / "figures" / RUN_NAME
@@ -51,7 +42,11 @@ OUT_FIG_DIR = PROJECT_ROOT / "figures" / RUN_NAME
 BARKER_XLS = PROJECT_ROOT / "data/raw/Barker et al-2011-SOM.xls"
 JOUZEL_TXT = (
     PROJECT_ROOT
-    / "data/raw/Jouzel-etal-2007-Science-Orbital and Millennial Antarctic Climate Variability over the Past 800,000 Years.txt"
+    / "data/raw"
+    / (
+        "Jouzel-etal-2007-Science-Orbital and Millennial Antarctic Climate "
+        "Variability over the Past 800,000 Years.txt"
+    )
 )
 
 VARIABLE_PICK = "DO pick variable threshold"
@@ -65,7 +60,6 @@ BASELINE_TERMS = (HISTORY_TERM, RESOLUTION_TERM)
 CLIMATE_TERMS = predictive.CLIMATE_TERMS
 PHASE_TERMS = predictive.PHASE_TERMS
 
-# Only models needed for the two nested scientific questions are fitted.
 MODEL_SPECS = (
     ("baseline", BASELINE_TERMS, "Event-process baseline"),
     ("climate", BASELINE_TERMS + CLIMATE_TERMS, "Climate-state model"),
@@ -185,14 +179,7 @@ plt.rcParams.update(
 )
 
 
-# ---------------------------------------------------------------------------
-# Input preparation
-# ---------------------------------------------------------------------------
-
-
 def _definition_name(pick_column: str) -> str:
-    """Return the short identifier used in output IDs."""
-
     if pick_column == VARIABLE_PICK:
         return "variable_threshold"
     if pick_column == FIXED_PICK:
@@ -201,8 +188,6 @@ def _definition_name(pick_column: str) -> str:
 
 
 def _catalogue_identity(spec: CatalogueSpec, pick_column: str) -> tuple[str, str, str]:
-    """Return dataset ID, event type, and label for an event definition."""
-
     if pick_column == VARIABLE_PICK:
         return spec.dataset_id, spec.event_type, spec.label
     return (
@@ -266,23 +251,23 @@ def load_jouzel_edc_resolution_source() -> pd.DataFrame:
         names=["bag", "ztop_m", "age_yr_bp", "deuterium", "temperature"],
         encoding="latin1",
     )
-    frame = pd.DataFrame(
+    edc = pd.DataFrame(
         {
             "edc3_age_ka": pd.to_numeric(raw["age_yr_bp"], errors="coerce") / 1000.0,
             "deuterium": pd.to_numeric(raw["deuterium"], errors="coerce"),
         }
     ).dropna(subset=["edc3_age_ka"])
-    frame = frame.sort_values("edc3_age_ka").reset_index(drop=True)
-    require_unique_values(frame, "edc3_age_ka", context="Jouzel EDC3 record")
+    edc = edc.sort_values("edc3_age_ka").reset_index(drop=True)
+    require_unique_values(edc, "edc3_age_ka", context="Jouzel EDC3 record")
 
-    age = frame["edc3_age_ka"].to_numpy(dtype=float)
+    age = edc["edc3_age_ka"].to_numpy(dtype=float)
     previous_gap = np.r_[np.nan, np.diff(age)]
     next_gap = np.r_[np.diff(age), np.nan]
     spacing = np.nanmedian(np.vstack([previous_gap, next_gap]), axis=0)
     fallback = float(np.nanmedian(np.diff(age)))
     spacing = np.where(np.isfinite(spacing) & (spacing > 0.0), spacing, fallback)
-    frame["edc_local_resolution_ka"] = spacing
-    return frame
+    edc["edc_local_resolution_ka"] = spacing
+    return edc
 
 
 def build_event_catalogues(
@@ -301,33 +286,39 @@ def build_event_catalogues(
 
     for spec in specs:
         dataset_id, event_type, label = _catalogue_identity(spec, pick_column)
-        frame = pd.DataFrame(
+        catalogue = pd.DataFrame(
             {
                 "source_row": table["source_row"],
                 "event_age_ka": pd.to_numeric(table[spec.age_column], errors="coerce"),
                 "pick_value": pd.to_numeric(table[pick_column], errors="coerce"),
             }
         ).dropna()
-        frame = frame[frame["pick_value"].eq(1.0)]
-        frame = frame[frame["event_age_ka"].between(0.0, spec.end_ka, inclusive="both")]
-        frame = frame.sort_values("event_age_ka").reset_index(drop=True)
-        frame["event_index"] = np.arange(1, len(frame) + 1)
-        frame["dataset_id"] = dataset_id
-        frame["event_type"] = event_type
-        frame["event_label"] = label
-        frame["event_definition"] = definition
-        frame["age_column"] = spec.age_column
-        frame["pick_column"] = pick_column
-        frame["analysis_start_ka"] = 0.0
-        frame["analysis_end_ka"] = spec.end_ka
-        frame["source"] = str(BARKER_XLS.relative_to(PROJECT_ROOT))
-        event_frames.append(frame)
+        catalogue = catalogue[catalogue["pick_value"].eq(1.0)]
+        in_range = catalogue["event_age_ka"].between(
+            0.0,
+            spec.end_ka,
+            inclusive="both",
+        )
+        catalogue = (
+            catalogue[in_range].sort_values("event_age_ka").reset_index(drop=True)
+        )
+        catalogue["event_index"] = np.arange(1, len(catalogue) + 1)
+        catalogue["dataset_id"] = dataset_id
+        catalogue["event_type"] = event_type
+        catalogue["event_label"] = label
+        catalogue["event_definition"] = definition
+        catalogue["age_column"] = spec.age_column
+        catalogue["pick_column"] = pick_column
+        catalogue["analysis_start_ka"] = 0.0
+        catalogue["analysis_end_ka"] = spec.end_ka
+        catalogue["source"] = str(BARKER_XLS.relative_to(PROJECT_ROOT))
+        event_frames.append(catalogue)
         datasets.append(
             event_inputs.EventDataset(
                 dataset_id=dataset_id,
                 label=label,
                 color=spec.color,
-                ages_ka=frame["event_age_ka"].to_numpy(dtype=float),
+                ages_ka=catalogue["event_age_ka"].to_numpy(dtype=float),
                 source=str(BARKER_XLS.relative_to(PROJECT_ROOT)),
             )
         )
@@ -382,18 +373,18 @@ def add_edc_resolution_control(
         event_inputs.scale_to_zero_mean_range_one(log_spacing)
     )
 
-    out = binned.copy()
-    out["resolution_edc3_age_ka"] = edc3_centers
-    out["resolution_age_mapping_extrapolated"] = mapping_extrapolated
-    out["resolution_source_extrapolated"] = resolution_extrapolated
-    out["edc_local_resolution_ka"] = spacing
-    out["edc_log_resolution"] = log_spacing
-    out[RESOLUTION_TERM] = scaled
+    with_resolution = binned.copy()
+    with_resolution["resolution_edc3_age_ka"] = edc3_centers
+    with_resolution["resolution_age_mapping_extrapolated"] = mapping_extrapolated
+    with_resolution["resolution_source_extrapolated"] = resolution_extrapolated
+    with_resolution["edc_local_resolution_ka"] = spacing
+    with_resolution["edc_log_resolution"] = log_spacing
+    with_resolution[RESOLUTION_TERM] = scaled
 
     metadata = pd.DataFrame(
         [
             {
-                "dataset_id": str(out["dataset_id"].iloc[0]),
+                "dataset_id": str(with_resolution["dataset_id"].iloc[0]),
                 "forcing_id": RESOLUTION_TERM,
                 "source": str(JOUZEL_TXT.relative_to(PROJECT_ROOT)),
                 "resolution_age_axis": spec.resolution_age_axis,
@@ -406,22 +397,16 @@ def add_edc_resolution_control(
             }
         ]
     )
-    return out, metadata
+    return with_resolution, metadata
 
 
-# ---------------------------------------------------------------------------
-# Predictive-information analysis
-# ---------------------------------------------------------------------------
-
-
-def _build_design_table(
+def _prepare_catalogue_inputs(
     dataset: event_inputs.EventDataset,
     spec: CatalogueSpec,
     source: BarkerSource,
     resolution_source: pd.DataFrame,
-    history_window_ka: float,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Build one catalogue's binned event and predictor table."""
+    """Prepare the predictors that do not depend on the history window."""
 
     binned, _, _ = event_inputs.build_binned_inputs(
         [dataset],
@@ -436,8 +421,21 @@ def _build_design_table(
     binned, metadata = add_edc_resolution_control(
         binned, spec, source.mapping, resolution_source
     )
-    binned = predictive.add_same_type_history(binned, history_window_ka)
-    return predictive.model_frame(binned), metadata
+    return binned, metadata
+
+
+def _prepare_predictive_inputs(
+    datasets: list[event_inputs.EventDataset],
+    source: BarkerSource,
+    resolution_source: pd.DataFrame,
+    specs: tuple[CatalogueSpec, ...],
+) -> list[tuple[pd.DataFrame, pd.DataFrame]]:
+    """Prepare each catalogue once before fitting history-window variants."""
+
+    return [
+        _prepare_catalogue_inputs(dataset, spec, source, resolution_source)
+        for dataset, spec in zip(datasets, specs, strict=True)
+    ]
 
 
 def _fit_models(frame: pd.DataFrame) -> list[poisson.FittedPoissonModel]:
@@ -488,6 +486,40 @@ def _build_likelihood_tests(
     return pd.DataFrame(rows)
 
 
+def _fit_predictive_tables(
+    prepared_inputs: list[tuple[pd.DataFrame, pd.DataFrame]],
+    history_window_ka: float,
+) -> PredictiveTables:
+    """Add event history and fit all prepared catalogues."""
+
+    binned_frames = []
+    model_summaries = []
+    likelihood_tests = []
+    coefficient_tables = []
+    resolution_metadata = []
+
+    for binned, metadata in prepared_inputs:
+        with_history = predictive.add_same_type_history(binned, history_window_ka)
+        model_frame = predictive.model_frame(with_history)
+        models = _fit_models(model_frame)
+
+        binned_frames.append(model_frame)
+        model_summaries.append(poisson.build_model_summary(models, model_frame))
+        likelihood_tests.append(
+            _build_likelihood_tests(models, model_frame, history_window_ka)
+        )
+        coefficient_tables.append(poisson.build_coefficient_table(models))
+        resolution_metadata.append(metadata)
+
+    return PredictiveTables(
+        binned_inputs=pd.concat(binned_frames, ignore_index=True),
+        model_summary=pd.concat(model_summaries, ignore_index=True),
+        likelihood_tests=pd.concat(likelihood_tests, ignore_index=True),
+        coefficients=pd.concat(coefficient_tables, ignore_index=True),
+        resolution_metadata=pd.concat(resolution_metadata, ignore_index=True),
+    )
+
+
 def build_predictive_tables(
     datasets: list[event_inputs.EventDataset],
     source: BarkerSource,
@@ -498,25 +530,13 @@ def build_predictive_tables(
 ) -> PredictiveTables:
     """Run the same predictive model for each age/support variant."""
 
-    binned, summaries, tests, coefficients, metadata = [], [], [], [], []
-    for dataset, spec in zip(datasets, specs, strict=True):
-        frame, resolution_meta = _build_design_table(
-            dataset, spec, source, resolution_source, history_window_ka
-        )
-        models = _fit_models(frame)
-        binned.append(frame)
-        summaries.append(poisson.build_model_summary(models, frame))
-        tests.append(_build_likelihood_tests(models, frame, history_window_ka))
-        coefficients.append(poisson.build_coefficient_table(models))
-        metadata.append(resolution_meta)
-
-    return PredictiveTables(
-        binned_inputs=pd.concat(binned, ignore_index=True),
-        model_summary=pd.concat(summaries, ignore_index=True),
-        likelihood_tests=pd.concat(tests, ignore_index=True),
-        coefficients=pd.concat(coefficients, ignore_index=True),
-        resolution_metadata=pd.concat(metadata, ignore_index=True),
+    prepared_inputs = _prepare_predictive_inputs(
+        datasets,
+        source,
+        resolution_source,
+        specs,
     )
+    return _fit_predictive_tables(prepared_inputs, history_window_ka)
 
 
 def build_analysis_summary(
@@ -532,6 +552,9 @@ def build_analysis_summary(
     rows = []
     for spec in specs:
         dataset_id, event_type, label = _catalogue_identity(spec, pick_column)
+        age_scale = (
+            "SpeleoAge" if spec.resolution_age_axis == "speleo_to_edc3" else "EDC3"
+        )
         ray = rayleigh_results.query(
             "driver == 'pre' and event_type == @event_type"
         ).iloc[0]
@@ -541,22 +564,22 @@ def build_analysis_summary(
         full = predictive_tables.model_summary.query(
             "dataset_id == @dataset_id and model_id == 'full'"
         ).iloc[0]
-        fit = predictive_tables.binned_inputs.query("dataset_id == @dataset_id")
+        model_bins = predictive_tables.binned_inputs.query("dataset_id == @dataset_id")
         rows.append(
             {
                 "dataset_id": dataset_id,
                 "dataset_label": label,
                 "event_definition": _definition_name(pick_column),
-                "age_scale": "SpeleoAge" if "speleo" in dataset_id else "EDC3",
+                "age_scale": age_scale,
                 "analysis_end_ka": spec.end_ka,
                 "n_rayleigh_events": int(ray["n_phase_events_used"]),
                 "rayleigh_mean_phase_deg": float(ray["mean_phase_deg"]),
                 "rayleigh_Rbar": float(ray["mean_resultant_length"]),
                 "rayleigh_p": float(ray["rayleigh_p"]),
-                "n_pi_bins": int(len(fit)),
+                "n_pi_bins": int(len(model_bins)),
                 "n_pi_events": int(test["n_events"]),
-                "pi_support_start_ka": float(fit["bin_start_ka"].min()),
-                "pi_support_end_ka": float(fit["bin_end_ka"].max()),
+                "pi_support_start_ka": float(model_bins["bin_start_ka"].min()),
+                "pi_support_end_ka": float(model_bins["bin_end_ka"].max()),
                 "history_window_ka": float(test["history_window_ka"]),
                 "phase_LR": float(test["LR_statistic"]),
                 "phase_nominal_p": float(test["LR_p_value"]),
@@ -622,19 +645,30 @@ def build_history_sensitivity(
 ) -> pd.DataFrame:
     """Check whether conditional phase results depend on the 5 ka history choice."""
 
+    events, datasets = build_event_catalogues(source.table)
+    prepared_inputs = _prepare_predictive_inputs(
+        datasets,
+        source,
+        resolution_source,
+        CATALOGUE_SPECS,
+    )
     rows = []
     for window in HISTORY_SENSITIVITY_KA:
-        analysis = (
-            primary
-            if np.isclose(window, MAIN_HISTORY_WINDOW_KA)
-            else run_core_analysis(
-                history_window_ka=window,
-                source=source,
-                resolution_source=resolution_source,
+        if np.isclose(window, MAIN_HISTORY_WINDOW_KA):
+            summary = primary.analysis_summary
+        else:
+            predictive_tables = _fit_predictive_tables(
+                prepared_inputs,
+                window,
             )
-        )
+            summary = build_analysis_summary(
+                events,
+                primary.rayleigh_results,
+                predictive_tables,
+                pick_column=VARIABLE_PICK,
+            )
         rows.append(
-            analysis.analysis_summary[
+            summary[
                 [
                     "dataset_id",
                     "history_window_ka",
@@ -692,13 +726,8 @@ def phase_response_curve(
     return phase_deg, relative_rate
 
 
-# ---------------------------------------------------------------------------
-# Figures: one input/catalogue audit and one direct statistical summary.
-# ---------------------------------------------------------------------------
-
-
 def _save_figure(fig: plt.Figure, stem: str) -> None:
-    """Save local PNG/PDF outputs without mutating the manuscript directory."""
+    """Save PNG and PDF copies of a figure."""
 
     OUT_FIG_DIR.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT_FIG_DIR / f"{stem}.png", dpi=300, bbox_inches="tight")
@@ -804,7 +833,6 @@ def plot_catalogue_audit(
     ax_age.grid(False)
 
     fig.subplots_adjust(left=0.10, right=0.98, top=0.96, bottom=0.08, hspace=0.48)
-    # Keep the established filename so it matches the retained output archive.
     _save_figure(fig, "fig03_barker_inputs_and_fitted_rates")
 
 
@@ -821,6 +849,10 @@ def _draw_rayleigh_panel(
     result = analysis.rayleigh_results.query(
         "driver == 'pre' and event_type == @spec.event_type"
     ).iloc[0]
+    n_events = int(result["n_phase_events_used"])
+    mean_phase = float(result["mean_phase_deg"])
+    mean_resultant = float(result["mean_resultant_length"])
+    p_value = float(result["rayleigh_p"])
 
     width = 2.0 * np.pi / 18.0
     shifted = np.mod(phases + width / 2.0, 2.0 * np.pi)
@@ -841,7 +873,7 @@ def _draw_rayleigh_panel(
         "",
         xy=(
             float(result["mean_phase_rad"]),
-            float(result["mean_resultant_length"]) * max_count,
+            mean_resultant * max_count,
         ),
         xytext=(float(result["mean_phase_rad"]), 0.0),
         arrowprops={"arrowstyle": "-|>", "lw": 1.6, "color": "#202020"},
@@ -854,9 +886,9 @@ def _draw_rayleigh_panel(
     axis.grid(color="0.82", alpha=0.45, lw=0.6)
     axis.set_title(
         f"{spec.short_label}\n"
-        rf"Rayleigh N={int(result['n_phase_events_used'])}, $\bar{{R}}$={result['mean_resultant_length']:.2f}, "
-        f"p={_format_p(float(result['rayleigh_p']))}\n"
-        f"descriptive mean={result['mean_phase_deg']:.1f}°",
+        rf"Rayleigh N={n_events}, $\bar{{R}}$={mean_resultant:.2f}, "
+        f"p={_format_p(p_value)}\n"
+        f"descriptive mean={mean_phase:.1f}°",
         fontsize=9.2,
         pad=24,
     )
@@ -867,10 +899,10 @@ def _phase_coefficients(
 ) -> tuple[float, float]:
     """Return full-model sine and cosine coefficients for one catalogue."""
 
-    rows = analysis.coefficients.query(
+    coefficients = analysis.coefficients.query(
         "dataset_id == @dataset_id and model_id == 'full'"
     )
-    values = rows.set_index("term")["beta"]
+    values = coefficients.set_index("term")["beta"]
     return float(values["pre_phase_sin"]), float(values["pre_phase_cos"])
 
 
@@ -902,9 +934,18 @@ def plot_phase_results(variable: AnalysisTables, fixed: AnalysisTables) -> None:
                 label=label,
             )
 
-        main = variable.analysis_summary.query("dataset_id == @variable_id").iloc[0]
-        sensitivity = fixed.analysis_summary.query("dataset_id == @fixed_id").iloc[0]
-        axis.axvline(main["phase_preferred_deg"], color=spec.color, lw=0.8, alpha=0.6)
+        variable_result = variable.analysis_summary.query(
+            "dataset_id == @variable_id"
+        ).iloc[0]
+        fixed_result = fixed.analysis_summary.query("dataset_id == @fixed_id").iloc[0]
+        n_events = int(variable_result["n_pi_events"])
+        p_value = _format_p(float(variable_result["phase_nominal_p"]))
+        bits_per_event = float(variable_result["phase_bits_per_event"])
+        preferred_phase = float(variable_result["phase_preferred_deg"])
+        rate_ratio = float(variable_result["phase_rate_ratio_max_min"])
+        fixed_p_value = _format_p(float(fixed_result["phase_nominal_p"]))
+
+        axis.axvline(preferred_phase, color=spec.color, lw=0.8, alpha=0.6)
         axis.axhline(1.0, color="0.65", lw=0.7)
         axis.set_xlim(0.0, 360.0)
         axis.set_xticks([0.0, 90.0, 180.0, 270.0, 360.0])
@@ -917,10 +958,10 @@ def plot_phase_results(variable: AnalysisTables, fixed: AnalysisTables) -> None:
             0.02,
             0.98,
             "Variable: "
-            f"N={int(main['n_pi_events'])}, nominal p={_format_p(main['phase_nominal_p'])}\n"
-            f"{main['phase_bits_per_event']:.3f} bits/event; "
-            f"φ={main['phase_preferred_deg']:.1f}°; max/min={main['phase_rate_ratio_max_min']:.2f}\n"
-            f"Fixed-threshold sensitivity: p={_format_p(sensitivity['phase_nominal_p'])}",
+            f"N={n_events}, nominal p={p_value}\n"
+            f"{bits_per_event:.3f} bits/event; "
+            f"φ={preferred_phase:.1f}°; max/min={rate_ratio:.2f}\n"
+            f"Fixed-threshold sensitivity: p={fixed_p_value}",
             transform=axis.transAxes,
             ha="left",
             va="top",
@@ -940,13 +981,7 @@ def plot_phase_results(variable: AnalysisTables, fixed: AnalysisTables) -> None:
         fontweight="bold",
     )
     fig.subplots_adjust(left=0.07, right=0.98, top=0.90, bottom=0.08)
-    # Keep the established filename so it matches the retained output archive.
     _save_figure(fig, "fig02_barker_predictive_likelihood_tests")
-
-
-# ---------------------------------------------------------------------------
-# Output and command-line workflow
-# ---------------------------------------------------------------------------
 
 
 def write_outputs(
@@ -954,18 +989,25 @@ def write_outputs(
     event_definition_sensitivity: pd.DataFrame,
     history_sensitivity: pd.DataFrame,
 ) -> None:
-    """Write compact, audit-friendly tables for the primary analysis."""
+    """Save the results that are useful beyond this run."""
 
     OUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    event_columns = [
+        "source_row",
+        "event_index",
+        "dataset_id",
+        "event_label",
+        "event_age_ka",
+        "event_definition",
+        "age_column",
+        "pick_column",
+        "analysis_end_ka",
+        "source",
+    ]
     outputs = {
-        "barker2011_event_catalogues_used.csv": primary.events,
-        "barker2011_event_orbital_phases.csv": primary.event_phases,
-        "barker2011_rayleigh_phase_results.csv": primary.rayleigh_results,
-        "barker2011_binned_predictive_inputs.csv": primary.binned_inputs,
-        "barker2011_predictive_model_summary.csv": primary.model_summary,
+        "barker2011_event_catalogues_used.csv": primary.events[event_columns],
         "barker2011_predictive_likelihood_tests.csv": primary.likelihood_tests,
         "barker2011_predictive_coefficients.csv": primary.coefficients,
-        "barker2011_edc_resolution_scale_summary.csv": primary.resolution_metadata,
         "barker2011_analysis_summary.csv": primary.analysis_summary,
         "barker2011_event_definition_sensitivity.csv": event_definition_sensitivity,
         "barker2011_history_window_sensitivity.csv": history_sensitivity,
@@ -973,40 +1015,89 @@ def write_outputs(
     for filename, frame in outputs.items():
         frame.to_csv(OUT_DATA_DIR / filename, index=False)
 
-    pd.DataFrame(
-        [
-            {
-                "run_name": RUN_NAME,
-                "source": str(BARKER_XLS.relative_to(PROJECT_ROOT)),
-                "resolution_source": str(JOUZEL_TXT.relative_to(PROJECT_ROOT)),
-                "primary_catalogue": CATALOGUE_SPECS[0].dataset_id,
-                "bin_width_ka": BIN_WIDTH_KA,
-                "history_window_ka": MAIN_HISTORY_WINDOW_KA,
-                "event_definition": VARIABLE_PICK,
-                "lr_p_value_method": "nominal asymptotic chi-square",
-                "age_uncertainty_propagated": False,
-                "catalogue_variants_independent": False,
-                "note": (
-                    "Baseline controls same-type history and local EDC age spacing. "
-                    "Barker variable threshold already adjusts partly for resolution."
-                ),
-            }
-        ]
-    ).to_csv(OUT_DATA_DIR / "parameters.csv", index=False)
-
-    # These large/obsolete files belonged to the previous, redundant rate plot.
-    stale_files = [
-        OUT_DATA_DIR / "barker2011_fitted_rates.csv",
-        OUT_FIG_DIR / "fig01_barker_precession_rayleigh_polar.png",
-        OUT_FIG_DIR / "fig01_barker_precession_rayleigh_polar.pdf",
-        OUT_FIG_DIR / "fig01_barker_catalogue_audit.png",
-        OUT_FIG_DIR / "fig01_barker_catalogue_audit.pdf",
-        OUT_FIG_DIR / "fig02_barker_phase_results.png",
-        OUT_FIG_DIR / "fig02_barker_phase_results.pdf",
+    parameter_rows = [
+        ("analysis", "run_name", RUN_NAME, "", "canonical audited analysis"),
+        (
+            "input",
+            "event_source",
+            str(BARKER_XLS.relative_to(PROJECT_ROOT)),
+            "",
+            "Barker Supplementary Table S3",
+        ),
+        (
+            "input",
+            "resolution_source",
+            str(JOUZEL_TXT.relative_to(PROJECT_ROOT)),
+            "",
+            "local EDC3 sample spacing",
+        ),
+        ("analysis", "bin_width", BIN_WIDTH_KA, "Kyr", "Poisson event bins"),
+        (
+            "analysis",
+            "history_window",
+            MAIN_HISTORY_WINDOW_KA,
+            "Kyr",
+            "older events in the same catalogue",
+        ),
+        (
+            "analysis",
+            "event_definition",
+            VARIABLE_PICK,
+            "",
+            "primary Barker pick column",
+        ),
+        (
+            "analysis",
+            "p_value_method",
+            "nominal asymptotic chi-square LRT",
+            "",
+            "not resampling-calibrated",
+        ),
+        (
+            "analysis",
+            "age_uncertainty_propagated",
+            False,
+            "",
+            "point ages used",
+        ),
+        (
+            "interpretation",
+            "catalogue_variants_independent",
+            False,
+            "",
+            "overlapping versions of the same events",
+        ),
     ]
-    for path in stale_files:
-        if path.exists():
-            path.unlink()
+    for row in primary.resolution_metadata.itertuples(index=False):
+        parameter_rows.extend(
+            [
+                (
+                    row.dataset_id,
+                    "resolution_age_axis",
+                    row.resolution_age_axis,
+                    "",
+                    "age scale used for the EDC spacing control",
+                ),
+                (
+                    row.dataset_id,
+                    "mapping_extrapolated_bins",
+                    row.n_mapping_extrapolated_bins,
+                    "bins",
+                    "SpeleoAge-to-EDC3 mapping",
+                ),
+                (
+                    row.dataset_id,
+                    "resolution_extrapolated_bins",
+                    row.n_resolution_extrapolated_bins,
+                    "bins",
+                    "EDC spacing interpolation",
+                ),
+            ]
+        )
+    pd.DataFrame(
+        parameter_rows,
+        columns=["scope", "parameter", "value", "unit", "note"],
+    ).to_csv(OUT_DATA_DIR / "parameters_and_provenance.csv", index=False)
 
 
 def print_summary(

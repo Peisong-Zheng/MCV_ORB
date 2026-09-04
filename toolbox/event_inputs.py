@@ -8,12 +8,11 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from scipy.signal import find_peaks
 
 from toolbox.data_checks import require_unique_values
+from toolbox.orbital_phase import build_phase_series, evaluate_phase_at_ages
 
 _WARNED_LINEAR_EXTRAPOLATION_CONTEXTS: set[str] = set()
-_WARNED_EDGE_FILL_CONTEXTS: set[str] = set()
 
 
 @dataclass
@@ -49,7 +48,9 @@ def find_column(columns: pd.Index, *needles: str) -> str:
     raise ValueError(f"Cannot find a column containing {needles}.")
 
 
-def clean_series(age_ka: np.ndarray, value: np.ndarray, *, context: str = "input series") -> tuple[np.ndarray, np.ndarray]:
+def clean_series(
+    age_ka: np.ndarray, value: np.ndarray, *, context: str = "input series"
+) -> tuple[np.ndarray, np.ndarray]:
     """Drop non-finite pairs, require unique ages, and return age-sorted arrays."""
 
     age_ka = np.asarray(age_ka, dtype=float)
@@ -61,7 +62,9 @@ def clean_series(age_ka: np.ndarray, value: np.ndarray, *, context: str = "input
     return frame["age_ka"].to_numpy(dtype=float), frame["value"].to_numpy(dtype=float)
 
 
-def scale_to_zero_mean_range_one(values: np.ndarray) -> tuple[np.ndarray, float, float, float, float]:
+def scale_to_zero_mean_range_one(
+    values: np.ndarray,
+) -> tuple[np.ndarray, float, float, float, float]:
     """Center a predictor and scale it by its observed range."""
 
     values = np.asarray(values, dtype=float)
@@ -74,7 +77,9 @@ def scale_to_zero_mean_range_one(values: np.ndarray) -> tuple[np.ndarray, float,
     return (values - mean) / value_range, mean, vmin, vmax, value_range
 
 
-def require_interpolation_coverage(target_age_ka: np.ndarray, source_age_ka: np.ndarray, *, context: str) -> None:
+def require_interpolation_coverage(
+    target_age_ka: np.ndarray, source_age_ka: np.ndarray, *, context: str
+) -> None:
     """Raise if interpolation targets extend beyond the source age range."""
 
     target = np.asarray(target_age_ka, dtype=float)
@@ -134,7 +139,9 @@ def interpolate_with_linear_extrapolation(
 
     right = target > source_age[-1]
     if np.any(right):
-        slope = (source_value[-1] - source_value[-2]) / (source_age[-1] - source_age[-2])
+        slope = (source_value[-1] - source_value[-2]) / (
+            source_age[-1] - source_age[-2]
+        )
         out[right] = source_value[-1] + slope * (target[right] - source_age[-1])
 
     if np.any(extrapolated) and context not in _WARNED_LINEAR_EXTRAPOLATION_CONTEXTS:
@@ -148,74 +155,14 @@ def interpolate_with_linear_extrapolation(
     return out, extrapolated
 
 
-def interpolate_with_edge_fill(
-    target_age_ka: np.ndarray,
-    source_age_ka: np.ndarray,
-    source_value: np.ndarray,
-    *,
-    context: str,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Interpolate and explicitly fill edge targets with nearest endpoint values.
-
-    This preserves the behavior that ``np.interp`` would otherwise apply
-    silently, but records the operation and warns the caller. It is appropriate
-    for nuisance controls such as local sampling resolution when a bin center
-    falls just outside the last observed age.
-    """
-
-    target = np.asarray(target_age_ka, dtype=float)
-    source_age = np.asarray(source_age_ka, dtype=float)
-    source_value = np.asarray(source_value, dtype=float)
-    if len(source_age) < 2:
-        raise ValueError(f"{context} needs at least two source ages for interpolation.")
-    out = np.interp(target, source_age, source_value)
-    edge_filled = (target < source_age[0]) | (target > source_age[-1])
-    if np.any(edge_filled) and context not in _WARNED_EDGE_FILL_CONTEXTS:
-        _WARNED_EDGE_FILL_CONTEXTS.add(context)
-        warnings.warn(
-            f"{context} edge-filled {int(edge_filled.sum())} target ages beyond "
-            f"{source_age[0]:.3f}-{source_age[-1]:.3f} kyr.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-    return out, edge_filled
-
-
-def load_event_catalogues(
-    dataset_settings: dict,
-    *,
-    analysis_start_ka: float,
-    analysis_end_ka: float,
-    project_root: Path | None = None,
-) -> list[EventDataset]:
-    """Load all event catalogues described by a dataset-settings dictionary."""
-
-    event_catalogues: list[EventDataset] = []
-    for dataset_id, settings in dataset_settings.items():
-        path = Path(settings["path"])
-        frame = pd.read_csv(path, encoding="utf-8-sig")
-        if "start_time_ka_BP" not in frame.columns:
-            raise ValueError(f"{path} must contain start_time_ka_BP.")
-
-        ages = pd.to_numeric(frame["start_time_ka_BP"], errors="coerce").dropna().to_numpy(dtype=float)
-        ages = np.sort(ages[(ages >= analysis_start_ka) & (ages <= analysis_end_ka)])
-        event_catalogues.append(
-            EventDataset(
-                dataset_id=dataset_id,
-                label=settings["label"],
-                color=settings["color"],
-                ages_ka=ages,
-                source=source_label(path, project_root),
-            )
-        )
-
-    return event_catalogues
-
-
-def make_bin_edges(analysis_start_ka: float, analysis_end_ka: float, bin_width_ka: float) -> np.ndarray:
+def make_bin_edges(
+    analysis_start_ka: float, analysis_end_ka: float, bin_width_ka: float
+) -> np.ndarray:
     """Return rounded bin edges for a fixed-width age grid."""
 
-    edges = np.arange(analysis_start_ka, analysis_end_ka + bin_width_ka / 2.0, bin_width_ka)
+    edges = np.arange(
+        analysis_start_ka, analysis_end_ka + bin_width_ka / 2.0, bin_width_ka
+    )
     edges[-1] = analysis_end_ka
     return np.round(edges, 10)
 
@@ -231,7 +178,9 @@ def load_lr04(
     raw = pd.read_excel(path)
     age_col = find_column(raw.columns, "time")
     value_col = find_column(raw.columns, "d18o")
-    age, value = clean_series(raw[age_col].to_numpy(), raw[value_col].to_numpy(), context="LR04 series")
+    age, value = clean_series(
+        raw[age_col].to_numpy(), raw[value_col].to_numpy(), context="LR04 series"
+    )
     interpolated = interpolate_checked(centers_ka, age, value, context="LR04 series")
     scaled, mean, vmin, vmax, value_range = scale_to_zero_mean_range_one(interpolated)
     meta = {
@@ -276,99 +225,53 @@ def load_co2(
     return scaled, {"raw": interpolated, "meta": meta}
 
 
-def load_precession_series(path: Path, *, project_root: Path | None = None) -> pd.DataFrame:
-    """Load the raw precession index with ages in kyr BP."""
-
-    raw = pd.read_csv(path, sep=r"\s+", header=None, names=["age_raw_ka", "value"])
-    age, value = clean_series(
-        -raw["age_raw_ka"].to_numpy(),
-        raw["value"].to_numpy(),
-        context="precession index series",
-    )
-    return pd.DataFrame({"age_ka": age, "precession_index": value})
-
-
-def enforce_alternating_extrema(extrema: pd.DataFrame) -> pd.DataFrame:
-    """Keep a clean min/max/min/max sequence for phase anchoring."""
-
-    rows: list[pd.Series] = []
-    for _, row in extrema.sort_values("age_ka").iterrows():
-        if not rows:
-            rows.append(row.copy())
-            continue
-        prev = rows[-1]
-        if row["extremum_type"] != prev["extremum_type"]:
-            rows.append(row.copy())
-            continue
-        if row["extremum_type"] == "maximum":
-            if float(row["precession_index"]) > float(prev["precession_index"]):
-                rows[-1] = row.copy()
-        else:
-            if float(row["precession_index"]) < float(prev["precession_index"]):
-                rows[-1] = row.copy()
-    out = pd.DataFrame(rows).reset_index(drop=True)
-    out["half_cycle_index"] = np.arange(len(out))
-    return out
-
-
 def build_precession_phase(
     centers_ka: np.ndarray,
     precession_path: Path,
     *,
     project_root: Path | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Convert the raw precession index into circular phase at bin centers.
+    """Evaluate the shared precession phase on an event-bin grid."""
 
-    Minima of the precession index are assigned phase 0 and maxima are assigned
-    phase pi. Between extrema, the phase is linearly interpolated in unwrapped
-    radians, then wrapped and represented as sine/cosine columns.
-    """
-
-    pre = load_precession_series(precession_path, project_root=project_root)
-    values = pre["precession_index"].to_numpy(dtype=float)
-    max_idx, _ = find_peaks(values)
-    min_idx, _ = find_peaks(-values)
-
-    maxima = pre.iloc[max_idx].copy()
-    maxima["extremum_type"] = "maximum"
-    minima = pre.iloc[min_idx].copy()
-    minima["extremum_type"] = "minimum"
-    extrema = pd.concat([minima, maxima], ignore_index=True).sort_values("age_ka")
-    extrema = enforce_alternating_extrema(extrema)
-    if len(extrema) < 3:
-        raise ValueError("Too few precession extrema detected.")
-
-    first_phase = 0.0 if extrema.loc[0, "extremum_type"] == "minimum" else np.pi
-    extrema["anchor_phase_unwrapped_rad"] = first_phase + np.arange(len(extrema), dtype=float) * np.pi
-    extrema["anchor_phase_rad"] = np.mod(extrema["anchor_phase_unwrapped_rad"], 2.0 * np.pi)
-    extrema["anchor_phase_deg"] = np.mod(np.degrees(extrema["anchor_phase_rad"]), 360.0)
-    extrema.loc[np.isclose(extrema["anchor_phase_deg"], 360.0), "anchor_phase_deg"] = 0.0
-
-    phase_unwrapped, phase_extrapolated = interpolate_with_linear_extrapolation(
-        centers_ka,
-        extrema["age_ka"].to_numpy(dtype=float),
-        extrema["anchor_phase_unwrapped_rad"].to_numpy(dtype=float),
-        context="precession phase anchors",
+    phase_product = build_phase_series(
+        "pre",
+        {
+            "path": precession_path,
+            "label": "Precession index",
+            "source": source_label(precession_path, project_root),
+        },
     )
-    phase_rad = np.mod(phase_unwrapped, 2.0 * np.pi)
+    phases = evaluate_phase_at_ages(centers_ka, phase_product.extrema)
     pre_at_center = interpolate_checked(
         centers_ka,
-        pre["age_ka"].to_numpy(dtype=float),
-        pre["precession_index"].to_numpy(dtype=float),
+        phase_product.series["age_ka"].to_numpy(dtype=float),
+        phase_product.series["value"].to_numpy(dtype=float),
         context="precession index series",
     )
     phase_table = pd.DataFrame(
         {
             "age_ka": centers_ka,
             "precession_index": pre_at_center,
-            "pre_phase_unwrapped_rad": phase_unwrapped,
-            "pre_phase_rad": phase_rad,
-            "pre_phase_deg": np.degrees(phase_rad),
-            "pre_phase_sin": np.sin(phase_rad),
-            "pre_phase_cos": np.cos(phase_rad),
-            "pre_phase_extrapolated": phase_extrapolated,
+            "pre_phase_unwrapped_rad": phases["phase_unwrapped_rad"],
+            "pre_phase_rad": phases["phase_rad"],
+            "pre_phase_deg": phases["phase_deg"],
+            "pre_phase_sin": np.sin(phases["phase_rad"]),
+            "pre_phase_cos": np.cos(phases["phase_rad"]),
+            "pre_phase_extrapolated": phases["phase_extrapolated"],
         }
     )
+    extrema = phase_product.extrema.rename(columns={"value": "precession_index"})
+    extrema = extrema[
+        [
+            "age_ka",
+            "precession_index",
+            "extremum_type",
+            "half_cycle_index",
+            "anchor_phase_unwrapped_rad",
+            "anchor_phase_rad",
+            "anchor_phase_deg",
+        ]
+    ]
     return phase_table, extrema
 
 
@@ -433,7 +336,9 @@ def build_binned_inputs(
                 "mean": float(np.nanmean(base["pre_phase_sin"])),
                 "min": float(np.nanmin(base["pre_phase_sin"])),
                 "max": float(np.nanmax(base["pre_phase_sin"])),
-                "range": float(np.nanmax(base["pre_phase_sin"]) - np.nanmin(base["pre_phase_sin"])),
+                "range": float(
+                    np.nanmax(base["pre_phase_sin"]) - np.nanmin(base["pre_phase_sin"])
+                ),
             },
             {
                 "forcing_id": "pre_phase_cos",
@@ -442,7 +347,9 @@ def build_binned_inputs(
                 "mean": float(np.nanmean(base["pre_phase_cos"])),
                 "min": float(np.nanmin(base["pre_phase_cos"])),
                 "max": float(np.nanmax(base["pre_phase_cos"])),
-                "range": float(np.nanmax(base["pre_phase_cos"]) - np.nanmin(base["pre_phase_cos"])),
+                "range": float(
+                    np.nanmax(base["pre_phase_cos"]) - np.nanmin(base["pre_phase_cos"])
+                ),
             },
         ]
     )

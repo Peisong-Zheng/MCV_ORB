@@ -1,0 +1,19 @@
+scope,parameter,value,unit,note
+analysis,run_name,Barker2011_do_predictive_information_audited,,canonical audited analysis
+input,event_source,data/raw/Barker et al-2011-SOM.xls,,Barker Supplementary Table S3
+input,resolution_source,"data/raw/Jouzel-etal-2007-Science-Orbital and Millennial Antarctic Climate Variability over the Past 800,000 Years.txt",,local EDC3 sample spacing
+analysis,bin_width,0.2,Kyr,Poisson event bins
+analysis,history_window,5.0,Kyr,older events in the same catalogue
+analysis,event_definition,DO pick variable threshold,,primary Barker pick column
+analysis,p_value_method,nominal asymptotic chi-square LRT,,not resampling-calibrated
+analysis,age_uncertainty_propagated,False,,point ages used
+interpretation,catalogue_variants_independent,False,,overlapping versions of the same events
+barker_variable_threshold_edc3_0_640,resolution_age_axis,edc3,,age scale used for the EDC spacing control
+barker_variable_threshold_edc3_0_640,mapping_extrapolated_bins,0,bins,SpeleoAge-to-EDC3 mapping
+barker_variable_threshold_edc3_0_640,resolution_extrapolated_bins,0,bins,EDC spacing interpolation
+barker_variable_threshold_edc3_0_800,resolution_age_axis,edc3,,age scale used for the EDC spacing control
+barker_variable_threshold_edc3_0_800,mapping_extrapolated_bins,0,bins,SpeleoAge-to-EDC3 mapping
+barker_variable_threshold_edc3_0_800,resolution_extrapolated_bins,0,bins,EDC spacing interpolation
+barker_variable_threshold_speleo_0_400,resolution_age_axis,speleo_to_edc3,,age scale used for the EDC spacing control
+barker_variable_threshold_speleo_0_400,mapping_extrapolated_bins,25,bins,SpeleoAge-to-EDC3 mapping
+barker_variable_threshold_speleo_0_400,resolution_extrapolated_bins,0,bins,EDC spacing interpolation

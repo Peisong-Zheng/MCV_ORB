@@ -1,8 +1,10 @@
 # Barker 2011 Predictive-Information Audit and Refactor Implementation Plan
 
-> Archived comparison version: the implementation now lives in
-> `Barker2011_do_predictive_information_audited.py`; the unsuffixed script was
-> restored to its preceding version at the user's request.
+> **Archived plan (superseded).** The current implementation lives in
+> `Barker2011_do_predictive_information_audited.py`; the unsuffixed filename is
+> now a compatibility wrapper for that script. Legacy output paths listed
+> below have been removed. See the root `README.md` for current run commands
+> and retained outputs.
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 

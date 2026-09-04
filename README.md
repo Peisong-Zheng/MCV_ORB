@@ -1,181 +1,142 @@
 # MCV_ORB
 
-Minimal workspace for studying whether millennial-scale climate variability
-(MCV) depends on orbital precession phase. This workspace was separated from
-the much larger `DO_warming` research archive on 2026-09-03.
+Research workspace for testing whether millennial-scale climate variability
+(MCV) depends on orbital precession phase. The repository contains three
+related lines of evidence:
 
-## Read this first
+1. published NGRIP GI/GS boundaries from Rasmussen et al. (2014);
+2. the synthetic Greenland D-O warming catalogues of Barker et al. (2011); and
+3. a provisional MIS 6 speleothem warming chronology assembled from
+   Fohlmeister et al. (2023), Burns et al. (2019), and Held et al. (2024).
 
-The retained evidence base contains only:
+The MIS 6 workflow is deliberately event-based. Multiple proxy observations
+of one transition improve its identification or age estimate; they do not
+increase the number of independent climate events.
 
-1. published NGRIP Greenland Interstadial/Greenland Stadial boundaries from
-   Rasmussen et al. (2014); and
-2. the Barker et al. (2011) synthetic Greenland D-O warming catalogues.
-
-Rousseau/Cheng KS catalogues, Chinese speleothem KS sensitivity experiments,
-CH4 experiments, the old manuscript and historical archives are deliberately
-absent. They were not forgotten: detector-aware experiments showed that a
-strong slow background can interact with a slope-sensitive KS detector and
-produce apparent orbital-phase dependence. The new project should therefore
-start from published event chronologies rather than from those KS detections.
-
-The present result is promising but not a causal demonstration. NGRIP is a
-short direct record; Barker is long but synthetic. Their conditional PI phase
-directions agree, but their limitations are complementary rather than absent.
-
-## Scientific question and phase convention
+## Scientific question
 
 The working question is:
 
-> Does precession phase add predictive information about the occurrence rate
-> of MCV transitions after event history and slow climate state are included?
+> Does precession phase add predictive information about MCV transition rates
+> after event history and slow climate state are included?
 
-The shared phase convention is:
+The phase convention is shared by all analyses:
 
-- precession-index minimum = 0 degrees;
-- precession-index maximum = 180 degrees;
-- approximately 300--360 degrees is the approach to a precession minimum and
-  broadly corresponds to high Northern Hemisphere summer insolation.
+- precession-index minimum = 0°;
+- precession-index maximum = 180°;
+- roughly 300–360° is the approach to a precession minimum and broadly
+  corresponds to high Northern Hemisphere summer insolation.
 
-The code reports two different tests:
+Two statistics answer different questions:
 
-- **Rayleigh** tests unconditional non-uniformity of event phases;
-- **conditional PI** compares nested 0.2 ka binned Poisson event-rate models.
-  The reduced model contains the catalogue-specific 5 ka event-history term,
-  LR04 and CO2; the full model adds sine and cosine of precession phase.
+- **Rayleigh** tests unconditional non-uniformity of event phases.
+- **Conditional PI** compares nested binned Poisson event-rate models. The
+  reduced model contains the catalogue-specific 5 Kyr event-history term,
+  LR04, and CO2; the full model adds sine and cosine of precession phase.
 
-Rayleigh and PI answer different questions. Their p values are not expected to
-match automatically.
+NGRIP and MIS 6 do not use a proxy-resolution covariate. NGRIP boundaries are
+high-resolution published stratigraphic ages, and resolution was deliberately
+excluded from the simplified MIS 6 test. The Barker model retains local EDC
+sampling resolution because its event catalogue was detected from a synthetic
+record whose resolution varies markedly through time.
 
 ## Current results
 
 ### NGRIP
 
-The retained Rasmussen Table 2 catalogue contains 34 GI starts (warming) and
-35 GS starts (cooling). Lettered source labels and parent-selection notes are
-preserved in that catalogue, but subevents are not counted independently.
-Treating all 69 GI/GS starts as one MCV catalogue is a pooled view of the same
-boundaries, not a third independent dataset.
+The retained catalogue contains 34 GI starts and 35 GS starts. Lettered source
+events are collapsed to one parent onset.
 
-| Catalogue | Rayleigh N | Rayleigh phase | Rayleigh p | PI N | PI peak | LR p | bits/event | max/min rate | Delta AICc |
+| Catalogue | Rayleigh N | Rayleigh phase | Rayleigh p | PI N | PI peak | LR p | bits/event | max/min rate | ΔAICc |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| GI warming | 34 | 356.5 deg | 0.224 | 33 | 327.7 deg | 0.0439 | 0.137 | 4.25 | -2.16 |
-| GS cooling | 35 | 354.2 deg | 0.407 | 34 | 332.0 deg | 0.0630 | 0.117 | 3.57 | -1.44 |
-| All transitions | 69 | 355.5 deg | 0.0935 | 67 | 341.2 deg | 0.0295 | 0.0759 | 2.84 | -2.96 |
+| GI warming | 34 | 356.5° | 0.224 | 33 | 327.7° | 0.0439 | 0.137 | 4.25 | -2.16 |
+| GS cooling | 35 | 354.2° | 0.407 | 34 | 332.0° | 0.0630 | 0.117 | 3.57 | -1.44 |
+| All transitions | 69 | 355.5° | 0.0935 | 67 | 341.2° | 0.0295 | 0.0759 | 2.84 | -2.96 |
 
-None of the Rayleigh tests is significant at 0.05. Warming and the pooled
-catalogue show nominal conditional PI support; cooling points in the same
-direction but is not nominally significant. The shared direction is more
-consistent with a broad MCV activity sector than with opposite warming/cooling
-precession phases.
+The pooled catalogue reuses the same GI/GS boundaries and is not a third
+independent dataset.
 
 ### Barker et al. (2011)
 
-The primary variable-threshold catalogues are overlapping representations of
-the same Supplementary Table S3 events. Do not treat them as independent
-replications.
+The three primary variants are overlapping representations of Supplementary
+Table S3, not independent replications.
 
-| Variant | Rayleigh N | Rayleigh p | PI N | PI peak | LR p | bits/event | max/min rate | Delta AICc |
+| Variant | Rayleigh N | Rayleigh p | PI N | PI peak | LR p | bits/event | max/min rate | ΔAICc |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| EDC3, 0--640 ka | 104 | 0.149 | 103 | 328.6 deg | 0.0182 | 0.0562 | 2.29 | -4.00 |
-| EDC3, 0--800 ka | 126 | 0.212 | 125 | 330.9 deg | 0.0325 | 0.0395 | 1.99 | -2.84 |
-| SpeleoAge, 0--400 ka | 70 | 0.0795 | 69 | 333.4 deg | 0.0203 | 0.0814 | 2.86 | -3.76 |
+| EDC3, 0–640 Kyr | 104 | 0.149 | 103 | 328.6° | 0.0182 | 0.0562 | 2.29 | -4.00 |
+| EDC3, 0–800 Kyr | 126 | 0.212 | 125 | 330.9° | 0.0325 | 0.0395 | 1.99 | -2.84 |
+| SpeleoAge, 0–400 Kyr | 70 | 0.0795 | 69 | 333.4° | 0.0203 | 0.0814 | 2.86 | -3.76 |
 
-Again, unconditional Rayleigh tests do not reject uniformity, while the
-conditional PI comparison points consistently toward approximately 329--333
-degrees. Event-definition sensitivity is important: fixed-threshold EDC3
-catalogues give weaker nominal PI p values of 0.072 and 0.141; the fixed
-SpeleoAge result gives p = 0.043. At a 20 ka event-history window the two EDC3
-variable-threshold results weaken to p = 0.058 and 0.098.
+Fixed-threshold catalogues and alternative history windows remain sensitivity
+tests. The SpeleoAge chronology is partly tied to Chinese speleothems and
+therefore has an additional circularity risk.
 
-### Joint interpretation
+### Provisional MIS 6 chronology
 
-The defensible statement is:
+The current catalogue contains 21 warming events from 132.5 to 196.5 Kyr BP:
+16 MF events labelled by Fohlmeister et al. (2023), followed by selected
+Huagapo and Sofular events labelled by Held et al. (2024).
 
-> NGRIP and Barker conditional event-rate models independently favour a broad
-> sector near precession minimum / high Northern Hemisphere summer insolation.
+| Rayleigh N | Rayleigh phase | Rayleigh p | PI N | PI peak | LR p | bits/event | max/min rate | ΔAICc |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 21 | 320.6° | 0.206 | 20 | 318.3° | 0.0326 | 0.247 | 7.74 | -2.69 |
 
-Do not strengthen that sentence to “precession is an established independent
-cause.” The current likelihood-ratio p values are nominal and asymptotic; event
-age uncertainty, age-model mismatch and the full model-selection history are
-not yet propagated. Barker is a synthetic Greenland reconstruction, and its
-SpeleoAge version is tied to Chinese speleothem chronology.
+The A+ age experiment combines a record-level chronology shift with one of
+nine detector settings and rejects proposals that reverse event order. Across
+10,000 accepted sequences, the median PI is 0.237 bits/event; 67.47% retain a
+nominal LRT p < 0.05 and 96.73% retain ΔAICc < 0. These fractions describe
+sensitivity to the adopted age model and are not new Monte Carlo p values.
 
-## Directory structure
+The MIS 6 chronology remains provisional: its event-definition distribution
+is a parameter-sensitivity proxy, Sofular uses a simple local age-error
+approximation, and cross-record synchronization error is intentionally absent.
+
+## Project layout
 
 ```text
 MCV_ORB/
 ├── README.md
-├── requirements.txt
-├── Barker2011_do_predictive_information.py
+├── Speleothem_published_event_plot.py
+├── MIS6_composite_event_record.py
+├── MIS6_event_age_uncertainty.py
+├── MIS6_event_phase_analysis.py
+├── MIS6_event_age_PI_sensitivity.py
 ├── Barker2011_do_predictive_information_audited.py
+├── Barker2011_do_predictive_information.py   # compatibility entry point
 ├── NGRIP/
-│   ├── README.md
-│   ├── ngrip_event_phase_analysis.py
-│   ├── data/processed/
-│   └── figures/
-├── data/
-│   ├── raw/
-│   └── processed/
+├── data/{raw,processed}/
 ├── figures/
+├── experiment_note/
 ├── toolbox/
-├── tests/
-├── docs/plans/
-└── references/
+└── tests/
 ```
 
-The source-level `toolbox/` is complete; caches are excluded. Generated Barker
-tables and figures are retained in both legacy and audited directories. NGRIP
-keeps the collapsed event catalogue used by the analysis, its result tables,
-and all three figures in PNG and PDF formats.
+Scripts remain at the project root so each experiment is easy to open and
+read. Repeated numerical operations live in `toolbox/`; paper-specific event
+selection and figure composition stay in their research scripts.
 
-## Canonical files
+## Canonical inputs
 
-- `Barker2011_do_predictive_information_audited.py`: preferred Barker analysis.
-- `Barker2011_do_predictive_information.py`: earlier version retained only for
-  direct comparison with work completed before the audit.
-- `NGRIP/data/processed/ngrip_warming_cooling_starts.csv`: canonical retained
-  NGRIP event input; the one-off extraction code and intermediate table are not
-  required by the analysis.
-- `NGRIP/ngrip_event_phase_analysis.py`: warming, cooling and pooled NGRIP
-  Rayleigh/PI analysis.
-- `toolbox/orbital_phase.py`: phase construction, sampling, Rayleigh statistics
-  and reusable phase plots.
-- `toolbox/event_inputs.py`: LR04, CO2 and orbital interpolation plus binned
-  event inputs.
-- `toolbox/event_process.py`: shared event-history terms and complete-history
-  exposure selection.
-- `toolbox/poisson.py`: Poisson likelihood and model fitting.
-- `toolbox/model_stats.py`: likelihood, AIC/AICc/BIC and information summaries.
+- `NGRIP/data/processed/ngrip_warming_cooling_starts.csv`: retained 69-event
+  Rasmussen catalogue. The one-off Table 2 extraction code is not required.
+- `data/raw/speleothem_data.xlsx`: four published speleothem proxy records.
+- `data/processed/Speleothem_published_event_plot/speleothem_mis6_published_event_label_anchors.csv`:
+  manually interpreted literature-label anchors; these are label positions,
+  not measured transition ages.
+- `data/processed/MIS6_event_age_uncertainty/mis6_age_control_points.csv`:
+  fixed U-Th control-point transcription with cave, study, source filename,
+  and source-table location. Analysis scripts read this file but never
+  recreate or overwrite it.
+- `data/raw/Fohlmeister J et al-2023-data-mf_d18o_stack.txt`: published MF
+  stack and age-envelope input.
+- `data/raw/Barker et al-2011-SOM.xls`: Barker Supplementary Table S3.
+- `data/raw/Jouzel-etal-2007-Science-Orbital and Millennial Antarctic Climate
+  Variability over the Past 800,000 Years.txt`: EDC resolution source.
+- `data/raw/lr04.xlsx`, `composite_co2.xlsx`, and
+  `pre_1000_60_inter100.txt`: common model covariates.
 
-## Input data inventory
-
-Root `data/raw/`:
-
-- `Barker et al-2011-SOM.xls`: Barker Supplementary Tables, including event
-  catalogue variants;
-- `Jouzel-etal-2007-Science-Orbital and Millennial Antarctic Climate Variability over the Past 800,000 Years.txt`:
-  EDC series used to construct a local resolution control;
-- `Rasmussen2014_GI_GS_starts_no_subevents_wide.xlsx`: independent extraction
-  cross-check;
-- `lr04.xlsx`: benthic-isotope climate-state covariate;
-- `composite_co2.xlsx`: atmospheric CO2 climate-state covariate;
-- `pre_1000_60_inter100.txt`: precession-index input;
-- `obl_1000_60_inter100.txt`: obliquity input retained for the legacy Barker
-  orbital summary.
-
-NGRIP retained event input:
-
-- `NGRIP/data/processed/ngrip_warming_cooling_starts.csv`: 69 published GI/GS
-  parent starts with source labels, b2k ages, converted BP ages, and selection
-  provenance.
-
-Reference article:
-
-- `references/Barker2011_Science_800kyr_abrupt_climate_variability.pdf`.
-
-Raw inputs are immutable. New transformations must be written to a named
-`data/processed/<analysis>/` directory.
+Raw inputs and manually transcribed canonical tables should not be overwritten
+by analysis scripts.
 
 ## Reproduction
 
@@ -187,113 +148,79 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Analyze NGRIP from the retained processed catalogue:
+Run the MIS 6 workflow in this order:
+
+```bash
+python Speleothem_published_event_plot.py
+python MIS6_composite_event_record.py
+python MIS6_event_age_uncertainty.py
+python MIS6_event_phase_analysis.py
+python MIS6_event_age_PI_sensitivity.py
+```
+
+The fixed control-point table must already be present. The composite script no
+longer depends on running the uncertainty script first.
+
+Run the comparison analyses with:
 
 ```bash
 python NGRIP/ngrip_event_phase_analysis.py
-```
-
-Run the preferred Barker analysis:
-
-```bash
 python Barker2011_do_predictive_information_audited.py
 ```
 
-Run focused regression tests:
+The old Barker filename remains a thin compatibility entry point and invokes
+the audited analysis; it no longer contains or writes a second implementation.
+
+Run the complete regression suite with:
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 pytest -q -p no:cacheprovider \
-  tests/test_ngrip_event_phase_analysis.py \
-  tests/test_barker2011_predictive_information_audited.py
+PYTHONDONTWRITEBYTECODE=1 pytest -q -p no:cacheprovider
 ```
 
-The expected result is 10 passing tests. A Barker warning about linear
-extrapolation of 25 early 0.2 ka SpeleoAge bins is known and recorded; it should
-not be silently suppressed.
+## Retained outputs
 
-The audited Barker script remains preferred because it exposes assumptions and
-sensitivity results more clearly than the legacy comparison script.
+Each analysis keeps a small reader-facing result set. Large deterministic
+per-bin tables and repeated orbital extrema are rebuilt in memory rather than
+stored under `data/processed/`.
 
-## Output guide
+MIS 6 keeps:
 
-NGRIP:
+- the 21-event composite table;
+- the fixed U-Th control table;
+- a compact event-age uncertainty summary;
+- all 10,000 accepted event-age sequences used by the PI sensitivity test;
+- compact point-age phase/PI results and per-realization PI metrics.
 
-- `NGRIP/data/processed/ngrip_warming_cooling_starts.csv`: canonical 69-event
-  parent-start catalogue;
-- `NGRIP/data/processed/ngrip_event_phase_analysis/analysis_summary.csv`:
-  compact results shown above;
-- `NGRIP/figures/ngrip_event_phase_analysis/`: timeline, Rayleigh and PI plots.
+NGRIP keeps its canonical event table, compact analysis summary, one physical-
+event phase table, model coefficients, and model provenance. Barker keeps the
+catalogue used, primary summary, likelihood comparisons, coefficients, and the
+two principal sensitivity tables.
 
-Barker audited:
+Figures are saved as PNG for quick inspection and PDF for publication work.
 
-- `data/processed/Barker2011_do_predictive_information_audited/barker2011_analysis_summary.csv`:
-  compact primary results;
-- `barker2011_event_definition_sensitivity.csv`: variable/fixed threshold
-  comparison;
-- `barker2011_history_window_sensitivity.csv`: 2, 5, 10 and 20 ka histories;
-- `figures/Barker2011_do_predictive_information_audited/fig02_barker_predictive_likelihood_tests.*`:
-  Rayleigh and conditional phase-response summary;
-- `fig03_barker_inputs_and_fitted_rates.*`: despite its inherited filename,
-  this is primarily a catalogue/age-scale audit figure.
+## Interpretation safeguards
 
-## Non-negotiable interpretation rules for future agents
-
-1. Never count the Barker age-scale variants as independent datasets.
-2. Never count NGRIP warming, cooling and their union as three independent
+1. Do not count Barker age-scale variants as independent datasets.
+2. Do not count NGRIP warming, cooling, and their union as three independent
    confirmations.
-3. Do not interpret an optimizer's preferred angle when the phase comparison
+3. Do not count multiple speleothem observations of one MIS 6 transition as
+   separate physical events.
+4. Do not interpret an optimizer's preferred phase when the phase comparison
    lacks support.
-4. Do not call a nominal asymptotic p value a calibrated causal test.
-5. Preserve the distinction between unconditional Rayleigh clustering and
-   conditional PI gain.
-6. Do not reintroduce Rousseau/Cheng KS events as primary evidence without a
-   detector-aware null that the observed result actually exceeds.
-7. Do not tune an event detector, chronology shift or phase definition to make
-   events align with precession and then use the same alignment as evidence.
-8. Keep one row per physical event. Multiple proxy observations of the same
-   event improve dating and validation, not the number of independent events.
-
-## Recommended next project: MIS 6 consensus warming chronology
-
-The next data-level advance should use Held et al. (2024), Fohlmeister et al.
-(2023), Sofular, Melchsee-Frutt, Huagapo and Sanbao records to create an
-**event-level consensus chronology**, not a cross-proxy amplitude stack.
-
-A minimal design is:
-
-1. define every abrupt warming by the same estimand, preferably maximum warming
-   slope (`t_mid`);
-2. identify candidates independently on each published U-Th age model without
-   viewing orbital phase;
-3. store age uncertainty, transition-picking uncertainty, local resolution,
-   data coverage and clear/ambiguous/missing status;
-4. match events by temporal order and uncertainty using neutral event IDs;
-5. create a high-confidence catalogue requiring support from at least two
-   independent, adequately resolved U-Th archives;
-6. use one consensus time distribution per physical warming in PI;
-7. propagate age uncertainty and use an exposure mask for coverage gaps;
-8. perform per-record and leave-one-record-out checks as robustness tests;
-9. use Barker only as a morphology/numbering guide in MIS 6 because its
-   SpeleoAge chronology is linked to Sanbao;
-10. prefer a confirmatory fixed direction near 330--340 degrees learned from
-    NGRIP or Barker outside MIS 6; report a free phase fit as exploratory.
-
-This can improve event reality and timing precision, but cannot turn repeated
-measurements of the same 10--20 events into a larger physical sample or add
-precession cycles.
-
-The Held/Fohlmeister files have not been copied into this minimal workspace.
-Their locations and the reasoning that led to the consensus design are recorded
-in the old `DO_warming/README.md`; add them only when the MIS 6 extraction work
-begins.
+5. Keep unconditional Rayleigh clustering distinct from conditional PI gain.
+6. Treat likelihood-ratio p values as nominal asymptotic diagnostics.
+7. Do not tune event ages, detector settings, or phase definitions using the
+   same phase alignment later presented as evidence.
+8. The present results support a broad sector near precession minimum; they do
+   not establish precession as an independent causal mechanism.
 
 ## References
 
-- Barker, S. et al. (2011). *Science* 334, 347--351.
+- Barker, S. et al. (2011), *Science* 334, 347–351.
   https://doi.org/10.1126/science.1203580
-- Rasmussen, S. O. et al. (2014). *Quaternary Science Reviews* 106, 14--28.
+- Rasmussen, S. O. et al. (2014), *Quaternary Science Reviews* 106, 14–28.
   https://doi.org/10.1016/j.quascirev.2014.09.007
-- Fohlmeister, J. et al. (2023). *Communications Earth & Environment* 4, 245.
+- Fohlmeister, J. et al. (2023), *Communications Earth & Environment* 4, 245.
   https://doi.org/10.1038/s43247-023-00908-0
-- Held, F. et al. (2024). *Nature Communications* 15, 1183.
+- Held, F. et al. (2024), *Nature Communications* 15, 1183.
   https://doi.org/10.1038/s41467-024-45507-5

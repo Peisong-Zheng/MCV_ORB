@@ -22,8 +22,6 @@ import numpy as np
 import pandas as pd
 from scipy.signal import find_peaks
 
-from toolbox.event_inputs import interpolate_checked
-
 
 @dataclass
 class OrbitalPhase:
@@ -56,6 +54,23 @@ def load_orbital_series(
         }
     ).dropna(subset=["age_ka", "value"])
     return orbital.sort_values("age_ka").reset_index(drop=True)
+
+
+def _interpolate_orbital_values(
+    target_ages: np.ndarray,
+    orbital: pd.DataFrame,
+) -> np.ndarray:
+    """Interpolate an orbital series without extending its data range."""
+
+    targets = np.asarray(target_ages, dtype=float)
+    source_ages = orbital["age_ka"].to_numpy(dtype=float)
+    if targets.min() < source_ages[0] or targets.max() > source_ages[-1]:
+        raise ValueError(
+            "Orbital series does not cover the requested ages: "
+            f"targets {targets.min():.3f}-{targets.max():.3f} Kyr, "
+            f"source {source_ages[0]:.3f}-{source_ages[-1]:.3f} Kyr."
+        )
+    return np.interp(targets, source_ages, orbital["value"].to_numpy(dtype=float))
 
 
 def _enforce_alternating_extrema(extrema: pd.DataFrame) -> pd.DataFrame:
@@ -213,12 +228,6 @@ def build_phase_series(driver: str, settings: dict) -> OrbitalPhase:
     return OrbitalPhase(driver, settings["label"], orbital, extrema)
 
 
-def _circular_distance(phases_rad: np.ndarray, target_rad: float) -> np.ndarray:
-    """Return signed shortest angular distances from a target phase."""
-
-    return np.angle(np.exp(1j * (phases_rad - target_rad)))
-
-
 def sample_event_phases(
     events: pd.DataFrame,
     phase_products: dict[str, OrbitalPhase],
@@ -240,11 +249,8 @@ def sample_event_phases(
         sampled = events.copy()
         sampled["driver"] = product.driver
         sampled["driver_label"] = product.label
-        sampled["orbital_value_at_event"] = interpolate_checked(
-            ages,
-            product.series["age_ka"].to_numpy(dtype=float),
-            product.series["value"].to_numpy(dtype=float),
-            context=f"{product.label} series",
+        sampled["orbital_value_at_event"] = _interpolate_orbital_values(
+            ages, product.series
         )
         for column in [
             "phase_unwrapped_rad",
@@ -254,11 +260,6 @@ def sample_event_phases(
             "phase_extrapolated",
         ]:
             sampled[column] = phases[column].to_numpy()
-
-        theta = sampled["phase_rad"].to_numpy(dtype=float)
-        sampled["signed_distance_to_min_rad"] = _circular_distance(theta, 0.0)
-        sampled["signed_distance_to_max_rad"] = _circular_distance(theta, np.pi)
-        sampled["source_event_order"] = sampled.get("order", np.nan)
         frames.append(
             sampled[
                 [
@@ -274,9 +275,6 @@ def sample_event_phases(
                     "phase_deg",
                     "phase_fraction",
                     "phase_extrapolated",
-                    "signed_distance_to_min_rad",
-                    "signed_distance_to_max_rad",
-                    "source_event_order",
                 ]
             ]
         )
@@ -310,8 +308,7 @@ def rayleigh_p_value_from_z(z: float, n: int) -> float:
     p = np.exp(-z) * (
         1.0
         + (2.0 * z - z**2) / (4.0 * n)
-        - (24.0 * z - 132.0 * z**2 + 76.0 * z**3 - 9.0 * z**4)
-        / (288.0 * n**2)
+        - (24.0 * z - 132.0 * z**2 + 76.0 * z**3 - 9.0 * z**4) / (288.0 * n**2)
     )
     return float(np.clip(p, 0.0, 1.0))
 
@@ -379,9 +376,7 @@ def build_rayleigh_results(event_phases: pd.DataFrame) -> pd.DataFrame:
         result = rayleigh_test(used.to_numpy(dtype=float))
         result.update(dict(zip(group_columns, keys)))
         result["n_events_total"] = len(group)
-        result["n_extrapolated_phase_events"] = int(
-            group["phase_extrapolated"].sum()
-        )
+        result["n_extrapolated_phase_events"] = int(group["phase_extrapolated"].sum())
         rows.append(result)
 
     columns = [
@@ -398,69 +393,11 @@ def build_rayleigh_results(event_phases: pd.DataFrame) -> pd.DataFrame:
     ]
     if not rows:
         return pd.DataFrame(columns=columns)
-    return pd.DataFrame(rows)[columns].sort_values(
-        ["driver", "event_type"]
-    ).reset_index(drop=True)
-
-
-def plot_phase_check(
-    phase_products: dict[str, OrbitalPhase],
-    *,
-    age_range: tuple[float, float],
-    driver_colors: dict[str, str],
-) -> plt.Figure:
-    """Plot orbital extrema and their resulting wrapped phase curves."""
-
-    fig, axes = plt.subplots(len(phase_products), 2, figsize=(13, 6.8), sharex="col")
-    axes = np.atleast_2d(axes)
-    for row, product in enumerate(phase_products.values()):
-        series = product.series[product.series["age_ka"].between(*age_range)]
-        extrema = product.extrema[product.extrema["age_ka"].between(*age_range)]
-        color = driver_colors[product.driver]
-        value_axis, phase_axis = axes[row]
-
-        value_axis.plot(series["age_ka"], series["value"], color=color, lw=1.2)
-        for kind, marker, face, label in [
-            ("minimum", "v", "white", "min = phase 0"),
-            ("maximum", "^", color, "max = phase pi"),
-        ]:
-            points = extrema[extrema["extremum_type"].eq(kind)]
-            value_axis.scatter(
-                points["age_ka"],
-                points["value"],
-                s=28,
-                marker=marker,
-                facecolors=face,
-                edgecolors=color,
-                linewidths=0.9,
-                label=label,
-                zorder=3,
-            )
-        value_axis.set_title(f"{product.label}: detected extrema", loc="left")
-        value_axis.set_ylabel("Raw orbital value")
-        value_axis.grid(True, color="#e6e6e6", lw=0.7)
-        value_axis.legend(frameon=False, loc="best")
-
-        phase_axis.plot(series["age_ka"], series["phase_deg"], color=color, lw=1.1)
-        phase_axis.scatter(
-            extrema["age_ka"],
-            extrema["anchor_phase_deg"],
-            s=14,
-            color="#202020",
-            alpha=0.8,
-            label="extremum anchors",
-        )
-        phase_axis.set(yticks=[0, 90, 180, 270, 360], ylim=(-8, 368))
-        phase_axis.set_title(f"{product.label}: wrapped phase", loc="left")
-        phase_axis.set_ylabel("Phase (deg)")
-        phase_axis.grid(True, color="#e6e6e6", lw=0.7)
-        phase_axis.legend(frameon=False, loc="best")
-
-    for axis in axes[-1]:
-        axis.set_xlabel("Age (ka BP)")
-    fig.suptitle("Orbital extrema and phase-conversion check", y=0.995, fontsize=14)
-    fig.subplots_adjust(top=0.90, hspace=0.30, wspace=0.22)
-    return fig
+    return (
+        pd.DataFrame(rows)[columns]
+        .sort_values(["driver", "event_type"])
+        .reset_index(drop=True)
+    )
 
 
 def plot_rayleigh_polar(
@@ -473,6 +410,7 @@ def plot_rayleigh_polar(
     radial_max: float | None = None,
     annotate_mean_phase: bool = False,
     label_threshold_on_circle: bool = False,
+    show_panel_labels: bool = True,
 ) -> plt.Figure:
     """Plot phase histograms, mean vectors, and the Rayleigh threshold."""
 
@@ -536,7 +474,12 @@ def plot_rayleigh_polar(
                 va="center",
                 fontsize=8,
                 color="#303030",
-                bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.72, "pad": 1.2},
+                bbox={
+                    "facecolor": "white",
+                    "edgecolor": "none",
+                    "alpha": 0.72,
+                    "pad": 1.2,
+                },
                 zorder=5,
             )
         axis.annotate(
@@ -558,17 +501,23 @@ def plot_rayleigh_polar(
             axis.set_yticks(np.arange(2, radial_max, 2))
             axis.grid(True, color="#b8b8b8", lw=0.7, alpha=0.42)
 
-        axis.text(
-            0.03,
-            0.98,
-            chr(ord("a") + panel),
-            transform=axis.transAxes,
-            ha="left",
-            va="top",
-            fontsize=11,
-            fontweight="bold",
-            bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.8, "pad": 1.6},
-        )
+        if show_panel_labels:
+            axis.text(
+                0.03,
+                0.98,
+                chr(ord("a") + panel),
+                transform=axis.transAxes,
+                ha="left",
+                va="top",
+                fontsize=11,
+                fontweight="bold",
+                bbox={
+                    "facecolor": "white",
+                    "edgecolor": "none",
+                    "alpha": 0.8,
+                    "pad": 1.6,
+                },
+            )
         if not label_threshold_on_circle and np.isfinite(threshold):
             axis.text(
                 0.02,
@@ -579,7 +528,12 @@ def plot_rayleigh_polar(
                 va="bottom",
                 fontsize=8,
                 color="#303030",
-                bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.72, "pad": 1.4},
+                bbox={
+                    "facecolor": "white",
+                    "edgecolor": "none",
+                    "alpha": 0.72,
+                    "pad": 1.4,
+                },
             )
         if annotate_mean_phase:
             axis.text(
@@ -590,7 +544,12 @@ def plot_rayleigh_polar(
                 va="center",
                 fontsize=8.5,
                 color="#202020",
-                bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.72, "pad": 1.0},
+                bbox={
+                    "facecolor": "white",
+                    "edgecolor": "none",
+                    "alpha": 0.72,
+                    "pad": 1.0,
+                },
                 zorder=5,
             )
         axis.set_title(
@@ -602,51 +561,4 @@ def plot_rayleigh_polar(
         )
 
     fig.subplots_adjust(top=0.84, bottom=0.08, left=0.05, right=0.95, wspace=0.28)
-    return fig
-
-
-def plot_phase_ecdf(
-    event_phases: pd.DataFrame,
-    *,
-    driver_labels: dict[str, str],
-    event_colors: dict[str, str],
-) -> plt.Figure:
-    """Plot phase empirical CDFs against the circular-uniform expectation."""
-
-    fig, axes = plt.subplots(1, len(driver_labels), figsize=(12.5, 4.2), sharey=True)
-    axes = np.atleast_1d(axes)
-    for panel, (axis, (driver, label)) in enumerate(zip(axes, driver_labels.items())):
-        selected = event_phases[
-            event_phases["driver"].eq(driver)
-            & ~event_phases["phase_extrapolated"].astype(bool)
-        ]
-        for event_type, group in selected.groupby("event_type", sort=False):
-            phases = np.sort(group["phase_fraction"].to_numpy(dtype=float))
-            empirical_cdf = np.arange(1, len(phases) + 1) / len(phases)
-            axis.step(
-                phases,
-                empirical_cdf,
-                where="post",
-                color=event_colors[event_type],
-                lw=1.5,
-                label=group["event_label"].iloc[0],
-            )
-        axis.plot([0, 1], [0, 1], color="#666666", ls="--", lw=1, label="uniform")
-        axis.set_title(f"{label} phase ECDF", loc="left")
-        axis.set_xlabel("Phase fraction (0=min, 0.5=max)")
-        axis.grid(True, color="#e6e6e6", lw=0.7)
-        axis.text(
-            -0.04,
-            1.04,
-            chr(ord("a") + panel),
-            transform=axis.transAxes,
-            ha="right",
-            va="bottom",
-            fontsize=12,
-            fontweight="bold",
-            clip_on=False,
-        )
-    axes[0].set_ylabel("Empirical CDF")
-    axes[-1].legend(frameon=False, loc="lower right")
-    fig.subplots_adjust(top=0.88, wspace=0.18)
     return fig

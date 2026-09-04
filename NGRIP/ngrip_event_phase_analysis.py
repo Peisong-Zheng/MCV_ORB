@@ -1,9 +1,8 @@
-"""Rayleigh and predictive-information analysis of NGRIP GI/GS starts.
+"""Test the precession phase of published NGRIP GI and GS starts.
 
-Input events come from Rasmussen et al. (2014) Table 2.  GI starts are warming
-starts and GS starts are cooling starts.  This script analyzes the published
-event catalogue; it does not rerun a detector on an NGRIP isotope record.  It
-also analyzes all GI/GS starts together as one catalogue of MCV transitions.
+The 69 ages are the retained Rasmussen et al. (2014) Table 2 boundaries.  GI
+starts are warming events and GS starts are cooling events; no event detector
+is rerun here.
 """
 
 from __future__ import annotations
@@ -80,10 +79,11 @@ FULL_TERMS = REDUCED_TERMS + predictive.PHASE_TERMS
 REDUCED_MODEL_ID = "history_climate"
 FULL_MODEL_ID = "history_climate_precession"
 COMPARISON_ID = "precession_after_history_climate"
+RESOLUTION_COVARIATE_INCLUDED = False
 
 
 def load_events(path: Path = EVENTS_CSV) -> pd.DataFrame:
-    """Load the collapsed catalogue and enforce its basic data contracts."""
+    """Load the collapsed catalogue and check its defining assumptions."""
 
     events = pd.read_csv(path)
     required = {
@@ -117,9 +117,7 @@ def load_events(path: Path = EVENTS_CSV) -> pd.DataFrame:
     return events
 
 
-def select_catalogue_events(
-    events: pd.DataFrame, event_type: str
-) -> pd.DataFrame:
+def select_catalogue_events(events: pd.DataFrame, event_type: str) -> pd.DataFrame:
     """Return one directional catalogue or all transitions combined."""
 
     if event_type == "all_transitions":
@@ -147,26 +145,29 @@ def build_event_datasets(events: pd.DataFrame) -> list[event_inputs.EventDataset
     return datasets
 
 
+def _phase_catalogues(event_phases: pd.DataFrame) -> pd.DataFrame:
+    """Add a pooled view without resampling the same physical boundaries."""
+
+    pooled = event_phases.copy()
+    pooled["event_type"] = "all_transitions"
+    pooled["event_label"] = EVENT_LABELS["all_transitions"]
+    return pd.concat([event_phases, pooled], ignore_index=True)
+
+
 def run_rayleigh(events: pd.DataFrame):
-    """Sample phase for the two directions and their combined catalogue."""
+    """Sample every physical boundary once, then test three catalogue views."""
 
     phase_product = build_phase_series("pre", ORBITAL_DRIVER_SETTINGS["pre"])
-    frames = []
-    for event_type in EVENT_TYPES:
-        selected = select_catalogue_events(events, event_type)
-        frames.append(
-            pd.DataFrame(
-                {
-                    "event_index": event_type + ":" + selected["event_label"],
-                    "event_age_ka": selected["age_ka_bp"],
-                    "event_type": event_type,
-                    "event_label": EVENT_LABELS[event_type],
-                }
-            )
-        )
-    phase_events = pd.concat(frames, ignore_index=True)
+    phase_events = pd.DataFrame(
+        {
+            "event_index": events["event_label"],
+            "event_age_ka": events["age_ka_bp"],
+            "event_type": events["event_type"],
+            "event_label": events["event_type"].map(EVENT_LABELS),
+        }
+    )
     event_phases = sample_event_phases(phase_events, {"pre": phase_product})
-    rayleigh = build_rayleigh_results(event_phases)
+    rayleigh = build_rayleigh_results(_phase_catalogues(event_phases))
     if event_phases["phase_extrapolated"].astype(bool).any():
         raise RuntimeError("At least one event phase was extrapolated.")
     return event_phases, rayleigh, phase_product
@@ -269,8 +270,9 @@ def build_analysis_summary(
     rayleigh: pd.DataFrame,
     model_summary: pd.DataFrame,
     likelihood_tests: pd.DataFrame,
+    fit_frame: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Join the main unconditional and conditional phase results."""
+    """Put the results needed for interpretation in one compact table."""
 
     rows = []
     for event_type in EVENT_TYPES:
@@ -284,19 +286,35 @@ def build_analysis_summary(
         test = likelihood_tests.loc[likelihood_tests["dataset_id"].eq(event_type)].iloc[
             0
         ]
+        fitted_bins = (
+            fit_frame.loc[fit_frame["dataset_id"].eq(event_type)]
+            if fit_frame is not None
+            else None
+        )
         rows.append(
             {
                 "event_type": event_type,
                 "event_label": EVENT_LABELS[event_type],
-                "n_catalogue_events": len(
-                    select_catalogue_events(events, event_type)
-                ),
+                "analysis_start_ka_bp": ANALYSIS_START_KA,
+                "analysis_end_ka_bp": ANALYSIS_END_KA,
+                "n_catalogue_events": len(select_catalogue_events(events, event_type)),
                 "n_rayleigh_events": int(ray["n_phase_events_used"]),
                 "rayleigh_mean_phase_deg": float(ray["mean_phase_deg"]),
                 "rayleigh_mean_resultant_length": float(ray["mean_resultant_length"]),
                 "rayleigh_p": float(ray["rayleigh_p"]),
                 "rayleigh_significant_0p05": float(ray["rayleigh_p"]) < 0.05,
+                "n_predictive_bins": int(test["n_bins"]),
                 "n_predictive_events": int(test["n_events"]),
+                "predictive_support_start_ka_bp": (
+                    float(fitted_bins["bin_start_ka"].min())
+                    if fitted_bins is not None
+                    else np.nan
+                ),
+                "predictive_support_end_ka_bp": (
+                    float(fitted_bins["bin_end_ka"].max())
+                    if fitted_bins is not None
+                    else np.nan
+                ),
                 "predictive_preferred_phase_deg": float(
                     full["pre_phase_preferred_deg"]
                 ),
@@ -310,14 +328,42 @@ def build_analysis_summary(
                 "predictive_delta_AICc_full_minus_reduced": float(
                     test["delta_AICc_full_minus_reduced"]
                 ),
+                "likelihood_nesting_ok": bool(test["likelihood_nesting_ok"]),
                 "all_models_converged": bool(
                     model_summary.loc[
                         model_summary["dataset_id"].eq(event_type), "converged"
                     ].all()
                 ),
+                "eta_clipping_used": bool(
+                    model_summary.loc[
+                        model_summary["dataset_id"].eq(event_type),
+                        ["n_eta_clipped_low", "n_eta_clipped_high"],
+                    ]
+                    .gt(0)
+                    .any()
+                    .any()
+                ),
+                "resolution_covariate_included": RESOLUTION_COVARIATE_INCLUDED,
+                "event_age_uncertainty_propagated": False,
             }
         )
     return pd.DataFrame(rows)
+
+
+def event_phase_output(event_phases: pd.DataFrame) -> pd.DataFrame:
+    """Keep one concise phase record for each physical GI or GS boundary."""
+
+    columns = [
+        "event_index",
+        "event_type",
+        "event_age_ka",
+        "driver",
+        "orbital_value_at_event",
+        "phase_rad",
+        "phase_deg",
+        "phase_extrapolated",
+    ]
+    return event_phases.loc[:, columns].rename(columns={"event_index": "event_id"})
 
 
 def plot_timeline(
@@ -363,7 +409,7 @@ def plot_timeline(
         yticks=[0, 1],
         yticklabels=["GS / cooling", "GI / warming"],
         ylim=(-0.5, 1.5),
-        xlabel="Age (ka BP)",
+        xlabel="Age (Kyr BP)",
     )
     axes[0].set_title(
         "Rasmussen et al. (2014) main GI/GS starts and precession",
@@ -453,8 +499,6 @@ def plot_predictive_phase_response(
 
 
 def save_figure(fig: plt.Figure, stem: str) -> None:
-    """Save one plot as a review PNG and a vector PDF."""
-
     OUT_FIG_DIR.mkdir(parents=True, exist_ok=True)
     fig.savefig(OUT_FIG_DIR / f"{stem}.png", dpi=220, bbox_inches="tight")
     fig.savefig(OUT_FIG_DIR / f"{stem}.pdf", bbox_inches="tight")
@@ -462,19 +506,17 @@ def save_figure(fig: plt.Figure, stem: str) -> None:
 
 
 def build_parameters(events: pd.DataFrame) -> pd.DataFrame:
-    """Record the small set of choices and source paths used by the script."""
-
     rows = [
-        ("analysis_start", ANALYSIS_START_KA, "ka BP", "fixed event-process support"),
-        ("analysis_end", ANALYSIS_END_KA, "ka BP", "fixed event-process support"),
-        ("bin_width", BIN_WIDTH_KA, "ka", "Poisson event-count bins"),
+        ("analysis_start", ANALYSIS_START_KA, "Kyr BP", "fixed event-process support"),
+        ("analysis_end", ANALYSIS_END_KA, "Kyr BP", "fixed event-process support"),
+        ("bin_width", BIN_WIDTH_KA, "Kyr", "Poisson event-count bins"),
         (
             "history_window",
             HISTORY_WINDOW_KA,
-            "ka",
+            "Kyr",
             "older events within each analyzed catalogue",
         ),
-        ("b2k_to_bp_offset", -0.05, "ka", "BP is relative to AD 1950"),
+        ("b2k_to_bp_offset", -0.05, "Kyr", "BP is relative to AD 1950"),
         (
             "warming_event_count",
             int(events["event_type"].eq("warming").sum()),
@@ -535,25 +577,21 @@ def build_parameters(events: pd.DataFrame) -> pd.DataFrame:
 
 
 def main() -> None:
-    """Run both analyses, save audit tables and figures, and print the result."""
-
     events = load_events()
     event_phases, rayleigh, phase_product = run_rayleigh(events)
     pi = run_predictive_information(events)
     summary = build_analysis_summary(
-        events, rayleigh, pi["model_summary"], pi["likelihood_tests"]
+        events,
+        rayleigh,
+        pi["model_summary"],
+        pi["likelihood_tests"],
+        pi["fit_frame"],
     )
 
     OUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
     outputs = {
-        "event_precession_phases.csv": event_phases,
-        "rayleigh_results.csv": rayleigh,
-        "predictive_binned_inputs_model_support.csv": pi["fit_frame"],
-        "predictive_model_summary.csv": pi["model_summary"],
+        "event_precession_phases.csv": event_phase_output(event_phases),
         "predictive_coefficients.csv": pi["coefficients"],
-        "predictive_likelihood_tests.csv": pi["likelihood_tests"],
-        "forcing_scale_summary.csv": pi["scale_summary"],
-        "precession_phase_extrema.csv": pi["phase_extrema"],
         "analysis_summary.csv": summary,
         "parameters_and_provenance.csv": build_parameters(events),
     }
@@ -565,7 +603,7 @@ def main() -> None:
         "fig01_event_timeline_and_precession",
     )
     polar = plot_rayleigh_polar(
-        event_phases,
+        _phase_catalogues(event_phases),
         rayleigh,
         driver="pre",
         event_colors=EVENT_COLORS,

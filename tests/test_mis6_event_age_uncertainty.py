@@ -20,8 +20,8 @@ import MIS6_composite_event_record as detector
 
 @pytest.fixture(scope="module")
 def prepared():
-    controls = uncertainty.build_age_control_points()
-    envelope = uncertainty.load_mf_age_envelope(uncertainty.resolve_fohlmeister_stack())
+    controls = uncertainty.load_age_controls()
+    envelope = uncertainty.load_mf_age_envelope(uncertainty.FOHLMEISTER_STACK)
     anchors = detector.load_selected_anchors(detector.ANCHORS)
     segments = {
         spec.record_id: detector.regularize_record(
@@ -33,7 +33,7 @@ def prepared():
     return controls, envelope, picks
 
 
-def test_control_table_has_explicit_filename_provenance(prepared):
+def test_fixed_control_table_has_explicit_filename_provenance(prepared):
     controls, _, _ = prepared
     assert len(controls) == 12
     assert controls["control_id"].is_unique
@@ -43,7 +43,34 @@ def test_control_table_has_explicit_filename_provenance(prepared):
         "Held et al. (2024)",
     }
     assert all(Path(name).name == name for name in controls["source_filename"])
-    assert set(controls["uncertainty_level"]) == {"2sigma"}
+    assert "uncertainty_level" not in controls
+    assert controls.columns.tolist() == [
+        "control_id",
+        "record_id",
+        "cave",
+        "stalagmite_id",
+        "dating_sample_id",
+        "depth_mm",
+        "age_ka_bp",
+        "age_error_2sigma_ka",
+        "used_for_event_ids",
+        "bracket_role",
+        "source_study",
+        "source_filename",
+        "source_locator",
+        "shown_in_composite_figure",
+    ]
+    assert uncertainty.AGE_CONTROLS == (
+        PROJECT_ROOT
+        / "data/processed/MIS6_event_age_uncertainty/mis6_age_control_points.csv"
+    )
+
+
+def test_fohlmeister_stack_is_a_workspace_input():
+    assert uncertainty.FOHLMEISTER_STACK == (
+        PROJECT_ROOT / "data/raw/Fohlmeister J et al-2023-data-mf_d18o_stack.txt"
+    )
+    assert uncertainty.FOHLMEISTER_STACK.exists()
 
 
 def test_mf_duplicate_ages_keep_the_outer_envelope(tmp_path):
@@ -158,20 +185,36 @@ def test_sampling_is_reproducible_ordered_and_unsorted(prepared):
     event_columns = [f"MIS6_DO_{number:02d}_age_ka_bp" for number in range(1, 22)]
     assert np.all(np.diff(first[event_columns].to_numpy(float), axis=1) > 0)
     assert first["realization_id"].tolist() == list(range(1, 201))
-    assert first["proposal_id"].is_monotonic_increasing
-    assert first["proposal_id"].is_unique
-    diagnostics = first_diagnostics.iloc[0]
+    assert first.columns.tolist() == ["realization_id", *event_columns]
+    diagnostics = first_diagnostics
     assert diagnostics["accepted_realizations"] == 200
     assert diagnostics["total_proposals"] == (
         diagnostics["accepted_realizations"] + diagnostics["rejected_proposals"]
     )
-    assert not bool(diagnostics["sorting_used"])
 
 
 def test_all_summary_quantiles_recompute_from_draws(prepared):
     _, _, picks = prepared
     draws, _ = uncertainty.sample_realizations(picks, n_realizations=300, seed=11)
     summary = uncertainty.build_summary(picks, draws)
+    assert summary.columns.tolist() == [
+        "composite_event_id",
+        "composite_event_number",
+        "composite_event_label",
+        "source_record",
+        "source_event_label",
+        "nominal_event_age_ka_bp",
+        "definition_age_min_ka_bp",
+        "definition_age_max_ka_bp",
+        "chronology_sigma_nominal_ka",
+        "chronology_sigma_min_ka",
+        "chronology_sigma_max_ka",
+        "sampled_age_q025_ka_bp",
+        "sampled_age_q16_ka_bp",
+        "sampled_age_median_ka_bp",
+        "sampled_age_q84_ka_bp",
+        "sampled_age_q975_ka_bp",
+    ]
     quantile_columns = [
         "sampled_age_q025_ka_bp",
         "sampled_age_q16_ka_bp",
@@ -210,15 +253,29 @@ def test_age_realization_plot_data_compare_with_rounded_original(prepared):
     )
 
 
-def test_parameters_exclude_resolution_and_synchronization_terms():
-    parameters = uncertainty.build_parameter_table()
-    assert (
-        parameters["shared_chronology_draw"].str.contains("one standard-normal z").all()
-    )
-    excluded = " ".join(parameters["excluded_terms"]).lower()
+def test_provenance_records_shared_draws_and_excluded_terms(prepared):
+    _, envelope, picks = prepared
+    _, sampling = uncertainty.sample_realizations(picks, n_realizations=20, seed=5)
+    provenance = uncertainty.build_provenance_table(envelope, sampling)
+    assert provenance.columns.tolist() == ["scope", "parameter", "value", "note"]
+
+    shared = provenance.loc[provenance["parameter"].eq("shared_chronology_draw")]
+    assert set(shared["scope"]) == set(uncertainty.RECORD_ORDER)
+    assert shared["value"].str.contains("one standard-normal z").all()
+
+    excluded = " ".join(
+        provenance.loc[
+            provenance["parameter"].eq("excluded_uncertainty_terms"), "value"
+        ].astype(str)
+    ).lower()
     assert "resolution" in excluded
     assert "synchronization" in excluded
-    assert "resolution" not in " ".join(parameters["conversion_to_1sigma"]).lower()
+    conversions = " ".join(
+        provenance.loc[
+            provenance["parameter"].eq("conversion_to_1sigma"), "value"
+        ].astype(str)
+    ).lower()
+    assert "resolution" not in conversions
 
 
 def test_displayed_control_intervals_are_staggered_without_overlap(prepared):
