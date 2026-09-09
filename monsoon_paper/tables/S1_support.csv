@@ -1,0 +1,4 @@
+segment_id,observation_start_kyr_bp,observation_end_kyr_bp,common_response_start_kyr_bp,common_response_end_kyr_bp,support_basis,source_table,response_start_kyr_bp,response_end_kyr_bp,response_exposure_kyr
+NGRIP,12.0,123.0,12.0,118.0,"Continuous, undisturbed NGRIP climate record to approximately 123 kyr BP (North Greenland Ice Core Project Members, 2004); the Rasmussen et al. (2014) event framework extends to approximately 120 ka b2k. The 123–132.5 kyr BP gap is excluded from response exposure.",ngrip_warming_cooling_starts.csv,12.0,121.5,109.5
+MIS6,132.5,204.5,132.5,199.5,"Sofular record coverage to 205 kyr and Held et al. (2024), Fig. 3b; the source series contains observations through 204.784 kyr BP. The 123–132.5 kyr BP gap is excluded from response exposure.",mis6_composite_event_record.csv,132.5,203.0,70.5
+Barker,0.0,400.0,,,,,0.0,398.5,398.5

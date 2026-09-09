@@ -124,6 +124,24 @@ def negative_binned_poisson_loglik(
     return float(value)
 
 
+def negative_binned_poisson_gradient(
+    beta: np.ndarray,
+    x: np.ndarray,
+    y: np.ndarray,
+    dt: np.ndarray,
+) -> np.ndarray:
+    """Analytic gradient of the clipped negative Poisson log likelihood."""
+    eta_raw = linear_predictor(beta, x)
+    eta = clip_linear_predictor(eta_raw)
+    mu = dt * np.exp(eta)
+
+    # The clipped likelihood is flat outside the numerical safety bounds.
+    active = ((eta_raw >= ETA_MIN) & (eta_raw <= ETA_MAX)).astype(float)
+    residual = (mu - y) * active
+    design = np.column_stack([np.ones(len(x), dtype=float), x])
+    return design.T @ residual
+
+
 def fitted_rate_and_mu(
     beta: np.ndarray, x: np.ndarray, dt: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -171,6 +189,7 @@ def fit_binned_poisson_arrays(
             negative_binned_poisson_loglik,
             beta0,
             args=(x, y, dt),
+            jac=negative_binned_poisson_gradient,
             method="L-BFGS-B",
             bounds=bounds,
             options={"maxiter": int(maxiter), "ftol": float(ftol)},

@@ -11,6 +11,12 @@ import pandas as pd
 
 from toolbox.data_checks import require_unique_values
 from toolbox.orbital_phase import build_phase_series, evaluate_phase_at_ages
+from toolbox.project_config import (
+    AGE_EPOCH,
+    CO2_EPOCH_SOURCE_URL,
+    LR04_EPOCH_SOURCE_URL,
+    ORBITAL_AGE_OFFSET_TO_BP1950_KA,
+)
 
 _WARNED_LINEAR_EXTRAPOLATION_CONTEXTS: set[str] = set()
 
@@ -186,6 +192,10 @@ def load_lr04(
     meta = {
         "forcing_id": "lr04",
         "forcing_label": "LR04 benthic d18O",
+        "source_age_epoch": AGE_EPOCH,
+        "age_epoch": AGE_EPOCH,
+        "age_offset_ka": 0.0,
+        "epoch_source": LR04_EPOCH_SOURCE_URL,
         "source": source_label(path, project_root),
         "mean": mean,
         "min": vmin,
@@ -216,6 +226,10 @@ def load_co2(
     meta = {
         "forcing_id": "co2",
         "forcing_label": "CO2",
+        "source_age_epoch": AGE_EPOCH,
+        "age_epoch": AGE_EPOCH,
+        "age_offset_ka": 0.0,
+        "epoch_source": CO2_EPOCH_SOURCE_URL,
         "source": source_label(path, project_root),
         "mean": mean,
         "min": vmin,
@@ -238,6 +252,7 @@ def build_precession_phase(
         {
             "path": precession_path,
             "label": "Precession index",
+            "age_offset_ka": ORBITAL_AGE_OFFSET_TO_BP1950_KA,
             "source": source_label(precession_path, project_root),
         },
     )

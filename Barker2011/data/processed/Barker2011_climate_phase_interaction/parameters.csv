@@ -1,0 +1,15 @@
+parameter,value
+catalogue,Barker 2011 SpeleoAge warming events
+bin_width_kyr,0.2
+history_window_kyr,1.5
+origin_fraction,0.0
+response_mode,maximal_for_history
+age_epoch,SpeleoAge is treated as kyr BP1950; its published reference year is unverified
+source_realizations,Barker2011/data/processed/Barker2011_orbital_driver_sensitivity/selected_realizations.csv
+realization_selection,"all 500 saved orbital-experiment rows, unchanged order; no new draw"
+selection_seed,20260909
+full_terms,same_type_history_count;lr04_scaled;co2_scaled;pre_phase_sin;pre_phase_cos
+interaction_terms,lr04_phase_sin;lr04_phase_cos
+added_parameters,2
+p_method,"nominal chi-square, df=2; no interaction bootstrap"
+interval,2.5–97.5% chronology sensitivity; not full sampling confidence

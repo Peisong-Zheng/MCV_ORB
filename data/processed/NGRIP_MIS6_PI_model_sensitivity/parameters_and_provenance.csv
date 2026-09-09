@@ -1,0 +1,27 @@
+parameter,value
+analysis,NGRIP_MIS6_PI_model_sensitivity
+age_epoch,kyr BP relative to AD 1950
+estimand,warming onset rate per unit of whole observation time
+chronology,curated point ages only; no additional age MC
+history_window_kyr,1.5
+bin_width_kyr,0.2
+bin_origin_fraction,0.0
+climate_scaling,"original 180-kyr response mean/range, unchanged in all variants"
+polynomial_transform,square/product of original scaled climate predictors
+elapsed_time_definition,"nearest strictly older occupied bin center minus current bin center, within segment"
+elapsed_time_scale_kyr,1.0
+log_elapsed_transform,log(1 + time_since_event_kyr / 1 kyr)
+oldest_event_handling,condition on oldest occupied bin; remove its and older response exposure; retain its history
+within_bin_history,current-bin events excluded; event centers approximate timing at 0.2-kyr resolution
+phase_convention,precession minimum=0 degrees; maximum=180 degrees; increases towards older BP age
+nominal_p_definition,chi-square(2) survival of twice nested log-likelihood gain; unadjusted
+bootstrap_scope,none here; primary empirical p=0.0022 does not calibrate these alternative models
+selection_scope,post-audit sensitivity; all eight listed variants reported; no model selection by p
+aicc_n,"response bins, following main analysis; compare models only within identical support"
+randomness,none; deterministic point fits
+method_reference,"Truccolo et al. (2005), https://doi.org/10.1152/jn.00697.2004"
+python_version,3.13.5
+numpy_version,2.1.3
+pandas_version,2.2.3
+scipy_version,1.15.3
+matplotlib_version,3.10.0

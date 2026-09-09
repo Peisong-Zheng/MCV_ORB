@@ -1,0 +1,23 @@
+parameter,value,unit,note
+event_catalogue,data/curated/ngrip_mis6_warming_events.csv,,34 NGRIP warming starts + 21 MIS 6 transitions
+observation_segments,data/curated/observation_segments.csv,,two disjoint observed segments
+history_windows,1.0;1.5;2.0;3.0;5.0,kyr,pre-specified sensitivity grid
+bin_widths,0.1;0.2;0.5,kyr,pre-specified sensitivity grid
+origin_fractions,0.0;0.5,bin width,unshifted and half-bin-shifted grids
+design_response_mode,common_core,,same support for all 30 design fits
+design_response_exposure,173.0,kyr,106 kyr NGRIP + 67 kyr MIS 6
+number_of_designs,30,fits,5 history windows x 3 bin widths x 2 origins
+primary_history_window,1.5,kyr,based on the characteristic D-O recurrence timescale
+primary_bin_width,0.2,kyr,main-analysis event-count bins
+primary_origin_fraction,0.0,bin width,unshifted main grid
+main_analysis_response_mode,maximal_for_history,,maximal support with complete 1.5-kyr history
+main_analysis_response_exposure,180.0,kyr,endpoint sensitivity comparison
+reduced_model_terms,same_type_history_count+lr04_scaled+co2_scaled+mis6_segment,,fixed PI baseline
+full_model_terms,same_type_history_count+lr04_scaled+co2_scaled+mis6_segment+pre_phase_sin+pre_phase_cos,,reduced model + precession sine/cosine
+likelihood_p_value,asymptotic chi-square,df=2,nominal; empirical calibration is separate
+resolution_covariate_included,False,,not part of the PI model
+age_uncertainty_propagated,False,,point ages; Monte Carlo sensitivity is separate
+lr04_input,data/raw/lr04.xlsx,,LR04 benthic stack
+co2_input,data/raw/composite_co2.xlsx,,composite atmospheric CO2
+precession_input,data/raw/pre_1000_60_inter100.txt,,La2004 precession index
+pooling_diagnostic,common phase coefficients versus MIS6 phase interactions,,nominal p=0.807515; df=2

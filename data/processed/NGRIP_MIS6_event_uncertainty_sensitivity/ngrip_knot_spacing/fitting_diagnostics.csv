@@ -1,0 +1,4 @@
+knot_spacing_ka,n_realizations,n_valid,n_invalid,n_realizations_with_response_event_loss,n_unique_event_count_patterns,n_cached_reuses,cache_reuse_fraction,elapsed_seconds,max_events_in_single_bin,n_nonconverged,n_nesting_failures,n_eta_clipping
+2.5,2000,1993,7,20,1993,0,0,27.710028583,2,0,0,0
+5,2000,1997,3,22,1997,0,0,28.69674025,2,0,0,0
+10,2000,1997,3,10,1997,0,0,28.288916375,2,0,0,0

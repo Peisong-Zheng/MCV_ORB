@@ -1,0 +1,22 @@
+composite_event_id,composite_event_number,composite_event_label,event_age_ka_bp,event_age_status,source_record,source_event_label,source_anchor_age_ka_bp,proxy,data_source,label_source,local_tuning_age_min_ka_bp,local_tuning_age_max_ka_bp,event_age_qc,local_median_resolution_yr,local_flank_change_young_minus_old_per_mil,local_change_qc,peak_gradient_per_mil_per_ka
+MIS6_DO_01,1,MIS 6.1,134.976,provisional_algorithmic_estimate,MF,MF 6.1,134.9,d18O,Fohlmeister et al. (2023),Fohlmeister et al. (2023),134.97,134.983,review,108.0,0.392,review,-2.37
+MIS6_DO_02,2,MIS 6.2,138.393,provisional_algorithmic_estimate,MF,MF 6.2,138.3,d18O,Fohlmeister et al. (2023),Fohlmeister et al. (2023),138.393,138.401,stable,15.0,1.435,stable,-9.58
+MIS6_DO_03,3,MIS 6.3,146.251,provisional_algorithmic_estimate,MF,MF 6.3,146.2,d18O,Fohlmeister et al. (2023),Fohlmeister et al. (2023),146.237,146.272,stable,42.5,0.77,moderate,-5.53
+MIS6_DO_04,4,MIS 6.4,146.847,provisional_algorithmic_estimate,MF,MF 6.4,146.8,d18O,Fohlmeister et al. (2023),Fohlmeister et al. (2023),146.836,146.855,stable,42.5,1.177,moderate,-9.18
+MIS6_DO_05,5,MIS 6.5,148.439,provisional_algorithmic_estimate,MF,MF 6.5,148.4,d18O,Fohlmeister et al. (2023),Fohlmeister et al. (2023),148.435,148.444,stable,22.1,1.337,stable,-13.43
+MIS6_DO_06,6,MIS 6.6,149.458,provisional_algorithmic_estimate,MF,MF 6.6,149.3,d18O,Fohlmeister et al. (2023),Fohlmeister et al. (2023),149.445,149.471,stable,37.4,0.952,moderate,-7.27
+MIS6_DO_07,7,MIS 6.7,150.462,provisional_algorithmic_estimate,MF,MF 6.7,150.3,d18O,Fohlmeister et al. (2023),Fohlmeister et al. (2023),150.447,150.462,stable,37.4,1.3,stable,-8.08
+MIS6_DO_08,8,MIS 6.8,151.115,provisional_algorithmic_estimate,MF,MF 6.8,151.0,d18O,Fohlmeister et al. (2023),Fohlmeister et al. (2023),151.111,151.123,stable,37.4,1.027,moderate,-8.02
+MIS6_DO_09,9,MIS 6.9,159.522,provisional_algorithmic_estimate,MF,MF 6.9,159.5,d18O,Fohlmeister et al. (2023),Fohlmeister et al. (2023),159.515,159.527,stable,5.1,0.511,stable,-3.17
+MIS6_DO_10,10,MIS 6.10,160.879,provisional_algorithmic_estimate,MF,MF 6.10,160.7,d18O,Fohlmeister et al. (2023),Fohlmeister et al. (2023),160.674,160.885,review,2.4,0.755,stable,-5.81
+MIS6_DO_11,11,MIS 6.11,165.006,provisional_algorithmic_estimate,MF,MF 6.11,164.9,d18O,Fohlmeister et al. (2023),Fohlmeister et al. (2023),164.978,165.007,stable,1.4,0.87,stable,-5.03
+MIS6_DO_12,12,MIS 6.12,168.566,provisional_algorithmic_estimate,MF,MF 6.12,168.5,d18O,Fohlmeister et al. (2023),Fohlmeister et al. (2023),168.551,168.57,stable,4.5,1.033,review,-6.64
+MIS6_DO_13,13,MIS 6.13,169.675,provisional_algorithmic_estimate,MF,MF 6.13,169.6,d18O,Fohlmeister et al. (2023),Fohlmeister et al. (2023),169.674,169.68,moderate,96.8,1.258,review,-8.11
+MIS6_DO_14,14,MIS 6.14,171.506,provisional_algorithmic_estimate,MF,MF 6.14,171.4,d18O,Fohlmeister et al. (2023),Fohlmeister et al. (2023),171.141,171.506,review,74.6,0.522,review,-3.08
+MIS6_DO_15,15,MIS 6.15,172.364,provisional_algorithmic_estimate,MF,MF 6.15,172.4,d18O,Fohlmeister et al. (2023),Fohlmeister et al. (2023),172.359,172.366,stable,74.6,0.976,review,-6.08
+MIS6_DO_16,16,MIS 6.16,174.752,provisional_algorithmic_estimate,MF,MF 6.16,174.7,d18O,Fohlmeister et al. (2023),Fohlmeister et al. (2023),174.751,174.753,review,74.6,2.454,review,-15.84
+MIS6_DO_17,17,MIS 6.17,176.779,provisional_algorithmic_estimate,Sofular,D-O 6.9,176.8,d13C,Held et al. (2024),Held et al. (2024),176.778,176.78,stable,16.5,-0.459,stable,4.87
+MIS6_DO_18,18,MIS 6.18,179.831,provisional_algorithmic_estimate,Sofular,D-O 6.10,179.801,d13C,Held et al. (2024),Held et al. (2024),179.808,179.84,stable,14.5,-1.237,stable,7.67
+MIS6_DO_19,19,MIS 6.19,180.309,provisional_algorithmic_estimate,Sofular,D-O 6.11,180.313,d13C,Held et al. (2024),Held et al. (2024),180.296,180.329,stable,8.0,-1.378,stable,10.76
+MIS6_DO_20,20,MIS 6.20,190.972,provisional_algorithmic_estimate,Sofular,D-O 6.12,191.009,d13C,Held et al. (2024),Held et al. (2024),190.951,190.991,stable,32.0,-0.509,moderate,2.95
+MIS6_DO_21,21,MIS 6.21,194.238,provisional_algorithmic_estimate,Sofular,D-O 6.13,194.201,d13C,Held et al. (2024),Held et al. (2024),194.228,194.249,stable,56.0,-0.535,moderate,3.63

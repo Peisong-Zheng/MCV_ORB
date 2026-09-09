@@ -1,0 +1,2 @@
+dataset_id,comparison_id,reduced_model_id,full_model_id,df,n_bins,n_events,loglik_reduced,loglik_full,ll_gain_nats,info_bits_per_event,info_bits_per_bin,LR_statistic,LR_p_value,delta_AICc_full_minus_reduced,p_value_method
+barker_fixed_threshold_speleo_0_400,phase_after_climate,reduced,full,2,1993,59,-263.008981775,-258.74648106,4.26250071468,0.104228621065,0.00308554372446,8.52500142935,0.0140870306819,-4.50282608119,nominal asymptotic chi-square LRT

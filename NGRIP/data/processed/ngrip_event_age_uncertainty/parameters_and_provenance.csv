@@ -1,0 +1,25 @@
+parameter,value
+scenario,combined
+n_realizations,10000
+random_seed,20260907
+chronology_knot_spacing_ka,5.0
+n_proposals,11000
+n_rejected_nonmonotonic_chronology,0
+n_rejected_for_event_crossing,427
+n_unused_accepted_tail,573
+acceptance_fraction,0.9611818181818181
+age_epoch,kyr BP1950
+chronology_model,cumulative Gaussian variance increments; linear offset interpolation
+knot_sigma,MCE-equivalent envelope / 2; not a hard bound
+modelext_envelope,0.045 * age_b2k; exact 60.202 ka counted endpoint retained
+order_condition,reject crossed knot maps and combined event ages; never sort draws
+observation_support,not truncated here; checked by downstream PI
+omitted_uncertainties,systematic counting bias; event membership; forcing chronology; alternate model extension
+events_path,data/processed/ngrip_warming_cooling_starts.csv
+events_sha256,fbc910e83506bf5b0f53c09940aa6dd2ef44b2594b21f3154b30d2e16c1ef2ae
+grid_path,data/processed/ngrip_chronology_grid.csv
+grid_sha256,e5dd9373b45081a4be7e378fa6a3cef0edba9d1c6663c86ac20e413c99123f02
+sampler_path,ngrip_event_age_uncertainty.py
+sampler_sha256,c735e41612a8a6234560eeb6fa7a474512d71e17e683479e93163de8a5239242
+preparation_path,ngrip_data_preparation.ipynb
+preparation_sha256,b9eb07fd2d62b35c3f83063f65945821f0483a2070a579034272d89b8d509888

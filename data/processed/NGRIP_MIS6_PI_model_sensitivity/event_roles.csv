@@ -1,0 +1,56 @@
+event_id,event_label,event_age_kyr_bp,segment_id,source_record,source_event_label,data_source,label_source,timing_method,source_table,bin_center_kyr_bp,is_history_anchor,in_main_response,in_history_comparison
+NGRIP:GI-1,GI-1,14.642,NGRIP,NGRIP,GI-1e,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,14.7,False,True,True
+NGRIP:GI-2.1,GI-2.1,22.97,NGRIP,NGRIP,GI-2.1,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,22.9,False,True,True
+NGRIP:GI-2.2,GI-2.2,23.29,NGRIP,NGRIP,GI-2.2,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,23.299999999999997,False,True,True
+NGRIP:GI-3,GI-3,27.73,NGRIP,NGRIP,GI-3,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,27.700000000000003,False,True,True
+NGRIP:GI-4,GI-4,28.85,NGRIP,NGRIP,GI-4,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,28.9,False,True,True
+NGRIP:GI-5.1,GI-5.1,30.79,NGRIP,NGRIP,GI-5.1,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,30.700000000000003,False,True,True
+NGRIP:GI-5.2,GI-5.2,32.45,NGRIP,NGRIP,GI-5.2,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,32.5,False,True,True
+NGRIP:GI-6,GI-6,33.69,NGRIP,NGRIP,GI-6,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,33.7,False,True,True
+NGRIP:GI-7,GI-7,35.43,NGRIP,NGRIP,GI-7c,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,35.5,False,True,True
+NGRIP:GI-8,GI-8,38.17,NGRIP,NGRIP,GI-8c,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,38.1,False,True,True
+NGRIP:GI-9,GI-9,40.11,NGRIP,NGRIP,GI-9,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,40.1,False,True,True
+NGRIP:GI-10,GI-10,41.41,NGRIP,NGRIP,GI-10,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,41.5,False,True,True
+NGRIP:GI-11,GI-11,43.29,NGRIP,NGRIP,GI-11,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,43.3,False,True,True
+NGRIP:GI-12,GI-12,46.81,NGRIP,NGRIP,GI-12c,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,46.9,False,True,True
+NGRIP:GI-13,GI-13,49.23,NGRIP,NGRIP,GI-13c,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,49.3,False,True,True
+NGRIP:GI-14,GI-14,54.17,NGRIP,NGRIP,GI-14e,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,54.1,False,True,True
+NGRIP:GI-15.1,GI-15.1,54.95,NGRIP,NGRIP,GI-15.1,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,54.9,False,True,True
+NGRIP:GI-15.2,GI-15.2,55.75,NGRIP,NGRIP,GI-15.2,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,55.7,False,True,True
+NGRIP:GI-16.1,GI-16.1,57.99,NGRIP,NGRIP,GI-16.1c,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,57.9,False,True,True
+NGRIP:GI-16.2,GI-16.2,58.23,NGRIP,NGRIP,GI-16.2,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,58.3,False,True,True
+NGRIP:GI-17.1,GI-17.1,59.03,NGRIP,NGRIP,GI-17.1c,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,59.1,False,True,True
+NGRIP:GI-17.2,GI-17.2,59.39,NGRIP,NGRIP,GI-17.2,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,59.3,False,True,True
+NGRIP:GI-18,GI-18,64.05,NGRIP,NGRIP,GI-18,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,64.1,False,True,True
+NGRIP:GI-19.1,GI-19.1,69.57,NGRIP,NGRIP,GI-19.1,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,69.5,False,True,True
+NGRIP:GI-19.2,GI-19.2,72.29,NGRIP,NGRIP,GI-19.2,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,72.30000000000001,False,True,True
+NGRIP:GI-20,GI-20,76.39,NGRIP,NGRIP,GI-20c,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,76.30000000000001,False,True,True
+NGRIP:GI-21.1,GI-21.1,84.71,NGRIP,NGRIP,GI-21.1e,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,84.69999999999999,False,True,True
+NGRIP:GI-21.2,GI-21.2,85.01,NGRIP,NGRIP,GI-21.2,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,85.1,False,True,True
+NGRIP:GI-22,GI-22,89.99,NGRIP,NGRIP,GI-22g,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,89.9,False,True,True
+NGRIP:GI-23.1,GI-23.1,103.99,NGRIP,NGRIP,GI-23.1,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,103.9,False,True,True
+NGRIP:GI-23.2,GI-23.2,104.47,NGRIP,NGRIP,GI-23.2,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,104.5,False,True,True
+NGRIP:GI-24.1,GI-24.1,106.7,NGRIP,NGRIP,GI-24.1c,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,106.69999999999999,False,True,True
+NGRIP:GI-24.2,GI-24.2,108.23,NGRIP,NGRIP,GI-24.2,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,108.30000000000001,False,True,True
+NGRIP:GI-25,GI-25,115.32,NGRIP,NGRIP,GI-25c,Rasmussen et al. (2014),Rasmussen et al. (2014),published event-start age,ngrip_warming_cooling_starts.csv,115.30000000000001,True,True,False
+MIS6:MIS6_DO_01,MIS 6.1,134.976,MIS6,MF,MF 6.1,Fohlmeister et al. (2023),Fohlmeister et al. (2023),algorithmic timing of published transition,mis6_composite_event_record.csv,135.0,False,True,True
+MIS6:MIS6_DO_02,MIS 6.2,138.393,MIS6,MF,MF 6.2,Fohlmeister et al. (2023),Fohlmeister et al. (2023),algorithmic timing of published transition,mis6_composite_event_record.csv,138.4,False,True,True
+MIS6:MIS6_DO_03,MIS 6.3,146.251,MIS6,MF,MF 6.3,Fohlmeister et al. (2023),Fohlmeister et al. (2023),algorithmic timing of published transition,mis6_composite_event_record.csv,146.2,False,True,True
+MIS6:MIS6_DO_04,MIS 6.4,146.847,MIS6,MF,MF 6.4,Fohlmeister et al. (2023),Fohlmeister et al. (2023),algorithmic timing of published transition,mis6_composite_event_record.csv,146.8,False,True,True
+MIS6:MIS6_DO_05,MIS 6.5,148.439,MIS6,MF,MF 6.5,Fohlmeister et al. (2023),Fohlmeister et al. (2023),algorithmic timing of published transition,mis6_composite_event_record.csv,148.4,False,True,True
+MIS6:MIS6_DO_06,MIS 6.6,149.458,MIS6,MF,MF 6.6,Fohlmeister et al. (2023),Fohlmeister et al. (2023),algorithmic timing of published transition,mis6_composite_event_record.csv,149.4,False,True,True
+MIS6:MIS6_DO_07,MIS 6.7,150.462,MIS6,MF,MF 6.7,Fohlmeister et al. (2023),Fohlmeister et al. (2023),algorithmic timing of published transition,mis6_composite_event_record.csv,150.4,False,True,True
+MIS6:MIS6_DO_08,MIS 6.8,151.115,MIS6,MF,MF 6.8,Fohlmeister et al. (2023),Fohlmeister et al. (2023),algorithmic timing of published transition,mis6_composite_event_record.csv,151.2,False,True,True
+MIS6:MIS6_DO_09,MIS 6.9,159.522,MIS6,MF,MF 6.9,Fohlmeister et al. (2023),Fohlmeister et al. (2023),algorithmic timing of published transition,mis6_composite_event_record.csv,159.6,False,True,True
+MIS6:MIS6_DO_10,MIS 6.10,160.879,MIS6,MF,MF 6.10,Fohlmeister et al. (2023),Fohlmeister et al. (2023),algorithmic timing of published transition,mis6_composite_event_record.csv,160.8,False,True,True
+MIS6:MIS6_DO_11,MIS 6.11,165.006,MIS6,MF,MF 6.11,Fohlmeister et al. (2023),Fohlmeister et al. (2023),algorithmic timing of published transition,mis6_composite_event_record.csv,165.0,False,True,True
+MIS6:MIS6_DO_12,MIS 6.12,168.566,MIS6,MF,MF 6.12,Fohlmeister et al. (2023),Fohlmeister et al. (2023),algorithmic timing of published transition,mis6_composite_event_record.csv,168.6,False,True,True
+MIS6:MIS6_DO_13,MIS 6.13,169.675,MIS6,MF,MF 6.13,Fohlmeister et al. (2023),Fohlmeister et al. (2023),algorithmic timing of published transition,mis6_composite_event_record.csv,169.6,False,True,True
+MIS6:MIS6_DO_14,MIS 6.14,171.506,MIS6,MF,MF 6.14,Fohlmeister et al. (2023),Fohlmeister et al. (2023),algorithmic timing of published transition,mis6_composite_event_record.csv,171.6,False,True,True
+MIS6:MIS6_DO_15,MIS 6.15,172.364,MIS6,MF,MF 6.15,Fohlmeister et al. (2023),Fohlmeister et al. (2023),algorithmic timing of published transition,mis6_composite_event_record.csv,172.4,False,True,True
+MIS6:MIS6_DO_16,MIS 6.16,174.752,MIS6,MF,MF 6.16,Fohlmeister et al. (2023),Fohlmeister et al. (2023),algorithmic timing of published transition,mis6_composite_event_record.csv,174.8,False,True,True
+MIS6:MIS6_DO_17,MIS 6.17,176.779,MIS6,Sofular,D-O 6.9,Held et al. (2024),Held et al. (2024),algorithmic timing of published transition,mis6_composite_event_record.csv,176.8,False,True,True
+MIS6:MIS6_DO_18,MIS 6.18,179.831,MIS6,Sofular,D-O 6.10,Held et al. (2024),Held et al. (2024),algorithmic timing of published transition,mis6_composite_event_record.csv,179.8,False,True,True
+MIS6:MIS6_DO_19,MIS 6.19,180.309,MIS6,Sofular,D-O 6.11,Held et al. (2024),Held et al. (2024),algorithmic timing of published transition,mis6_composite_event_record.csv,180.4,False,True,True
+MIS6:MIS6_DO_20,MIS 6.20,190.972,MIS6,Sofular,D-O 6.12,Held et al. (2024),Held et al. (2024),algorithmic timing of published transition,mis6_composite_event_record.csv,191.0,False,True,True
+MIS6:MIS6_DO_21,MIS 6.21,194.238,MIS6,Sofular,D-O 6.13,Held et al. (2024),Held et al. (2024),algorithmic timing of published transition,mis6_composite_event_record.csv,194.2,True,True,False

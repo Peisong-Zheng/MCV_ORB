@@ -1,0 +1,10 @@
+source,source_epoch,conversion_to_kyr_bp,evidence
+NGRIP starts and GICC05,2000 CE,a b2k / 1000 - 0.05,Explicit source definition
+MF stack,1950 CE,kyr ages unchanged,Archive calendar-BP unit
+Sofular stack / So-4,1950 CE,kyr ages unchanged,Explicit article / raw headers
+So-57 U-Th controls,1950 CE,yr ages / 1000,Explicit raw header
+LR04,1950 CE,kyr ages unchanged,Archive and values checked
+CO2 composite,1950 CE,yr ages / 1000,Archive and values checked
+"La2004 precession, eccentricity, obliquity",J2000,-signed kyr - 0.05,Official epoch and values checked
+65 N solstice insolation,J2000 inferred,positive kyr - 0.05,Numerical reconstruction; metadata not explicit
+Barker SpeleoAge,1950 CE assumed,kyr ages unchanged,Exact source epoch unverified

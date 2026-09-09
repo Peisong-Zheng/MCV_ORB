@@ -1,0 +1,2 @@
+path,sha256,note
+NGRIP_MIS6_effect_uncertainty.py,b333a3252777a6ccdefef2337ff04b5d1b437785d7a19c65b537b7caf86bad1f,"After simulation, only figure margins, row labels, coefficient aspect ratio and footer placement changed; simulation-time hash remains in input_code_sha256.csv."

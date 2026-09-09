@@ -1,0 +1,37 @@
+parameter,value,unit,note
+dataset_id,barker_fixed_threshold_speleo_0_400,,one SpeleoAge catalogue
+event_age_column,SpeloAge (kyr).1,kyr,"Table S3, Sheet1; Excel header row 9"
+event_pick_column,DO pick,,retain value 1
+event_age_reference,BP1950 assumed,,exact SpeleoAge column epoch not directly verified
+event_age_offset_applied,0.0,kyr,source numerical ages retained
+observation_start,0.0,kyr BP,source-age assumption above
+observation_end,400.0,kyr BP,source-age assumption above
+pi_support_start,0.0,kyr BP,complete-history response
+pi_support_end,398.5,kyr BP,oldest history-window interval is excluded from response
+bin_width,0.2,kyr,event-count bins; log duration is the offset
+history_window,1.5,kyr,"older bin centers in (t, t + window]; current bin excluded"
+bin_origin_fraction,0.0,bin width,shared main-analysis origin
+response_mode,maximal_for_history,,same complete-history rule as NGRIP–MIS6
+reduced_model_terms,same_type_history_count+lr04_scaled+co2_scaled,,"history, LR04 and CO2"
+full_model_terms,same_type_history_count+lr04_scaled+co2_scaled+pre_phase_sin+pre_phase_cos,,adds precession sine and cosine
+scaling_support,0–398.5,kyr,zero-mean/range-one scaling over the actual response bins
+resolution_covariate_included,False,,aligned with NGRIP–MIS6 main analysis
+segment_contrast_included,False,,Barker contains one continuous observation segment
+phase_extrapolated_response_bins,0,bins,edge-phase flags retained from the original model
+phase_extrapolated_events,0,events,all descriptive events checked
+orbital_solution,La2004,,shared with NGRIP–MIS6
+orbital_source_epoch,J2000.0,,astronomical source-file convention
+orbital_age_offset_to_BP1950,-0.05,kyr,applied once by the shared orbital tools
+phase_convention,minimum=0; maximum=180,degrees,phase increases toward older BP ages
+p_value_method,nominal asymptotic chi-square LRT,df=2,not bootstrap calibrated
+PI_interpretation,in-sample conditional likelihood gain,bits/event,not validated out-of-sample prediction
+age_uncertainty_propagated,False,,point-age analysis only
+chronology_construction,speleothem-tuned synthetic Greenland record,,does not establish chronology-independent replication
+event_source,Barker2011/data/raw/Barker et al-2011-SOM.xls,,active input
+event_source_sha256,5b028eb1d9edc5250abbe403efeb0a8fd80171ed0eab42a8bd46c338619258cd,,input content hash
+lr04_source,data/raw/lr04.xlsx,,active input
+lr04_source_sha256,85f7de1f50879268bac33d217f34665062fb99b07553a69f1d976b20a9058e1f,,input content hash
+co2_source,data/raw/composite_co2.xlsx,,active input
+co2_source_sha256,06186a4bbaf68e98a4ca2a36da97bdce40d6f80a0106043a07a20d707f4cf2fe,,input content hash
+precession_source,data/raw/pre_1000_60_inter100.txt,,active input
+precession_source_sha256,e0d10be76c4aaa543006e472dd07b769a2b836dc0bd09c591dcbc5c8729aeae2,,input content hash

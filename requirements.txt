@@ -6,3 +6,5 @@ openpyxl==3.1.5
 xlrd==2.0.2
 pypdf==6.9.0
 pytest==8.3.4
+nbconvert==7.16.6
+ipykernel==6.29.5

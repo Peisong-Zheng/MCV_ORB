@@ -1,0 +1,4 @@
+driver_id,raw_column,scaled_column,units,response_mean,response_min,response_max,response_range,n_response_bins,scaling
+ecc,ecc,ecc_scaled,dimensionless,0.029326072754641243,0.004149999999999999,0.049952,0.045802,1993,(value - response-bin arithmetic mean) / response-bin range
+obl,obl_deg,obl_scaled,degrees,23.335795921486984,22.0762070858394,24.455844048466492,2.3796369626270923,1993,(value - response-bin arithmetic mean) / response-bin range
+insol65n,insol65n_Wm2,insol65n_scaled,W m-2,494.69516334973923,431.935708618164,553.4371520996094,121.50144348144539,1993,(value - response-bin arithmetic mean) / response-bin range

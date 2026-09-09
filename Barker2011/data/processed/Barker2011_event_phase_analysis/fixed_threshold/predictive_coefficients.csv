@@ -1,0 +1,11 @@
+dataset_id,dataset_label,model_id,term,beta,rate_ratio_per_unit
+barker_fixed_threshold_speleo_0_400,"Barker fixed-threshold D-O warmings, SpeleoAge 0-400 ka",reduced,intercept,-1.86197163515,0.155366003117
+barker_fixed_threshold_speleo_0_400,"Barker fixed-threshold D-O warmings, SpeleoAge 0-400 ka",reduced,same_type_history_count,-0.519480033794,0.594829758947
+barker_fixed_threshold_speleo_0_400,"Barker fixed-threshold D-O warmings, SpeleoAge 0-400 ka",reduced,lr04_scaled,2.35536031334,10.5419265743
+barker_fixed_threshold_speleo_0_400,"Barker fixed-threshold D-O warmings, SpeleoAge 0-400 ka",reduced,co2_scaled,2.09141054813,8.09632737309
+barker_fixed_threshold_speleo_0_400,"Barker fixed-threshold D-O warmings, SpeleoAge 0-400 ka",full,intercept,-1.90203973142,0.14926385034
+barker_fixed_threshold_speleo_0_400,"Barker fixed-threshold D-O warmings, SpeleoAge 0-400 ka",full,same_type_history_count,-0.694331798361,0.499408041791
+barker_fixed_threshold_speleo_0_400,"Barker fixed-threshold D-O warmings, SpeleoAge 0-400 ka",full,lr04_scaled,2.73349098657,15.3865074623
+barker_fixed_threshold_speleo_0_400,"Barker fixed-threshold D-O warmings, SpeleoAge 0-400 ka",full,co2_scaled,2.15986183745,8.66993971472
+barker_fixed_threshold_speleo_0_400,"Barker fixed-threshold D-O warmings, SpeleoAge 0-400 ka",full,pre_phase_sin,-0.095118068439,0.909265572564
+barker_fixed_threshold_speleo_0_400,"Barker fixed-threshold D-O warmings, SpeleoAge 0-400 ka",full,pre_phase_cos,0.558257583367,1.7476247554

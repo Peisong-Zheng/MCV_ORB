@@ -1,0 +1,3 @@
+segment_id,anchor_event_ids,anchor_event_ages_kyr_bp,anchor_bin_start_kyr_bp,anchor_bin_end_kyr_bp,anchor_bin_center_kyr_bp,anchor_event_count,main_response_start_kyr_bp,main_response_end_kyr_bp,history_response_start_kyr_bp,history_response_end_kyr_bp,main_response_exposure_kyr,history_response_exposure_kyr,removed_response_exposure_kyr,n_main_response_events,n_history_response_events,n_removed_response_events,n_history_response_bins
+NGRIP,NGRIP:GI-25,115.320000,115.2,115.4,115.30000000000001,1,12.0,121.5,12.0,115.2,109.5,103.2,6.299999999999997,34,33,1,516
+MIS6,MIS6:MIS6_DO_21,194.238000,194.1,194.3,194.2,1,132.5,203.0,132.5,194.1,70.5,61.599999999999994,8.900000000000006,21,20,1,308

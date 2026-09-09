@@ -1,0 +1,2 @@
+comparison,n_events,response_exposure_kyr,common_model_loglik,segment_specific_model_loglik,LR_statistic,df,nominal_LR_p,info_bits_per_event_for_interaction,delta_AICc_segment_specific_minus_common,ngrip_preferred_phase_deg,mis6_preferred_phase_deg,ngrip_phase_rate_ratio_max_vs_min,mis6_phase_rate_ratio_max_vs_min,both_models_converged,likelihood_nesting_ok,eta_clipping_used
+segment-specific versus common precession response,55,180,-198.999021,-198.785228,0.427586311,2,0.807515398,0.00560796954,3.64901396,331.201216,327.426511,4.06702531,6.95016691,True,True,False

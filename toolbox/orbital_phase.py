@@ -22,6 +22,19 @@ import numpy as np
 import pandas as pd
 from scipy.signal import find_peaks
 
+from toolbox.project_config import (
+    AGE_EPOCH,
+    ORBITAL_AGE_OFFSET_TO_BP1950_KA,
+    ORBITAL_EPOCH_SOURCE_URL,
+    ORBITAL_SOURCE_EPOCH,
+)
+
+
+# Retain this public alias, with one authoritative offset in project_config.
+# The official source time column is signed kyr since J2000; the local raw
+# files were checked numerically against that source, not inferred by filename.
+LASKAR_J2000_TO_BP1950_KA = ORBITAL_AGE_OFFSET_TO_BP1950_KA
+
 
 @dataclass
 class OrbitalPhase:
@@ -39,21 +52,37 @@ def load_orbital_series(
     label: str,
     *,
     source: str | None = None,
+    age_offset_ka: float = LASKAR_J2000_TO_BP1950_KA,
 ) -> pd.DataFrame:
-    """Read a two-column orbital file and convert its signed ages to ka BP."""
+    """Read a signed La2004 series and convert J2000 ages to kyr BP (1950)."""
 
     raw = pd.read_csv(path, sep=r"\s+", header=None, names=["age_raw_ka", "value"])
     orbital = pd.DataFrame(
         {
             "driver": driver,
             "driver_label": label,
-            # The Laskar files use negative ages for the past.
-            "age_ka": -pd.to_numeric(raw["age_raw_ka"], errors="coerce"),
+            # La2004 uses negative ages into the past and J2000 as its epoch.
+            "age_ka": (
+                -pd.to_numeric(raw["age_raw_ka"], errors="coerce")
+                + float(age_offset_ka)
+            ),
             "value": pd.to_numeric(raw["value"], errors="coerce"),
             "source": source if source is not None else str(path),
         }
     ).dropna(subset=["age_ka", "value"])
-    return orbital.sort_values("age_ka").reset_index(drop=True)
+    orbital = orbital.sort_values("age_ka").reset_index(drop=True)
+    orbital.attrs.update(
+        source_age_epoch=ORBITAL_SOURCE_EPOCH,
+        source_age_direction="signed time; negative into the past",
+        age_epoch=(
+            AGE_EPOCH
+            if np.isclose(age_offset_ka, ORBITAL_AGE_OFFSET_TO_BP1950_KA)
+            else "custom_offset"
+        ),
+        age_offset_ka=float(age_offset_ka),
+        epoch_source=ORBITAL_EPOCH_SOURCE_URL,
+    )
+    return orbital
 
 
 def _interpolate_orbital_values(
@@ -67,8 +96,8 @@ def _interpolate_orbital_values(
     if targets.min() < source_ages[0] or targets.max() > source_ages[-1]:
         raise ValueError(
             "Orbital series does not cover the requested ages: "
-            f"targets {targets.min():.3f}-{targets.max():.3f} Kyr, "
-            f"source {source_ages[0]:.3f}-{source_ages[-1]:.3f} Kyr."
+            f"targets {targets.min():.3f}-{targets.max():.3f} kyr, "
+            f"source {source_ages[0]:.3f}-{source_ages[-1]:.3f} kyr."
         )
     return np.interp(targets, source_ages, orbital["value"].to_numpy(dtype=float))
 
@@ -212,6 +241,7 @@ def build_phase_series(driver: str, settings: dict) -> OrbitalPhase:
         driver,
         settings["label"],
         source=settings.get("source"),
+        age_offset_ka=settings.get("age_offset_ka", LASKAR_J2000_TO_BP1950_KA),
     )
     extrema = _assign_anchor_phases(_detect_extrema(orbital))
     phases = evaluate_phase_at_ages(orbital["age_ka"].to_numpy(), extrema)

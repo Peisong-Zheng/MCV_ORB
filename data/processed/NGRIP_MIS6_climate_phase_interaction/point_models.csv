@@ -1,0 +1,3 @@
+model_id,n_parameters,log_likelihood,AIC,AICc,converged,optimizer_message,condition_number,eta_min,eta_max,n_eta_clipped_low,n_eta_clipped_high,n_bound_hits,fit_valid,invalid_reason,n_events,n_bins,exposure_kyr
+full,7,-198.99902076355,411.9980415271,412.12346145991074,True,CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH,16.82574001942891,-2.7913314805823406,0.1691576466798923,0,0,0,True,,55,901,180.0
+interaction,9,-198.0135780232102,414.0271560464204,414.2291762484406,True,CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH,16.913847215038874,-2.871749936996641,0.33775872096989157,0,0,0,True,,55,901,180.0

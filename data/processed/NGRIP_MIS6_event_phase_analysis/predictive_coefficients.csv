@@ -1,0 +1,13 @@
+model_id,term,beta,rate_ratio_per_unit,term_definition
+reduced,intercept,-1.08298126,0.338584609,conditional log event rate per kyr
+reduced,same_type_history_count,-0.165845123,0.847177432,older events in the preceding 1.5 kyr
+reduced,lr04_scaled,1.6818809,5.37565752,LR04 anomaly divided by its response-range span
+reduced,co2_scaled,0.0650366113,1.0671981,CO2 anomaly divided by its response-range span
+reduced,mis6_segment,-0.222319491,0.80065952,MIS 6 = 1 and NGRIP = 0; conditional segment contrast
+full,intercept,-1.06467078,0.344841366,conditional log event rate per kyr
+full,same_type_history_count,-0.445066685,0.640781544,older events in the preceding 1.5 kyr
+full,lr04_scaled,3.25509338,25.9220351,LR04 anomaly divided by its response-range span
+full,co2_scaled,1.04147042,2.83338022,CO2 anomaly divided by its response-range span
+full,mis6_segment,-0.232485878,0.792560942,MIS 6 = 1 and NGRIP = 0; conditional segment contrast
+full,pre_phase_sin,-0.399259431,0.670816648,sine of BP1950-corrected La2004 precession phase
+full,pre_phase_cos,0.69149614,1.99670064,cosine of BP1950-corrected La2004 precession phase

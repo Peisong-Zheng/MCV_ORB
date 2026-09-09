@@ -1,6 +1,7 @@
 """Shared event-history terms for binned Poisson occurrence models.
 
-These small helpers are used by both the NGRIP and Barker analyses.  Keeping
+These small helpers support event-process analyses; the archived Barker workflow
+has its own frozen copy.  Keeping
 them here makes the clean workspace independent of the old Rousseau/Cheng
 main-analysis script from which they were originally factored.
 """

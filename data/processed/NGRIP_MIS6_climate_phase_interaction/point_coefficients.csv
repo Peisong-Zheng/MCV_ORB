@@ -1,0 +1,17 @@
+model_id,term,beta
+full,intercept,-1.0646707758126948
+full,same_type_history_count,-0.445066685207716
+full,lr04_scaled,3.2550933841738847
+full,co2_scaled,1.041470421601377
+full,mis6_segment,-0.23248587796295678
+full,pre_phase_sin,-0.3992594306132909
+full,pre_phase_cos,0.6914961395910588
+interaction,intercept,-1.00240770719608
+interaction,same_type_history_count,-0.4972120470409844
+interaction,lr04_scaled,2.97801876050119
+interaction,co2_scaled,0.9927508377518633
+interaction,mis6_segment,-0.26071699518258984
+interaction,pre_phase_sin,-0.3029994593168069
+interaction,pre_phase_cos,0.6473089798567248
+interaction,lr04_phase_sin,-1.4203934777274336
+interaction,lr04_phase_cos,0.48262674372306175

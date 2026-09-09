@@ -1,0 +1,12 @@
+control_id,record_id,cave,stalagmite_id,dating_sample_id,depth_mm,age_ka_bp,age_error_2sigma_ka,used_for_event_ids,bracket_role,source_study,source_filename,source_locator,shown_in_composite_figure
+SOF_SO4_M9,Sofular,Sofular Cave,So-4,So4-M9,967.000000,176.102399,0.702634,MIS6_DO_17;MIS6_DO_18,younger for 17 and 18,Held et al. (2024),41467_2024_45507_MOESM3_ESM.xlsx,U_Th_Dating!O95:P100; row 142 states 2sigma,True
+SOF_SO4_M10,Sofular,Sofular Cave,So-4,So4-M10,1014.000000,179.935830,0.670912,MIS6_DO_17;MIS6_DO_18;MIS6_DO_19,older for 17 and 18; younger for 19,Held et al. (2024),41467_2024_45507_MOESM3_ESM.xlsx,U_Th_Dating!O95:P100; row 142 states 2sigma,True
+SOF_SO4_M23,Sofular,Sofular Cave,So-4,So4-M23,1045.000000,180.513866,0.775462,MIS6_DO_19,older,Held et al. (2024),41467_2024_45507_MOESM3_ESM.xlsx,U_Th_Dating!O95:P100; row 142 states 2sigma,True
+SOF_SO4_M24,Sofular,Sofular Cave,So-4,So4-M24,1084.000000,187.087125,0.833117,MIS6_DO_20,younger,Held et al. (2024),41467_2024_45507_MOESM3_ESM.xlsx,U_Th_Dating!O95:P100; row 142 states 2sigma,True
+SOF_SO4_M25,Sofular,Sofular Cave,So-4,So4-M25,1123.000000,193.355775,0.872351,MIS6_DO_20;MIS6_DO_21,older for 20; younger for 21,Held et al. (2024),41467_2024_45507_MOESM3_ESM.xlsx,U_Th_Dating!O95:P100; row 142 states 2sigma,True
+SOF_SO4_M27,Sofular,Sofular Cave,So-4,So4-M27,1221.000000,204.297059,0.750754,MIS6_DO_21,older,Held et al. (2024),41467_2024_45507_MOESM3_ESM.xlsx,U_Th_Dating!O95:P100; row 142 states 2sigma,False
+SOF_SO57_3,Sofular,Sofular Cave,So-57,So57-3,377.500000,177.120951,0.698652,MIS6_DO_18,younger,Held et al. (2024),41467_2024_45507_MOESM3_ESM.xlsx,U_Th_Dating!O135:P140; row 142 states 2sigma,True
+SOF_SO57_4,Sofular,Sofular Cave,So-57,So57-4,485.000000,180.207207,0.600960,MIS6_DO_18;MIS6_DO_19,older for 18; younger for 19,Held et al. (2024),41467_2024_45507_MOESM3_ESM.xlsx,U_Th_Dating!O135:P140; row 142 states 2sigma,True
+SOF_SO57_5,Sofular,Sofular Cave,So-57,So57-5,602.000000,183.192722,0.722279,MIS6_DO_19,older,Held et al. (2024),41467_2024_45507_MOESM3_ESM.xlsx,U_Th_Dating!O135:P140; row 142 states 2sigma,True
+SOF_SO57_6,Sofular,Sofular Cave,So-57,So57-6,711.000000,186.636769,0.657294,MIS6_DO_20,younger,Held et al. (2024),41467_2024_45507_MOESM3_ESM.xlsx,U_Th_Dating!O135:P140; row 142 states 2sigma,True
+SOF_SO57_7,Sofular,Sofular Cave,So-57,So57-7,845.500000,192.775723,1.147285,MIS6_DO_20,older,Held et al. (2024),41467_2024_45507_MOESM3_ESM.xlsx,U_Th_Dating!O135:P140; row 142 states 2sigma,True

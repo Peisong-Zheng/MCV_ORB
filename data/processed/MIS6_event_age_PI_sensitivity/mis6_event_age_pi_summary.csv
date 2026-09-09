@@ -1,8 +1,0 @@
-metric,unit,original_sequence_value,mc_mean,mc_sd,mc_q025,mc_q16,mc_median,mc_q84,mc_q975,original_percentile_in_mc,decision_rule,mc_fraction_meeting_decision_rule,note
-LR_statistic,,6.84393215,6.53137822,1.38109209,4.08035777,4.98992048,6.5723571,7.95312913,9.27148024,60.06,,,larger favors the phase model
-nominal_LR_p,,0.0326481831,0.0480837289,0.034284339,0.00969892601,0.0187499432,0.0373964856,0.0824997341,0.130005453,39.94,nominal_LR_p < 0.05,0.6747,nominal asymptotic LRT p value
-info_bits_per_event,bits/event,0.246842674,0.235647517,0.0498508609,0.147207442,0.179973338,0.237117517,0.287008102,0.334499655,60,,,in-sample nested log-likelihood gain
-delta_AICc_full_minus_reduced,AICc,-2.69019652,-2.37764259,1.38109209,-5.11774461,-3.7993935,-2.41862147,-0.836184844,0.0733778601,39.94,delta_AICc_full_minus_reduced < 0,0.9673,negative favors the phase-augmented model
-pre_phase_preferred_deg_unwrapped_around_original,degrees,318.326056,319.788799,5.73385372,309.034773,313.773394,319.485944,325.699189,330.43062,42.61,,,circular phase unwrapped within ±180 degrees of the original result
-pre_phase_rate_ratio_max_vs_min,ratio,7.7431163,7.55157214,2.19785307,4.26495983,5.26559144,7.37096952,9.70710178,12.6253053,59.26,,,fitted maximum/minimum phase contribution to event rate
-n_predictive_events,events,20,19.9938,0.07849953,20,20,20,20,20,50.31,,,events inside complete five-kyr-history response support

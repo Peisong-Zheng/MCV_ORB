@@ -1,0 +1,26 @@
+parameter,value
+n_point,5000
+n_outer,200
+n_inner,50
+seed,20260908
+workers,4
+output_dir,/Users/pz/VScode/MCV_ORB/data/processed/NGRIP_MIS6_effect_uncertainty
+figure_dir,/Users/pz/VScode/MCV_ORB/figures/NGRIP_MIS6_effect_uncertainty
+age_reference,BP1950
+history_window_ka,1.5
+bin_width_ka,0.2
+response_exposure_kyr,180.0
+age_rows,10000
+age_valid,9982
+age_outside_support,18
+elapsed_seconds,47.33581479100394
+generator,fitted full model; dynamic simulated history; zero initial history per segment
+B_interval,bootstrap-error-calibrated 2D ellipse; approximate conditional joint confidence
+C_interval,raw refit central quantiles; includes finite-sample bias; not a posterior or calibrated CI
+C_outer,uniform without replacement among valid age rows; equal inner weights
+failures,record without retries; stop interval publication if any occur
+phase_convention,degrees unwrapped around point estimate for ranges; circular modulo 360
+python,3.13.5
+numpy,2.1.3
+pandas,2.2.3
+scipy,1.15.3

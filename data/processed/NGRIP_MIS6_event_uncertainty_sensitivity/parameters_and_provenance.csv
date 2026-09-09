@@ -1,0 +1,40 @@
+parameter,value,unit,note
+analysis,joint event-age uncertainty sensitivity,,conditional PI only
+catalogue,ngrip_warming_plus_mis6,,34 NGRIP warming starts + 21 MIS 6 transitions
+age_unit,kyr BP,BP1950,all event and driver ages
+n_realizations,10000,paired sequences,one combined-error ensemble
+pairing_seed,20260906,,reproducible independent source-row permutations
+pairing_scheme,independent permutations without replacement,,"every source row is used once in the 10,000-pair run"
+event_membership,fixed,,published events only; no event additions or removals
+event_order,fixed; no sorting repair,,upstream crossed proposals were rejected
+ngrip_mc_input,NGRIP/data/processed/ngrip_event_age_uncertainty/ngrip_event_age_realizations.csv,,combined chronology + published-boundary timing uncertainty
+mis6_mc_input,data/processed/MIS6_event_age_uncertainty/mis6_event_age_realizations.csv,,combined chronology + algorithmic transition-timing uncertainty
+inter_record_synchronization_error,False,,no extra term is added
+history_window,1.5,kyr,short-term event dependence
+bin_width,0.2,kyr,fixed main setting
+bin_origin_fraction,0.0,fraction of bin width,fixed main setting
+response_mode,maximal_for_history,,maximal support with complete event history
+ngrip_response,12--121.5,kyr BP,disjoint exposure segment
+mis6_response,132.5--203,kyr BP,disjoint exposure segment
+response_exposure,180.0,kyr,gap excluded
+reduced_model_terms,same_type_history_count+lr04_scaled+co2_scaled+mis6_segment,,includes a MIS 6 segment intercept
+full_model_terms,same_type_history_count+lr04_scaled+co2_scaled+mis6_segment+pre_phase_sin+pre_phase_cos,,adds sine and cosine of precession phase
+resolution_covariate_included,False,,not included in PI
+forcing_age_uncertainty_propagated,False,,"LR04, CO2, and La2004 remain fixed"
+nominal_p_method,asymptotic chi-square likelihood-ratio test,,two added phase terms
+robustness_fraction,count(valid nominal p < 0.05) / n_valid,,conditional on observation support; not an empirical p value
+outside_observation_support,retain draw and identifiers; fit_valid=False; PI estimates missing,,"no clipping, source-ensemble redraw, or replacement"
+outside_response_inside_observation,fit with actual response event count; retain event for history,,observation support and response exposure are distinct
+orbital_reference,"Laskar et al. (2004), doi:10.1051/0004-6361:20041335",,J2000 to BP1950 offset -0.05 kyr
+diagnostic_n_realizations,10000,,run diagnostic
+diagnostic_n_valid,9982,,run diagnostic
+diagnostic_n_invalid,18,,run diagnostic
+diagnostic_n_realizations_with_response_event_loss,66,,run diagnostic
+diagnostic_n_unique_event_count_patterns,9982,,run diagnostic
+diagnostic_n_cached_reuses,0,,run diagnostic
+diagnostic_cache_reuse_fraction,0.0,,run diagnostic
+diagnostic_elapsed_seconds,217.36457891599275,,run diagnostic
+diagnostic_max_events_in_single_bin,2,,run diagnostic
+diagnostic_n_nonconverged,0,,run diagnostic
+diagnostic_n_nesting_failures,0,,run diagnostic
+diagnostic_n_eta_clipping,0,,run diagnostic

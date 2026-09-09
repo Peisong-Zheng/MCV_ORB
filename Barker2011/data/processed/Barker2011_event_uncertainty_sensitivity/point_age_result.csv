@@ -1,0 +1,2 @@
+n_predictive_events,n_predictive_bins,response_exposure_kyr,loglik_reduced,loglik_full,LR_statistic,nominal_LR_p,info_bits_per_event,delta_AICc_full_minus_reduced,beta_pre_phase_sin,beta_pre_phase_cos,pre_phase_preferred_deg,pre_phase_rate_ratio_max_vs_min,all_models_converged,likelihood_nesting_ok,eta_clipping_used
+70,1993,398.5,-298.201964863,-293.866168448,8.67159283062,0.0130914436939,0.0893604569525,-4.64941748246,-0.207768411046,0.48727326672,336.907088699,2.88475328064,True,True,False

@@ -3,5 +3,20 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
-monsoon_paper/
 ~$*.xlsx
+
+# Manuscript sources and numbered figures are versioned; LaTeX build products are not.
+monsoon_paper/*.aux
+monsoon_paper/*.bbl
+monsoon_paper/*.blg
+monsoon_paper/*.fdb_latexmk
+monsoon_paper/*.fls
+monsoon_paper/*.log
+monsoon_paper/*.out
+monsoon_paper/*.synctex.gz
+monsoon_paper/*.toc
+monsoon_paper/main.pdf
+monsoon_paper/SI.pdf
+archive/
+docs/
+experiment_note/

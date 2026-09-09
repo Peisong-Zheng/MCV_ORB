@@ -1,0 +1,30 @@
+parameter,value
+experiment,NGRIP correlation-scale screening; does not replace primary 10000-draw result
+n_realizations_per_spacing,2000
+knot_spacings_ka,"[2.5, 5.0, 10.0]"
+ngrip_seed,20260907
+pairing_seed,20260906
+ngrip_joint_boundary_count,69
+ngrip_warming_count_in_pi,34
+mis6_count_in_pi,21
+mis6_pairing,identical source rows and ages across spacing; checked exactly
+ngrip_pairing,"same seed, different innovation dimensions; rows are not the same latent chronology"
+age_epoch,kyr BP1950; GICC05 b2k ages subtract 0.05 kyr
+working_covariance,independent cumulative Gaussian variance increments and linear error interpolation
+counted_working_sigma,MCE/2 at knots; actual interpolated sigma recorded separately
+modelext_nominal_envelope,"+/-4.5% of age, user-selected working 2-sigma scale, not a hard bound"
+order_conditioning,reject nonmonotonic maps or crossed complete 69-boundary event sequences
+basis_diagnostics,"analytical unconditioned chronology only, before definition error or order conditioning"
+observation_support,outside-support draws recorded invalid by primary fitter; no clipping or resampling
+response_support,fixed primary response window; events outside response may be lost and are counted in diagnostics
+robustness_fraction,denominator is valid observation-supported fits; fraction is not an empirical p value
+history_window_ka,1.5
+bin_width_ka,0.2
+bin_origin_fraction,0.0
+response_mode,maximal_for_history
+mis6_source_path,data/processed/MIS6_event_age_uncertainty/mis6_event_age_realizations.csv
+python,3.13.5
+numpy,2.1.3
+pandas,2.2.3
+scipy,1.15.3
+primary_outputs_written,False

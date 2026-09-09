@@ -1,0 +1,34 @@
+parameter,value,unit,note
+age_unit,kyr BP,BP1950,used for every event and forcing
+event_catalogue,data/curated/ngrip_mis6_warming_events.csv,,34 NGRIP warming starts and 21 MIS 6 transitions
+observation_segments,data/curated/observation_segments.csv,,two disjoint observation segments
+all_event_identities_published,True,,MIS 6 operational transition ages are estimated here
+history_window,1.5,kyr,characteristic D-O recurrence timescale
+bin_width,0.2,kyr,Poisson event-count bins
+bin_origin_fraction,0.0,bin width,unshifted main grid
+response_mode,maximal_for_history,,maximal support with complete event history
+response_exposure,180.0,kyr,sum of both segments only
+response_gap_counted_as_exposure,False,,the NGRIP--MIS 6 gap is omitted
+reduced_model_terms,same_type_history_count+lr04_scaled+co2_scaled+mis6_segment,,PI baseline
+full_model_terms,same_type_history_count+lr04_scaled+co2_scaled+mis6_segment+pre_phase_sin+pre_phase_cos,,adds precession sine and cosine
+segment_indicator,MIS6=1; NGRIP=0,,allows different conditional baseline event rates
+resolution_covariate_included,False,,not part of the PI model
+event_age_uncertainty_propagated,False,,point-age analysis
+rayleigh_role,descriptive,,PI is the primary analysis
+likelihood_p_value,asymptotic chi-square,df=2,nominal point estimate
+lr04_input,data/raw/lr04.xlsx,,LR04 benthic stack
+co2_input,data/raw/composite_co2.xlsx,,composite atmospheric CO2
+precession_input,data/raw/pre_1000_60_inter100.txt,,"Laskar et al. (2004), doi:10.1051/0004-6361:20041335"
+orbital_solution,La2004,,"Laskar et al. (2004), doi:10.1051/0004-6361:20041335"
+orbital_source_epoch,J2000.0,,source-file age convention
+orbital_age_offset_to_BP1950,-0.05,kyr,applied before phase interpolation
+NGRIP_event_count,34,events,published transitions
+NGRIP_observation_interval,12--123,kyr BP,including history-only support
+NGRIP_response_interval,12--121.5,kyr BP,included as event exposure
+MIS6_event_count,21,events,published transitions
+MIS6_observation_interval,132.5--204.5,kyr BP,including history-only support
+MIS6_response_interval,132.5--203,kyr BP,included as event exposure
+lr04_response_mean,4.321827968923419,per mil,zero point used in scaling
+lr04_response_range,1.7899999999999996,per mil,divisor used in scaling
+co2_response_mean,216.20998582910494,ppm,zero point used in scaling
+co2_response_range,98.73508980775105,ppm,divisor used in scaling

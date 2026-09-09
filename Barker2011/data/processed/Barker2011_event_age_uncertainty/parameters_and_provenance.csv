@@ -1,0 +1,42 @@
+parameter,value
+n_realizations,10000
+random_seed,20260908
+n_proposals,42764
+n_rejected_crossed_controls,32727
+n_accepted_proposals,10037
+n_unused_accepted_tail,37
+acceptance_fraction,0.2347067626975961
+n_events,70
+n_published_controls,60
+n_auxiliary_controls,1
+auxiliary_age_ka,400.0
+auxiliary_half_width_ka,1.3
+auxiliary_unfloored_extrapolation_ka,1.1148182928488037
+tail_control_count,4
+age_coordinate,"published SpeleoAge; BP1950 assumed, exact epoch unverified"
+proposal,"independent Uniform(-combined uncertainty, +combined uncertainty)"
+uncertainty_convention,half-width assumed; source sigma/coverage level unspecified
+interpolation,linear offsets on fixed original SpeleoAge coordinates
+order_condition,reject entire nonmonotone control maps; never sort sampled ages
+gap_interpolation,264.24-317.70 ka; no additional internal perturbation
+n_events_in_published_gap,7
+n_events_in_long_control_interval,8
+n_events_beyond_last_control,4
+extra_event_picking_error,False
+forcing_chronology_perturbed,False
+edc3_used_in_sampling,False
+intervals,"accepted ensemble quantiles, not confidence intervals"
+python_version,3.13.5
+numpy_version,2.1.3
+pandas_version,2.2.3
+scipy_version,1.15.3
+source_table_s1,Barker2011/data/raw/Barker2011_TableS1.csv
+sha256_table_s1,0a1baf6cc2aa41f88777fce7708f310499aa99acf8aecdfc42787773deccadea
+source_som_pdf,Barker2011/references/Barker2011_SOM.pdf
+sha256_som_pdf,0a92d8ca1386458a4b4ab6f29a02fbf5e6995090aed5fa8bfebb41b78fcaa504
+source_events,Barker2011/data/raw/Barker et al-2011-SOM.xls
+sha256_events,5b028eb1d9edc5250abbe403efeb0a8fd80171ed0eab42a8bd46c338619258cd
+source_sampler,Barker2011/Barker2011_event_age_uncertainty.py
+sha256_sampler,c722aa5938ae3a8c7b7508b29542072fe260396a0837cd0bd448c1f5094ff529
+source_main_analysis,Barker2011/Barker2011_event_phase_analysis.py
+sha256_main_analysis,c0097df027283281882d60e23153fc14468ebf7937eddc17dc28141e819752a1

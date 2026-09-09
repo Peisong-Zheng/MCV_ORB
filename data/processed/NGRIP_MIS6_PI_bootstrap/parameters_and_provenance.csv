@@ -1,0 +1,27 @@
+parameter,value,unit,note
+age_unit,kyr BP,BP1950,used for events and forcings
+event_catalogue,data/curated/ngrip_mis6_warming_events.csv,,34 NGRIP warming starts and 21 MIS 6 transitions
+observation_segments,data/curated/observation_segments.csv,,two disjoint observation segments
+history_window,1.5,kyr,main setting
+bin_width,0.2,kyr,main setting
+bin_origin_fraction,0.0,bin width,main setting
+response_mode,maximal_for_history,,main setting
+response_exposure,180.0,kyr,sum of both response segments only
+reduced_model_terms,same_type_history_count+lr04_scaled+co2_scaled+mis6_segment,,null-generating model
+full_model_terms,same_type_history_count+lr04_scaled+co2_scaled+mis6_segment+pre_phase_sin+pre_phase_cos,,adds precession sine and cosine
+simulation_direction,oldest to youngest,,age increases into the past; older events determine history
+segment_history,reset independently for NGRIP and MIS6,,the unobserved gap is neither exposure nor event history
+oldest_boundary_history,zero outside each observation segment,,the history-only buffer itself is simulated under this boundary condition
+simulation_support,complete observation intervals,,response models are refitted on response bins only
+history_in_refits,recomputed from each simulated catalogue,,the observed history covariate is never held fixed
+resolution_covariate_included,False,,not part of reduced or full model
+n_bootstrap,9999,replicates,formal run
+random_seed,20260905,,NumPy SeedSequence base entropy
+rng_streams,one spawned SeedSequence per replicate and attempt,,reproducible independent streams
+worker_processes,6,processes,parallel scheduling does not change replicate streams
+linear_algebra_threads,1,thread per worker,prevents nested parallelism during many small fits
+maximum_attempts,20,per replicate,numerical retries
+valid_fit_rule,both models converge; nested; finite; no eta clipping,,invalid attempts are redrawn and counted
+empirical_p_rule,(1 + count[LR_sim >= LR_obs]) / (B + 1),,conservative plus-one estimator
+p_interval,Clopper-Pearson exact binomial 95% CI,,interval for the null exceedance probability
+reference_implementation,Predictive_information_bootstrap_diagnostics.py,,algorithm adapted and rewritten for the pooled catalogue

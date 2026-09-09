@@ -1,0 +1,15 @@
+parameter,value
+catalogue,NGRIP–MIS6 warming events
+bin_width_kyr,0.2
+history_window_kyr,1.5
+origin_fraction,0.0
+response_mode,maximal_for_history
+age_epoch,All ages are kyr BP relative to 1950
+source_realizations,data/processed/NGRIP_MIS6_orbital_driver_sensitivity/selected_realizations.csv
+realization_selection,"all 500 saved orbital-experiment rows, unchanged order; no new draw"
+selection_seed,20260909
+full_terms,same_type_history_count;lr04_scaled;co2_scaled;mis6_segment;pre_phase_sin;pre_phase_cos
+interaction_terms,lr04_phase_sin;lr04_phase_cos
+added_parameters,2
+p_method,"nominal chi-square, df=2; no interaction bootstrap"
+interval,2.5–97.5% chronology sensitivity; not full sampling confidence

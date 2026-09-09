@@ -1,0 +1,28 @@
+parameter,value
+event_catalogue,Table S3 variable-threshold SpeleoAge warming picks
+event_age_epoch,BP1950 assumed; exact SpeleoAge epoch not directly verified
+observation_start_kyr,0.0
+observation_end_kyr,400.0
+response_start_kyr,0.0
+response_end_kyr,398.5
+bin_width_kyr,0.2
+history_window_kyr,1.5
+bin_origin_fraction,0.0
+response_mode,maximal_for_history
+reduced_terms,same_type_history_count+lr04_scaled+co2_scaled
+full_terms,same_type_history_count+lr04_scaled+co2_scaled+pre_phase_sin+pre_phase_cos
+simulation_direction,oldest to youngest
+oldest_boundary_history,zero outside observation support
+simulation_support,"full observation interval, including history-only buffer"
+refit_history,recalculated from simulated counts
+conditioned_event_total,False
+chronology_MC_nested,False
+fixed_threshold_included,False
+n_bootstrap,9999
+seed,20260909
+max_attempts,20
+n_workers,6
+empirical_p_rule,(1 + number of simulated LR >= observed LR) / (B + 1)
+numerical_retries,"only nonconverged, nonfinite, nonnested, clipped or empty-response draws"
+elapsed_seconds,26.16142908402253
+provenance_documentation_refresh,Age-sensitivity source hash refreshed after documentation-only clarification of nominal MC p values and primary point-age bootstrap calibration; numerical code and saved bootstrap results unchanged.

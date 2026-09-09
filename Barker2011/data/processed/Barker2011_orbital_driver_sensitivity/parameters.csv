@@ -1,0 +1,14 @@
+parameter,value
+catalogue,Barker 2011 SpeleoAge warming events
+n_realizations,500
+seed,20260909
+bin_width_kyr,0.2
+history_window_kyr,1.5
+origin_fraction,0.0
+response_mode,maximal_for_history
+response_exposure_kyr,398.5
+age_epoch,SpeleoAge treated as BP1950; reference year unverified
+source_realizations,Barker2011/data/processed/Barker2011_event_age_uncertainty/event_age_realizations.csv
+n_new_comparisons,9
+p_method,nominal chi-square; within-catalogue Holm family of 9
+interval,2.5–97.5% age sensitivity; not sampling confidence interval

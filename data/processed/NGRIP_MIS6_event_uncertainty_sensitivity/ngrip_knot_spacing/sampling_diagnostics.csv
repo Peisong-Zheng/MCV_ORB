@@ -1,0 +1,4 @@
+knot_spacing_ka,scenario,random_seed,chronology_knot_spacing_ka,n_realizations,n_proposals,n_rejected_for_event_crossing,n_rejected_nonmonotonic_chronology,n_unused_accepted_tail,acceptance_fraction
+2.5,combined,20260907,2.5,2000,3000,135,0,865,0.955
+5,combined,20260907,5,2000,3000,126,0,874,0.958
+10,combined,20260907,10,2000,3000,123,0,877,0.959

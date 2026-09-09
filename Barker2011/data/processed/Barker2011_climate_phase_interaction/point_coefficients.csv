@@ -1,0 +1,15 @@
+model_id,term,beta
+full,intercept,-1.7120850228744702
+full,same_type_history_count,-0.7176712284286014
+full,lr04_scaled,3.35078678000847
+full,co2_scaled,2.7379370987495784
+full,pre_phase_sin,-0.20776841104608407
+full,pre_phase_cos,0.4872732667197264
+interaction,intercept,-1.6505441803933312
+interaction,same_type_history_count,-0.8229045387967431
+interaction,lr04_scaled,3.044306260562455
+interaction,co2_scaled,2.7285418399117525
+interaction,pre_phase_sin,-0.10523393628850256
+interaction,pre_phase_cos,0.45428146119118296
+interaction,lr04_phase_sin,-1.9240802465123488
+interaction,lr04_phase_cos,0.2839758592919715

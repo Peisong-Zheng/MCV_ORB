@@ -1,0 +1,54 @@
+parameter,value,note
+sensitivity_case,sofular_so57_overlap,So-57 for MIS6.17--20; So-4 for MIS6.21 outside So-57 support
+n_realizations,10000,all requested paired rows retained
+pairing_seed,20260906,same seed as the main joint run
+pairing_scheme,independent permutations without replacement,same NGRIP row selection/order when source and requested count match main run
+source_draw_comparison,comparison of accepted source ensembles,alternative chronology can change upstream rejection and latent-draw correspondence; not a paired causal effect
+age_epoch,BP1950,sources already converted; no additional epoch shift
+history_window_kyr,1.5,older events; dynamically rebuilt per realization
+bin_width_kyr,0.2,true bin duration is the offset
+origin_fraction,0.0,same as main point analysis
+response_mode,maximal_for_history,two disjoint observation segments
+response_exposure_kyr,180.0,gap excluded
+reduced_terms,same_type_history_count+lr04_scaled+co2_scaled+mis6_segment,Poisson log rate with intercept
+full_terms,same_type_history_count+lr04_scaled+co2_scaled+mis6_segment+pre_phase_sin+pre_phase_cos,adds precession sine and cosine
+observation_boundary_policy,retain invalid draws with missing PI,no resampling or clipping to preserve 55 response events
+robustness_denominator,valid fits,summary also gives lower-bound fraction over all draws
+uncertainty_interpretation,component sensitivity of analytical error transfer,not a StalAge/iscam posterior; unknown stack synchronization and dating-systematic covariance remain omitted
+ngrip_source,NGRIP/data/processed/ngrip_event_age_uncertainty/ngrip_event_age_realizations.csv,actual file used
+ngrip_source_sha256,d252b191da46832a5bb41f0d336bdf153935415dc7f1812ab564837ac606b170,content fingerprint
+mis6_source,data/processed/MIS6_event_age_uncertainty/mis6_event_age_realizations_so57_overlap.csv,actual file used
+mis6_source_sha256,f1c9edb940c0c699ecb9c37352b4037316bce960043ab30eb9d661452f70ed13,content fingerprint
+mis6_source_parameters,data/processed/MIS6_event_age_uncertainty/parameters_and_provenance_so57_overlap.csv,actual file used
+mis6_source_parameters_sha256,3401df7db7302a98909ed4949248b1611720856a94488674c5cc33fc12a12917,content fingerprint
+event_catalogue,data/curated/ngrip_mis6_warming_events.csv,actual file used
+event_catalogue_sha256,1d045dec52ee2b705d4fd172857a6eb1d90615dee9593e36fb26e38937e647ee,content fingerprint
+observation_segments,data/curated/observation_segments.csv,actual file used
+observation_segments_sha256,3dc843cf27a18f80765b7deb3e956a3776a9bfa0e2cbd9d8859bc7f17b718363,content fingerprint
+lr04,data/raw/lr04.xlsx,actual file used
+lr04_sha256,85f7de1f50879268bac33d217f34665062fb99b07553a69f1d976b20a9058e1f,content fingerprint
+co2,data/raw/composite_co2.xlsx,actual file used
+co2_sha256,06186a4bbaf68e98a4ca2a36da97bdce40d6f80a0106043a07a20d707f4cf2fe,content fingerprint
+precession,data/raw/pre_1000_60_inter100.txt,actual file used
+precession_sha256,e0d10be76c4aaa543006e472dd07b769a2b836dc0bd09c591dcbc5c8729aeae2,content fingerprint
+joint_analysis_code,NGRIP_MIS6_event_uncertainty_sensitivity.py,actual file used
+joint_analysis_code_sha256,ff3c7d35b3e97466658c7d97fa5b7b0da55b5f5ae6deb62c6e2ba22a55351d92,content fingerprint
+pooled_model_code,toolbox/combined_pi.py,actual file used
+pooled_model_code_sha256,8e49aea31f9f39cb65338082dae2a1b6bd8ea23c47d165b6cda762284cbe6f4b,content fingerprint
+runner_code,docs/reviews/sofular_component_pi_sensitivity.py,actual file used
+runner_code_sha256,2338e4867f6792df297aa375f353165e83a11f8274e983f93e8ecde83a35ee2f,content fingerprint
+diagnostic_n_realizations,10000,run diagnostic
+diagnostic_n_valid,9982,run diagnostic
+diagnostic_n_invalid,18,run diagnostic
+diagnostic_n_realizations_with_response_event_loss,66,run diagnostic
+diagnostic_n_unique_event_count_patterns,9982,run diagnostic
+diagnostic_n_cached_reuses,0,run diagnostic
+diagnostic_cache_reuse_fraction,0.0,run diagnostic
+diagnostic_elapsed_seconds,92.20031512499554,run diagnostic
+diagnostic_max_events_in_single_bin,2,run diagnostic
+diagnostic_n_nonconverged,0,run diagnostic
+diagnostic_n_nesting_failures,0,run diagnostic
+diagnostic_n_eta_clipping,0,run diagnostic
+postrun_plot_layout_code_sha256,d00f6ae9ac8f957763dc201f22880e802eec6c235759b506df289decde56acdc,current shared script after post-run plotting-layout change; original joint_analysis_code_sha256 retained
+postrun_code_change,figure height 112 to 120 mm; bottom margin 0.12 to 0.17,root confirmed no numerical or scientific logic changes; this sensitivity run does not invoke plotting
+main_pairing_verified,True,"all 10000 joint, NGRIP and MIS6 realization IDs match regenerated main PI table in row order"
