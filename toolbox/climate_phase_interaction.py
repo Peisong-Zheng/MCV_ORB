@@ -5,13 +5,13 @@ Response support and climate scaling are supplied by each main analysis.
 """
 
 from pathlib import Path
-from paper_figure_export import copy_pdf_to_paper
 import hashlib
 import time
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from toolbox.phase_response_plotting import format_phase_response_axis, mark_preferred_phase
 from matplotlib.lines import Line2D
 import numpy as np
 import pandas as pd
@@ -223,21 +223,26 @@ def plot_results(result, catalogue_label):
     """Matched compact figures: conditional phase curves and the interaction PI."""
     plt.rcParams.update({"font.family": "sans-serif", "font.sans-serif": ["Arial", "DejaVu Sans"],
         "font.size": 8, "axes.linewidth": 0.7, "pdf.fonttype": 42, "ps.fonttype": 42})
-    fig, axes = plt.subplots(1, 2, figsize=(180 / 25.4, 77 / 25.4),
+    fig, axes = plt.subplots(1, 2, figsize=(180 / 25.4, 90 / 25.4),
                              gridspec_kw={"width_ratios": [1.55, 1]})
-    fig.subplots_adjust(left=0.09, right=0.98, bottom=0.28, top=0.77, wspace=0.32)
+    fig.subplots_adjust(left=0.09, right=0.98, bottom=0.38, top=0.77, wspace=0.32)
     curves = result["phase_curves"]
     for background, color in zip(result["backgrounds"].itertuples(index=False), COLORS):
         curve = curves.loc[curves.background_id.eq(background.background_id)]
+        estimate = result["phase_summary"].set_index("background_id").loc[background.background_id]
         axes[0].plot(curve.phase_deg, curve.rate_multiplier_point, color=color, lw=1.4,
-                     label=f"LR04 {background.exposure_quantile:.0%}: {background.lr04_permil:.2f}‰")
+                     label=f"LR04 {background.exposure_quantile:.0%}: {background.lr04_permil:.2f}‰\n"
+                     f"Preferred: {estimate.preferred_phase_deg_point:.1f}°\n"
+                     f"Max/min: {estimate.rate_ratio_max_vs_min_point:.2f}")
+        mark_preferred_phase(axes[0], estimate.preferred_phase_deg_point,
+                             estimate.rate_ratio_max_vs_min_point, color)
         axes[0].fill_between(curve.phase_deg, curve.rate_multiplier_q025,
                              curve.rate_multiplier_q975, color=color, alpha=0.09, linewidth=0)
     axes[0].axhline(1, color="0.65", lw=0.7, ls="--", zorder=0)
-    axes[0].set(xlim=(0, 360), xticks=np.arange(0, 361, 90), xlabel="Precession phase (°)",
-                ylabel="Phase-only rate multiplier")
-    axes[0].legend(loc="upper center", bbox_to_anchor=(0.5, -0.34), frameon=False,
-                   fontsize=7, ncol=3, columnspacing=1.1, handlelength=1.6)
+    format_phase_response_axis(axes[0], fontsize=6.5)
+    axes[0].set_title("Fitted warming-event rate", fontsize=8, pad=16)
+    axes[0].legend(loc="upper center", bbox_to_anchor=(0.5, -0.49), frameon=False,
+                   fontsize=6.3, ncol=3, columnspacing=0.8, handlelength=1.3)
     summary = result["comparison_summary"].iloc[0]
     valid = result["mc_comparisons"].loc[result["mc_comparisons"].fit_valid, "info_bits_per_event"]
     axes[1].hist(valid, bins=24, color="#C3CDD3", edgecolor="white", linewidth=0.3)
@@ -249,12 +254,37 @@ def plot_results(result, catalogue_label):
     axes[1].legend(handles=[Line2D([], [], color="#222222", lw=1.3, label="Point ages"),
         Line2D([], [], color="#0072B2", lw=1.2, ls="--", label="MC median")],
         loc="upper center", bbox_to_anchor=(0.5, -0.34), frameon=False, fontsize=7, ncol=2)
-    for label, ax in zip(("(a)", "(b)"), axes):
+    # The Barker panels follow NGRIP–MIS6 in the combined manuscript figure.
+    panel_labels = ("(c)", "(d)") if catalogue_label.startswith("Barker") else ("(a)", "(b)")
+    for label, ax in zip(panel_labels, axes):
         ax.text(0, 1.08, label, transform=ax.transAxes, weight="bold", fontsize=9)
         ax.spines[["top", "right"]].set_visible(False)
         ax.tick_params(direction="out", length=3, width=0.7)
     fig.text(0.09, 0.94, catalogue_label, fontsize=10, weight="bold", va="top")
     return fig, axes
+
+
+def save_figure(result, output_root, run_name, catalogue_label):
+    """Save this catalogue's panels and refresh the combined manuscript figure."""
+    from Figure_climate_phase_interaction import build_figure, SOURCES
+
+    output_root = Path(output_root)
+    fig_dir = output_root / "figures" / run_name
+    fig_dir.mkdir(parents=True, exist_ok=True)
+    fig, _ = plot_results(result, catalogue_label)
+    fig.savefig(fig_dir / f"{run_name}.png", dpi=600)
+    fig.savefig(fig_dir / f"{run_name}.pdf")
+    plt.close(fig)
+    project_root = Path(__file__).resolve().parents[1]
+    # Diagnostic exports to another directory do not refresh the manuscript.
+    source_pdf = (fig_dir / f"{run_name}.pdf").resolve()
+    if source_pdf not in [(project_root / source).resolve() for source in SOURCES]:
+        return
+    missing = [source for source in SOURCES if not (project_root / source).is_file()]
+    if missing:
+        print("Combined interaction figure awaits: " + ", ".join(missing))
+    else:
+        build_figure(project_root)
 
 
 def save_results(result, output_root, run_name, catalogue_label, parameters, inputs):
@@ -270,11 +300,7 @@ def save_results(result, output_root, run_name, catalogue_label, parameters, inp
         data_dir / "parameters.csv", index=False)
     pd.DataFrame([{"path": str(path), "sha256": hashlib.sha256(Path(path).read_bytes()).hexdigest()}
                   for path in inputs]).to_csv(data_dir / "input_code_sha256.csv", index=False)
-    fig, _ = plot_results(result, catalogue_label)
-    fig.savefig(fig_dir / f"{run_name}.png", dpi=600)
-    fig.savefig(fig_dir / f"{run_name}.pdf")
-    copy_pdf_to_paper(fig_dir / f"{run_name}.pdf")
-    plt.close(fig)
+    save_figure(result, output_root, run_name, catalogue_label)
     write_notes(result, note_dir, run_name, catalogue_label, parameters)
     return data_dir
 
@@ -388,16 +414,21 @@ PDF files are saved in figures/{run_name}; English methods/results and captions
 are saved separately in experiment_note.
 """
     (note_dir / f"{run_name}_Methods_and_results.txt").write_text(text, encoding="utf-8")
+    first_panel, second_panel = ("a", "b") if pooled else ("c", "d")
     caption = f"""LR04 modulation of the precession response in {catalogue_label}.
-(a) Phase-only warming-rate multipliers from the model with LR04-by-sine and
+({first_panel}) Phase-only warming-rate multipliers from the model with LR04-by-sine and
 LR04-by-cosine interactions, evaluated at the exposure-weighted 25th, 50th
 and 75th percentiles of the LR04 benthic oxygen-isotope stack (legend values
 in permil). Phase is zero at precession-index minima and 180 degrees at maxima,
 increasing toward older BP ages. Lines use the point ages; shading gives pointwise 2.5th-97.5th
 percentiles from age Monte Carlo (MC) realizations. The multiplier is relative
 to the same background and history with the phase contribution set to zero;
-it is not the total warming rate. The horizontal dashed line denotes unity.
-(b) Distribution of the additional predictive information (PI) supplied by
+it is not the total warming rate. The horizontal dashed line denotes unity,
+not the mean rate or a separately refitted reduced-model rate. Minimum/Maximum
+tick labels name precession-index extrema. Peak dots identify fitted preferred
+phases; legends give point-age preferred phases and maximum/minimum rate ratios
+for each LR04 condition. The smooth curves follow the sine/cosine model.
+({second_panel}) Distribution of the additional predictive information (PI) supplied by
 the two interaction terms, relative to the existing full model. The full
 model includes {baseline}, plus precession-phase sine and cosine. PI equals
 the log-likelihood improvement divided by the response-event count and ln(2),

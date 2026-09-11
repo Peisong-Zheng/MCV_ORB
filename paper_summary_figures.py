@@ -15,8 +15,11 @@ from matplotlib.patches import Patch
 from matplotlib.ticker import MultipleLocator
 import numpy as np
 import pandas as pd
+from scipy.special import gammaln
 
 from paper_figure_export import copy_pdf_to_paper
+from toolbox.catalogue_colors import CATALOGUE_COLORS
+from toolbox.phase_response_plotting import format_phase_response_axis, mark_preferred_phase
 
 PROJECT = Path(__file__).resolve().parent
 FIGURES = PROJECT / "figures/paper_summary"
@@ -24,8 +27,6 @@ PRIMARY = Path("data/processed/NGRIP_MIS6_event_phase_analysis")
 BARKER = Path("Barker2011/data/processed/Barker2011_event_phase_analysis")
 PRIMARY_ORBITAL = Path("data/processed/NGRIP_MIS6_orbital_driver_sensitivity")
 BARKER_ORBITAL = Path("Barker2011/data/processed/Barker2011_orbital_driver_sensitivity")
-COLORS = {"NGRIP": "#3E6C8E", "MF": "#7A6AA6", "Sofular": "#D58936",
-          "variable": "#CC6677", "fixed": "#4477AA"}
 DRIVERS = {"ecc": ("Eccentricity", "#CC79A7"),
            "obl": ("Obliquity", "#009E73"),
            "insol65n": ("65°N summer-solstice\ninsolation", "#D55E00")}
@@ -59,15 +60,19 @@ def save_figure(figure, name):
 
 
 def plot_data_overview():
-    """Show event membership, observation support and fixed model inputs."""
+    """Compare orbital inputs and event locations, with younger ages at right."""
     events = read_table(Path("data/curated/ngrip_mis6_warming_events.csv"))
-    barker_events = read_table(BARKER / "event_catalogue_used.csv")
+    primary_phases = read_table(PRIMARY / "event_precession_phases.csv")
+    variable_phases = read_table(BARKER / "event_precession_phases.csv")
+    fixed_phases = read_table(BARKER / "fixed_threshold/event_precession_phases.csv")
     support = read_table(PRIMARY_ORBITAL / "support.csv").set_index("segment_id")
-    barker_support = read_table(BARKER_ORBITAL / "support.csv").iloc[0]
     drivers = read_table(BARKER / "binned_inputs_and_fitted_rates.csv")
+    orbital = read_table(BARKER_ORBITAL / "binned_inputs_and_fitted_rates.csv")
     primary_bins = read_table(PRIMARY_ORBITAL / "binned_inputs_and_fitted_rates.csv")
     assert events.groupby("source_record").size().to_dict() == {"MF": 16, "NGRIP": 34, "Sofular": 5}
-    assert len(barker_events) == 70
+    assert [len(primary_phases), len(variable_phases), len(fixed_phases)] == [55, 70, 59]
+    assert np.isin(fixed_phases.event_age_ka, variable_phases.event_age_ka).all()
+    np.testing.assert_allclose(primary_phases.event_age_kyr_bp, events.event_age_kyr_bp)
     assert drivers.bin_center_ka.is_monotonic_increasing
 
     # At identical bin centers, both catalogues must use the same fixed drivers.
@@ -79,51 +84,77 @@ def plot_data_overview():
         np.testing.assert_allclose(overlap[column + "_primary"], overlap[column + "_barker"],
                                    rtol=1e-8, atol=1e-8)
 
-    fig, axes = plt.subplots(4, 1, figsize=(165 / 25.4, 137 / 25.4), sharex=True,
-                             gridspec_kw={"height_ratios": (1.28, 1, 1, 1)})
-    fig.subplots_adjust(left=0.175, right=0.98, top=0.94, bottom=0.105, hspace=0.35)
-    timeline = axes[0]
-    rows = [(2, support.loc["NGRIP"]), (1, support.loc["MIS6"]), (0, barker_support)]
-    for y, row in rows:
-        low, high = row.observation_start_kyr_bp, row.observation_end_kyr_bp
-        timeline.broken_barh([(low, high - low)], (y - 0.19, 0.38),
-                             facecolor="#E6E6E6", edgecolor="none", zorder=0)
-        # The thin black baseline is response exposure; the older gray tail is
-        # retained only to initialize the 1.5-kyr event-history covariate.
-        timeline.hlines(y - 0.25, row.response_start_kyr_bp, row.response_end_kyr_bp,
-                        color="#555555", linewidth=0.9)
-    for source in ("NGRIP", "MF", "Sofular"):
-        ages = events.loc[events.source_record.eq(source), "event_age_kyr_bp"]
-        y = 2 if source == "NGRIP" else 1
-        timeline.vlines(ages, y - 0.16, y + 0.16, color=COLORS[source], linewidth=1.15)
-    timeline.vlines(barker_events.event_age_ka, -0.16, 0.16,
-                    color=COLORS["variable"], linewidth=1.0)
-    timeline.set(ylim=(-0.45, 2.45), yticks=[2, 1, 0],
-                 yticklabels=["NGRIP (34)", "Speleothems (21)", "Barker (70)"])
-    timeline.tick_params(axis="y", length=0, pad=6)
-    timeline.spines[["top", "right", "left", "bottom"]].set_visible(False)
-    timeline.tick_params(axis="x", bottom=False)
-    timeline.legend(handles=[Line2D([], [], color=COLORS["MF"], lw=1.7, label="MF (16)"),
-                             Line2D([], [], color=COLORS["Sofular"], lw=1.7, label="Sofular (5)")],
-                    loc="upper right", frameon=False, ncol=2, fontsize=7.5,
-                    bbox_to_anchor=(1.01, 1.34), handlelength=1.2, columnspacing=1.2)
+    # Reserve the right margin for two explicitly colored orbital scales.
+    fig, axes = plt.subplots(4, 1, figsize=(165 / 25.4, 158 / 25.4), sharex=True,
+                             gridspec_kw={"height_ratios": (1.25, 1.6, 1, 1)})
+    fig.subplots_adjust(left=0.12, right=0.81, top=0.945, bottom=0.085, hspace=0.40)
+    eccentricity = axes[0]
+    obliquity = eccentricity.twinx()
+    insolation = eccentricity.twinx()
+    insolation.spines["right"].set_position(("outward", 42))
+    orbital_specs = [
+        (eccentricity, "ecc", "Eccentricity", DRIVERS["ecc"][1], [0, 0.03, 0.06], (-0.003, 0.065)),
+        (obliquity, "obl_deg", "Obliquity (°)", DRIVERS["obl"][1], [22, 23, 24], (21.4, 24.9)),
+        (insolation, "insol65n_Wm2", "65°N insolation\n(W m$^{-2}$)",
+         DRIVERS["insol65n"][1], [440, 490, 540], (420, 565)),
+    ]
+    for ax, column, label, color, ticks, limits in orbital_specs:
+        ax.plot(orbital.bin_center_ka, orbital[column], color=color, lw=0.9)
+        ax.set(ylabel=label, yticks=ticks, ylim=limits)
+        ax.yaxis.label.set_color(color)
+        ax.tick_params(axis="y", colors=color, labelsize=7, length=3, width=0.6)
+        ax.spines[["top", "bottom"]].set_visible(False)
+        side = "left" if ax is eccentricity else "right"
+        ax.spines[side].set_color(color)
+        ax.spines[side].set_linewidth(0.6)
+        ax.spines["right" if side == "left" else "left"].set_visible(False)
+        ax.grid(False, which="both")
+        ax.tick_params(axis="x", bottom=False, labelbottom=False)
 
-    specifications = [("precession_index", "Precession\nindex", "#555555", [-0.04, 0, 0.04]),
-                      ("lr04", "LR04 δ$^{18}$O\n(‰)", "#4C7292", [3, 4, 5]),
-                      ("co2", "CO$_2$\n(ppm)", "#9A774F", [180, 230, 280])]
-    for ax, (column, label, color, ticks) in zip(axes[1:], specifications):
-        ax.plot(drivers.bin_center_ka, drivers[column], color=color, lw=0.9)
+    phase = axes[1]
+    phase.plot(drivers.bin_center_ka, drivers.precession_index, color="0.40", lw=0.9, zorder=1)
+    # Use the stored forcing value at each event, without age jitter. Larger
+    # open squares leave both symbols visible for shared Barker event picks.
+    phase.scatter(variable_phases.event_age_ka, variable_phases.orbital_value_at_event,
+                  s=13, marker="o", c=CATALOGUE_COLORS["variable"], linewidths=0, zorder=3,
+                  label="Barker 2011: varying threshold (n = 70)")
+    phase.scatter(fixed_phases.event_age_ka, fixed_phases.orbital_value_at_event,
+                  s=24, marker="s", facecolors="none", edgecolors=CATALOGUE_COLORS["fixed"],
+                  linewidths=0.7, zorder=4, label="Barker 2011: fixed threshold (n = 59)")
+    phase.scatter(primary_phases.event_age_kyr_bp, primary_phases.precession_index,
+                  s=21, marker="^", c=CATALOGUE_COLORS["primary"], edgecolors="white",
+                  linewidths=0.3, zorder=5, label="NGRIP–MIS6 (n = 55)")
+    # Thin strips retain the two primary observation intervals; their gap is
+    # unobserved. Barker spans the entire displayed interval (0–400 kyr BP).
+    for row in support.itertuples():
+        phase.axvspan(row.observation_start_kyr_bp, row.observation_end_kyr_bp,
+                      ymin=0.01, ymax=0.035, color=CATALOGUE_COLORS["primary"], alpha=0.35, lw=0)
+    handles, labels = phase.get_legend_handles_labels()
+    phase.legend([handles[i] for i in (2, 0, 1)], [labels[i] for i in (2, 0, 1)],
+                 loc="lower left", bbox_to_anchor=(-0.02, 1.02), frameon=False,
+                 ncol=1, fontsize=6.9, handletextpad=0.35, borderaxespad=0,
+                 labelspacing=0.25)
+    phase.set(ylabel="Precession index", ylim=(-0.061, 0.058), yticks=[-0.04, 0, 0.04])
+
+    specifications = [("lr04", "LR04 δ$^{18}$O (‰)", "0.30", [3, 4, 5]),
+                      ("co2", "CO$_2$ (ppm)", "0.40", [180, 230, 280])]
+    for ax, (column, label, color, ticks) in zip(axes[2:], specifications):
+        ax.plot(drivers.bin_center_ka, drivers[column], color=color, lw=1)
         ax.set_ylabel(label, labelpad=8)
         ax.set_yticks(ticks)
-        ax.grid(axis="y", color="0.91", linewidth=0.5)
-        style_axes(ax)
-    axes[1].set_ylim(-0.052, 0.052)
-    axes[2].set_ylim(2.9, 5.2)
+    axes[2].set_ylim(5.2, 2.9)  # Larger benthic isotope values plot lower.
     axes[3].set_ylim(165, 295)
     for index, ax in enumerate(axes):
-        panel_label(ax, chr(97 + index), x=-0.19, y=0.96)
-        ax.set_xlim(0, 400)
+        if index:
+            style_axes(ax)
+        panel_label(ax, chr(97 + index), x=-0.135, y=1.015)
+        # BP increases into the past: use descending display limits only.
+        ax.set_xlim(400, 0)
+        ax.grid(False, which="both")
         ax.xaxis.set_major_locator(MultipleLocator(50))
+        if index < 3:
+            ax.tick_params(axis="x", bottom=False, labelbottom=False)
+            ax.spines["bottom"].set_visible(False)
     axes[-1].set_xlabel("Age (kyr BP)")
     return fig
 
@@ -131,8 +162,8 @@ def plot_data_overview():
 def phase_inputs(folder, phase_column, color, label, fixed=False):
     phases = read_table(folder / "event_precession_phases.csv")[phase_column].to_numpy()
     summary = read_table(folder / "analysis_summary.csv").iloc[0]
-    coefficients = read_table(folder / "predictive_coefficients.csv")
-    coefficients = coefficients.loc[coefficients.model_id.eq("full")].set_index("term").beta
+    saved_coefficients = read_table(folder / "predictive_coefficients.csv")
+    coefficients = saved_coefficients.loc[saved_coefficients.model_id.eq("full")].set_index("term").beta
     phase_deg = np.linspace(0, 360, 721)
     radians = np.deg2rad(phase_deg)
     beta_sin, beta_cos = coefficients[["pre_phase_sin", "pre_phase_cos"]]
@@ -141,77 +172,157 @@ def phase_inputs(folder, phase_column, color, label, fixed=False):
                                summary.pre_phase_rate_ratio_max_vs_min, rtol=1e-7)
     assert np.isfinite(phases).all() and ((phases >= 0) & (phases < 2 * np.pi)).all()
     return dict(phases=phases, summary=summary, phase=phase_deg, multiplier=multiplier,
-                color=color, label=label, fixed=fixed)
+                color=color, label=label, fixed=fixed, coefficients=saved_coefficients)
+
+
+def fitted_rate_inputs(folder, record, reduced_column, full_column):
+    """Read saved rates and check their exposure, coefficients and LR gain."""
+    bins = read_table(folder / "binned_inputs_and_fitted_rates.csv")
+    selected = bins[reduced_column].notna() & bins[full_column].notna()
+    response = bins.loc[selected].copy()
+    summary = record["summary"]
+    assert response.in_response_interval.all() and response.same_type_history_complete.all()
+    assert response.event_count.sum() == summary.n_predictive_events
+    np.testing.assert_allclose(response.dt_ka.sum(), summary.response_exposure_kyr)
+    loglik = {}
+    for model, column in (("reduced", reduced_column), ("full", full_column)):
+        beta = record["coefficients"].query("model_id == @model").set_index("term").beta
+        eta = np.full(len(response), beta["intercept"])
+        for term, value in beta.drop("intercept").items():
+            eta += value * response[term].to_numpy()
+        # The primary table comes from the matched orbital-driver experiment;
+        # this check establishes that its B/BP rates are the main BG/full fits.
+        np.testing.assert_allclose(response[column], np.exp(eta), rtol=5e-8, atol=1e-9)
+        expected_count = response[column].to_numpy() * response.dt_ka.to_numpy()
+        count = response.event_count.to_numpy()
+        loglik[model] = np.sum(count * np.log(expected_count) - expected_count - gammaln(count + 1))
+    np.testing.assert_allclose(2 * (loglik["full"] - loglik["reduced"]), summary.LR_statistic,
+                               rtol=1e-7, atol=1e-7)
+    return response.rename(columns={reduced_column: "bg_rate", full_column: "phase_rate"})
+
+
+def plot_rate_difference(axis, rate_tables, records, label, age_limits):
+    """Show full-minus-reduced rates; event ticks occupy unused space above the x-axis."""
+    for index, (bins, record) in enumerate(zip(rate_tables, records)):
+        for _, part in bins.groupby("segment_id", sort=False):
+            part = part.sort_values("bin_center_ka")
+            difference = part.phase_rate - part.bg_rate
+            axis.plot(part.bin_center_ka, difference, color=record["color"], lw=1.15,
+                      ls="--" if record["fixed"] else "-", zorder=3)
+        # A rug's vertical position is only a display offset, not a negative rate.
+        # Two close rows keep shared Barker events visible without changing ages.
+        rug_y = 0.10 - 0.055 * index if len(records) > 1 else 0.065
+        axis.plot(record["ages"], np.full(len(record["ages"]), rug_y), "|",
+                  transform=axis.get_xaxis_transform(), color=record["color"],
+                  markersize=5.0, markeredgewidth=0.9)
+    bins = rate_tables[0]
+    if bins.segment_id.nunique() > 1:
+        edges = bins.assign(young_edge=bins.bin_center_ka - bins.dt_ka / 2,
+                            old_edge=bins.bin_center_ka + bins.dt_ka / 2)
+        intervals = edges.groupby("segment_id").agg(young=("young_edge", "min"),
+                                                    old=("old_edge", "max")).sort_values("young")
+        # Shade the gap plus the younger segment's history-only bins.
+        axis.axvspan(intervals.iloc[0].old, intervals.iloc[1].young,
+                     facecolor="0.94", edgecolor="none", zorder=0)
+    # Both datasets share the same rate scale; the lower margin is reserved for events.
+    axis.set(xlim=age_limits, ylim=(-0.52, 0.82), yticks=[-0.2, 0, 0.2, 0.4, 0.6, 0.8],
+             ylabel="Rate difference\n(events kyr$^{-1}$)", xlabel="Age (kyr BP)")
+    axis.spines["left"].set_bounds(-0.3, 0.8)
+    axis.axhline(0, color="0.55", lw=0.7, zorder=1)
+    axis.xaxis.set_major_locator(MultipleLocator(50))
+    axis.set_title(label, loc="left", fontsize=8.5, weight="bold", pad=5)
+    axis.grid(False)
+    style_axes(axis)
+    axis.text(1, 1.025, "Full − reduced", transform=axis.transAxes,
+              ha="right", va="bottom", fontsize=7, color="0.30")
 
 
 def plot_phase_comparison():
-    """Separate raw event-phase counts from the fitted conditional rate factor."""
-    primary = phase_inputs(PRIMARY, "pre_phase_rad", COLORS["NGRIP"], "NGRIP + speleothems")
-    variable = phase_inputs(BARKER, "phase_rad", COLORS["variable"], "Variable threshold")
-    fixed = phase_inputs(BARKER / "fixed_threshold", "phase_rad", COLORS["fixed"],
+    """Compare fitted rate differences, raw phases and conditional phase effects."""
+    primary = phase_inputs(PRIMARY, "pre_phase_rad", CATALOGUE_COLORS["primary"], "NGRIP–MIS6")
+    variable = phase_inputs(BARKER, "phase_rad", CATALOGUE_COLORS["variable"], "Varying threshold")
+    fixed = phase_inputs(BARKER / "fixed_threshold", "phase_rad", CATALOGUE_COLORS["fixed"],
                          "Fixed threshold", fixed=True)
-    bootstrap = read_table(Path("data/processed/NGRIP_MIS6_PI_bootstrap/summary.csv")).iloc[0]
     assert [len(d["phases"]) for d in (primary, variable, fixed)] == [55, 70, 59]
+    primary["ages"] = read_table(PRIMARY / "event_precession_phases.csv").event_age_kyr_bp.to_numpy()
+    variable["ages"] = read_table(BARKER / "event_precession_phases.csv").event_age_ka.to_numpy()
+    fixed["ages"] = read_table(BARKER / "fixed_threshold/event_precession_phases.csv").event_age_ka.to_numpy()
+    primary_rates = fitted_rate_inputs(PRIMARY_ORBITAL, primary, "B", "BP")
+    barker_rates = fitted_rate_inputs(BARKER, variable, "reduced_rate_per_kyr", "full_rate_per_kyr")
+    fixed_rates = fitted_rate_inputs(BARKER / "fixed_threshold", fixed,
+                                    "reduced_rate_per_kyr", "full_rate_per_kyr")
+    np.testing.assert_allclose(barker_rates.bin_center_ka, fixed_rates.bin_center_ka)
+    assert np.isin(fixed["ages"], variable["ages"]).all()
 
-    fig = plt.figure(figsize=(165 / 25.4, 148 / 25.4))
-    grid = fig.add_gridspec(2, 2, width_ratios=(1, 1.35), hspace=0.67, wspace=0.40,
-                           left=0.07, right=0.98, bottom=0.14, top=0.89)
-    fig.text(0.07, 0.972, "NGRIP + speleothems (n = 55)", weight="bold", fontsize=9)
-    fig.text(0.07, 0.51, "Barker (variable n = 70; fixed n = 59)", weight="bold", fontsize=9)
-    bins = np.linspace(0, 2 * np.pi, 13)
-    for row, records in enumerate(((primary,), (variable, fixed))):
-        polar = fig.add_subplot(grid[row, 0], projection="polar")
-        response = fig.add_subplot(grid[row, 1])
+    fig = plt.figure(figsize=(180 / 25.4, 208 / 25.4))
+    grid = fig.add_gridspec(4, 2, width_ratios=(1, 1.35),
+                           height_ratios=(1.00, 1.25, 1.10, 1.25),
+                           hspace=0.60, wspace=0.43,
+                           left=0.11, right=0.98, bottom=0.095, top=0.96)
+    edges = np.linspace(0, 2 * np.pi, 19)  # 20-degree sectors, as in the earlier paper.
+    histograms = [np.histogram(r["phases"], edges)[0] for r in (primary, variable, fixed)]
+    radial_max = 2 * np.ceil(max(h.max() for h in histograms) / 2)
+    for group, records, rates, limits, title in [
+        (0, (primary,), (primary_rates,), (205, 10), "NGRIP–MIS6 (n = 55)"),
+        (1, (variable, fixed), (barker_rates, fixed_rates), (400, 0), "Barker: both thresholds"),
+    ]:
+        time_axis = fig.add_subplot(grid[2 * group, :])
+        plot_rate_difference(time_axis, rates, records, title, limits)
+        panel_label(time_axis, "ad"[group], x=-0.095, y=1.00)
+        polar = fig.add_subplot(grid[2 * group + 1, 0], projection="polar")
+        response = fig.add_subplot(grid[2 * group + 1, 1])
         for record in records:
-            counts, _ = np.histogram(record["phases"], bins)
+            counts, _ = np.histogram(record["phases"], edges)
             assert counts.sum() == len(record["phases"])
-            outlined = record["fixed"]
-            polar.bar(bins[:-1], counts, width=np.diff(bins)[0], align="edge",
-                      facecolor="none" if outlined else record["color"],
-                      edgecolor=record["color"] if outlined else "white",
-                      linewidth=1 if outlined else 0.6, alpha=1 if outlined else 0.62,
-                      linestyle="--" if outlined else "-", zorder=3 if outlined else 2)
-            response.plot(record["phase"], record["multiplier"], color=record["color"],
-                          lw=1.8, linestyle="--" if outlined else "-")
+            # Narrow sectors, white dividers and a common count scale
+            # follow the earlier Rayleigh figure. Both Barker fills stay visible.
+            polar.bar(edges[:-1], counts, width=np.diff(edges)[0], align="edge",
+                      facecolor=record["color"], edgecolor="white", linewidth=0.55,
+                      alpha=0.52 if len(records) == 2 else 0.68)
+            response.plot(record["phase"], record["multiplier"], color=record["color"], lw=1.6,
+                          ls="--" if record["fixed"] else "-")
             response.axvline(record["summary"].pre_phase_preferred_deg,
                              color=record["color"], lw=0.7, ls=":")
+            mark_preferred_phase(response, record["summary"].pre_phase_preferred_deg,
+                                 record["summary"].pre_phase_rate_ratio_max_vs_min, record["color"])
         polar.set_theta_zero_location("E")
         polar.set_theta_direction(1)
-        polar.set_xticks(np.deg2rad([0, 90, 180, 270]), ["0°", "90°", "180°", "270°"])
-        polar.set(ylim=(0, 15), yticks=[5, 10, 15])
-        polar.set_rlabel_position(52)
-        polar.tick_params(axis="x", pad=1, labelsize=8)
-        polar.tick_params(axis="y", labelsize=6.5, colors="0.38")
-        polar.grid(color="0.82", lw=0.5)
-        polar.spines["polar"].set_color("0.7")
-        polar.spines["polar"].set_linewidth(0.6)
+        polar.set_xticks(np.deg2rad([0, 90, 180, 270]),
+                         ["0°\nMin", "90°", "180°\nMax", "270°"])
+        polar.set(ylim=(0, radial_max), yticks=np.arange(2, radial_max + 0.1, 2))
+        polar.set_yticklabels(["" if count == 2 else str(int(count))
+                               for count in np.arange(2, radial_max + 0.1, 2)])
+        polar.set_rlabel_position(45)
+        polar.tick_params(axis="x", pad=1, labelsize=7.2)
+        polar.tick_params(axis="y", labelsize=6.5, colors="0.30")
+        polar.set_axisbelow(True)
+        polar.grid(color="0.84", lw=0.55)
+        polar.spines["polar"].set_color("0.25")
+        polar.spines["polar"].set_linewidth(0.75)
+        polar.set_title("Unadjusted event-phase counts", pad=22, fontsize=8)
         response.axhline(1, color="0.55", lw=0.8, ls=":")
-        response.set(xlim=(0, 360), ylim=(0, 2.5), xticks=[0, 90, 180, 270, 360],
-                     yticks=[0, 0.5, 1, 1.5, 2, 2.5], ylabel="Phase rate multiplier")
-        response.grid(axis="y", color="0.91", lw=0.5)
+        response.set(xlim=(0, 360), ylim=(0, 3.1), xticks=[0, 90, 180, 270, 360],
+                     yticks=[0, 0.5, 1, 1.5, 2, 2.5])
+        format_phase_response_axis(response)
+        response.set_xlabel("Precession-index phase", fontsize=8)
+        response.set_title("Conditional phase effect", pad=8, fontsize=8)
+        response.grid(False, which="both")
         style_axes(response)
-        panel_label(polar, "ac"[row], x=-0.16, y=1.04)
-        panel_label(response, "bd"[row], x=-0.18, y=1.04)
-        if row == 0:
-            polar.set_title("Event counts", pad=20, fontsize=8.5)
-            response.set_title("Conditional phase response", pad=17, fontsize=8.5)
-            response.text(0.04, 0.96,
-                          f"PI = {primary['summary'].info_bits_per_event:.3f} bits/event\n"
-                          f"Bootstrap p = {bootstrap.empirical_p_plus_one:.4f}",
-                          transform=response.transAxes, va="top", fontsize=7.5)
-        else:
-            response.set_xlabel("Precession phase (°)")
-            for index, record in enumerate(records):
-                response.text(0.04, 0.96 - 0.10 * index,
-                              f"PI = {record['summary'].info_bits_per_event:.3f} bits/event",
-                              transform=response.transAxes, va="top", fontsize=7.5,
-                              color=record["color"])
-    fig.legend(handles=[Patch(facecolor=COLORS["variable"], alpha=0.62,
-                              label="Barker: variable threshold"),
-                        Patch(facecolor="none", edgecolor=COLORS["fixed"], linestyle="--",
-                              label="Barker: fixed threshold")],
-               loc="lower center", bbox_to_anchor=(0.53, 0.035), ncol=2,
-               frameon=False, columnspacing=1.3, fontsize=7.5)
+        panel_label(polar, "be"[group], x=-0.24, y=1.06)
+        panel_label(response, "cf"[group], x=-0.17, y=1.045)
+        # Reserve space above the response maxima for compact text labels.
+        for index, record in enumerate(records):
+            stats = record["summary"]
+            response.text(0.035, 0.97 - 0.18 * index,
+                          f"PI = {stats.info_bits_per_event:.3f}; LR p = {stats.nominal_LR_p:.4f}\n"
+                          f"Peak {stats.pre_phase_preferred_deg:.1f}°; max/min {stats.pre_phase_rate_ratio_max_vs_min:.2f}",
+                          transform=response.transAxes, va="top", fontsize=7, color=record["color"],
+                          linespacing=1.25, bbox=dict(facecolor="white", edgecolor="none", alpha=0.9, pad=1))
+    fig.legend(handles=[
+        Patch(facecolor=CATALOGUE_COLORS["variable"], alpha=0.52, label="Barker: varying threshold (n = 70)"),
+        Patch(facecolor=CATALOGUE_COLORS["fixed"], alpha=0.52, label="Barker: fixed threshold (n = 59)"),
+    ], loc="lower center", bbox_to_anchor=(0.54, 0.005), ncol=2,
+       frameon=False, columnspacing=1.3, fontsize=7.0)
     return fig
 
 
@@ -267,6 +378,8 @@ def plot_orbital_comparison():
 
 
 def main():
+    INPUTS.add(PROJECT / "toolbox/phase_response_plotting.py")
+    INPUTS.add(PROJECT / "toolbox/catalogue_colors.py")
     plt.rcParams.update({"font.family": "sans-serif", "font.sans-serif": ["Arial", "DejaVu Sans"],
                          "font.size": 8, "axes.labelsize": 8.5, "axes.linewidth": 0.65,
                          "xtick.labelsize": 7.5, "ytick.labelsize": 7.5,

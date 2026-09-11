@@ -664,7 +664,7 @@ def _histogram_panel(
         ax.axvline(threshold, color="#777777", lw=1.0, ls=":", zorder=3)
     ax.set_xlabel(xlabel)
     ax.spines[["top", "right"]].set_visible(False)
-    ax.grid(axis="y", color="#D9D9D9", lw=0.45, alpha=0.7)
+    ax.grid(False)
     ax.set_axisbelow(True)
     ax.text(
         -0.15,

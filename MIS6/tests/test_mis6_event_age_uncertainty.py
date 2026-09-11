@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+import ast
+import json
 import sys
+from types import SimpleNamespace
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
@@ -14,27 +18,42 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from MIS6 import MIS6_event_age_uncertainty as uncertainty
-from MIS6 import event_detection as detector
+@pytest.fixture(scope="module")
+def uncertainty():
+    """Exercise notebook preparation; use small ensembles in focused tests."""
+    mis6_dir = PROJECT_ROOT / "MIS6"
+    notebook = json.loads((mis6_dir / "MIS6_event_age_uncertainty.ipynb").read_text())
+    namespace = {}
+    with pytest.MonkeyPatch.context() as patch:
+        patch.chdir(mis6_dir)
+        patch.syspath_prepend(str(mis6_dir))
+        patch.setattr("IPython.display.display", lambda *args, **kwargs: None)
+        patch.setattr(plt, "show", lambda: None)
+        for cell in notebook["cells"]:
+            if cell["cell_type"] != "code":
+                continue
+            code = "".join(cell["source"]).replace("%matplotlib inline\n", "")
+            if cell["id"] in {"settings", "inputs", "definition-picks", "chronology-contexts"}:
+                exec(code, namespace)
+            else:
+                # Remaining helpers can be tested without writing production
+                # files or running the two full ensembles in every unit test.
+                parsed = ast.parse(code)
+                definitions = [node for node in parsed.body if isinstance(node, ast.FunctionDef)]
+                exec(compile(ast.Module(body=definitions, type_ignores=[]), "<notebook>", "exec"), namespace)
+        namespace["cells"] = {c["id"]: "".join(c["source"]) for c in notebook["cells"]
+                              if c["cell_type"] == "code"}
+        yield SimpleNamespace(**namespace)
+        plt.close("all")
 
 
 @pytest.fixture(scope="module")
-def prepared():
-    controls = uncertainty.load_age_controls()
-    envelope = uncertainty.load_mf_age_envelope(uncertainty.FOHLMEISTER_STACK)
-    anchors = detector.load_selected_anchors(uncertainty.ANCHORS)
-    segments = {
-        spec.record_id: detector.regularize_record(
-            detector.load_record(uncertainty.WORKBOOK, spec), spec
-        )
-        for spec in detector.RECORDS
-    }
-    picks = uncertainty.build_definition_picks(anchors, segments, controls, envelope)
-    return controls, envelope, picks
+def prepared(uncertainty):
+    return uncertainty.mf_envelope, uncertainty.picks
 
 
-def test_fixed_control_table_has_explicit_filename_provenance(prepared):
-    controls, _, _ = prepared
+def test_legacy_display_table_is_separate_from_uncertainty_inputs(uncertainty):
+    controls = pd.read_csv(PROJECT_ROOT / "MIS6/data/curated/mis6_age_control_points.csv")
     assert len(controls) == 11
     assert controls["control_id"].is_unique
     assert set(controls["record_id"]) == {"Sofular"}
@@ -58,19 +77,17 @@ def test_fixed_control_table_has_explicit_filename_provenance(prepared):
         "source_locator",
         "shown_in_composite_figure",
     ]
-    assert uncertainty.AGE_CONTROLS == (
-        PROJECT_ROOT / "MIS6/data/curated/mis6_age_control_points.csv"
-    )
+    assert not hasattr(uncertainty, "load_age_controls")
 
 
-def test_fohlmeister_stack_is_a_workspace_input():
-    assert uncertainty.FOHLMEISTER_STACK == (
+def test_fohlmeister_stack_is_a_workspace_input(uncertainty):
+    assert uncertainty.mf_stack.resolve() == (
         PROJECT_ROOT / "MIS6/data/raw/Fohlmeister J et al-2023-data-mf_d18o_stack.txt"
     )
-    assert uncertainty.FOHLMEISTER_STACK.exists()
+    assert uncertainty.mf_stack.exists()
 
 
-def test_mf_duplicate_ages_keep_the_outer_envelope(tmp_path):
+def test_mf_duplicate_ages_keep_the_outer_envelope(tmp_path, uncertainty):
     source = tmp_path / "bounds.txt"
     pd.DataFrame(
         {
@@ -79,14 +96,18 @@ def test_mf_duplicate_ages_keep_the_outer_envelope(tmp_path):
             "age_lower": [0.8, 0.7, 1.8],
         }
     ).to_csv(source, sep="\t", index=False)
-    envelope = uncertainty.load_mf_age_envelope(source)
+    scope = vars(uncertainty).copy()
+    scope["mf_stack"] = source
+    # Run the actual input preparation up to the independent Sofular reader.
+    exec(uncertainty.cells["inputs"].split("sources =")[0], scope)
+    envelope = scope["mf_envelope"]
     duplicate = envelope.loc[envelope["age"].eq(1.0)].iloc[0]
     assert duplicate["safe_lower"] == pytest.approx(0.7)
     assert duplicate["safe_upper"] == pytest.approx(1.3)
 
 
-def test_real_mf_envelope_counts_gap_and_sigma_conversion(prepared):
-    _, envelope, _ = prepared
+def test_real_mf_envelope_counts_gap_and_sigma_conversion(prepared, uncertainty):
+    envelope, _ = prepared
     assert envelope.attrs["valid_row_count"] == 4244
     assert envelope.attrs["unique_age_count"] == 4077
     assert envelope.attrs["source_rows_needing_bound_repair"] == 188
@@ -99,8 +120,8 @@ def test_real_mf_envelope_counts_gap_and_sigma_conversion(prepared):
     )
 
 
-def test_definition_runs_are_coherent_and_mf_bounds_regress(prepared):
-    _, _, picks = prepared
+def test_definition_runs_are_coherent_and_mf_bounds_regress(prepared, uncertainty):
+    _, picks = prepared
     expected_counts = {"MF": 16, "Sofular": 5}
     for record_id, event_count in expected_counts.items():
         part = picks.loc[picks["source_record"].eq(record_id)]
@@ -128,8 +149,8 @@ def test_definition_runs_are_coherent_and_mf_bounds_regress(prepared):
         np.testing.assert_allclose(observed, values, atol=2e-6, rtol=0)
 
 
-def test_new_sofular_6p9_event_is_stable_and_uses_so4_controls(prepared):
-    _, _, picks = prepared
+def test_new_sofular_6p9_event_is_stable_and_uses_so4_controls(prepared, uncertainty):
+    _, picks = prepared
     event = picks.query(
         "composite_event_id == 'MIS6_DO_17' and algorithm_config_id == 's050_w400'"
     ).iloc[0]
@@ -143,20 +164,22 @@ def test_new_sofular_6p9_event_is_stable_and_uses_so4_controls(prepared):
     assert "assumed_age_coordinate_projection" in event["chronology_support_id"]
 
 
-def test_sofular_uses_depth_model_weights_and_no_extrapolation():
+def test_sofular_uses_depth_model_weights_and_no_extrapolation(uncertainty):
     age = 190.972
-    result = uncertainty.sofular_chronology_at_age(age)
+    result = uncertainty.picks.query(
+        "composite_event_id == 'MIS6_DO_20' and algorithm_config_id == 's050_w400'"
+    ).iloc[0]
     context = uncertainty.sofular.build_context([age])
     expected_variance = np.sum(
         (context.interpolation_weights[0] * context.control_sigmas_ka) ** 2
     )
     assert result["chronology_sigma_ka"] ** 2 == pytest.approx(expected_variance)
     with pytest.raises(ValueError):
-        uncertainty.sofular_chronology_at_age(206.0)
+        uncertainty.sofular.build_context([206.0])
 
 
-def test_selected_catalogue_is_mf_then_five_sofular_events(prepared):
-    _, _, picks = prepared
+def test_selected_catalogue_is_mf_then_five_sofular_events(prepared, uncertainty):
+    _, picks = prepared
     nominal = picks.loc[picks["algorithm_config_id"].eq("s050_w400")]
     nominal = nominal.sort_values("composite_event_number")
     assert nominal["composite_event_number"].tolist() == list(range(1, 22))
@@ -170,43 +193,49 @@ def test_selected_catalogue_is_mf_then_five_sofular_events(prepared):
     ]
 
 
-def test_proposal_retains_mf_factor_and_adds_local_sofular_errors(prepared):
-    _, _, picks = prepared
-    states, configs = uncertainty.build_state_lookup(picks)
-    proposal = uncertainty.propose_realization(np.random.default_rng(42), states, configs)
-    assert proposal["chronology_valid"]
+def test_proposal_retains_mf_factor_and_adds_local_sofular_errors(prepared, uncertainty):
+    _, picks = prepared
+    states, configs = uncertainty.build_state_lookup(picks, sources=uncertainty.sources)
+    # Hold detector settings fixed to isolate the sampled chronology offsets.
+    configs = {record: ("s050_w400",) for record in uncertainty.RECORD_ORDER}
+    draws, _ = uncertainty.sample_realizations(states, configs, 100, 42)
+    ages = draws.iloc[:, 1:].to_numpy()
     standardized = {}
     for record in uncertainty.RECORD_ORDER:
-        state = states[(record, proposal["selected_configs"][record])]
-        standardized[record] = (
-            proposal["sampled_ages"][state.event_indices]
-            - proposal["definition_ages"][state.event_indices]
-        ) / proposal["chronology_sigmas"][state.event_indices]
-    np.testing.assert_allclose(standardized["MF"], proposal["record_z"]["MF"], atol=1e-12)
-    assert np.ptp(standardized["Sofular"]) > 0.1
-    assert set(proposal["record_z"]) == {"MF"}
-    crossed = np.array([1.0, 3.0, 2.0])
-    assert not uncertainty.is_strictly_ordered(crossed)
-    np.testing.assert_array_equal(crossed, [1.0, 3.0, 2.0])
+        state = states[(record, "s050_w400")]
+        standardized[record] = (ages[:, state["event_indices"]] - state["pick_ages"]) / state["chronology_sigmas"]
+    assert np.max(np.ptp(standardized["MF"], axis=1)) < 1e-10
+    assert np.median(np.ptp(standardized["Sofular"], axis=1)) > 0.1
 
 
-def test_so57_overlap_uses_new_young_controls_and_so4_oldest(prepared):
-    _, _, picks = prepared
-    states, _ = uncertainty.build_state_lookup(picks, sofular_component="So-57")
+def test_crossed_sequences_are_rejected_without_sorting(uncertainty, monkeypatch):
+    # Force all Sofular proposals to precede the MF events. Sorting or clipping
+    # would accept these proposals, whereas the sampler must exhaust its limit.
+    monkeypatch.setattr(uncertainty.sofular, "propose_offsets",
+                        lambda context, rng: (np.full(len(context.event_ages_ka), -100.0), None))
+    with pytest.raises(RuntimeError, match="Only 0 accepted sequences"):
+        uncertainty.sample_realizations(uncertainty.states_so4, uncertainty.configs, 1, 9)
+
+
+def test_so57_overlap_uses_new_young_controls_and_so4_oldest(prepared, uncertainty):
+    _, picks = prepared
+    states, _ = uncertainty.build_state_lookup(picks, sources=uncertainty.sources, sofular_component="So-57")
     state = states[("Sofular", "s050_w400")]
-    components = {context.component: indices.tolist() for indices, context in state.chronology_contexts}
+    components = {context.component: indices.tolist() for indices, context in state["chronology_contexts"]}
     assert components == {"So-4": [4], "So-57": [0, 1, 2, 3]}
-    draws, stats = uncertainty.sample_realizations(picks, 100, 13, sofular_component="So-57")
+    draws, stats = uncertainty.sample_realizations(
+        uncertainty.states_so57, uncertainty.configs, 100, 13, sofular_component="So-57")
     assert draws.shape == (100, 22)
     assert stats["rejected_proposals"] == stats["rejected_nonmonotone_chronologies"] + stats["rejected_event_order"]
 
 
-def test_sampling_is_reproducible_ordered_and_unsorted(prepared):
-    _, _, picks = prepared
+def test_sampling_is_reproducible_ordered_and_unsorted(prepared, uncertainty):
+    _, picks = prepared
     first, first_diagnostics = uncertainty.sample_realizations(
-        picks, n_realizations=200, seed=7
+        uncertainty.states_so4, uncertainty.configs, n_realizations=200, seed=7
     )
-    second, _ = uncertainty.sample_realizations(picks, n_realizations=200, seed=7)
+    second, _ = uncertainty.sample_realizations(
+        uncertainty.states_so4, uncertainty.configs, n_realizations=200, seed=7)
     pd.testing.assert_frame_equal(first, second)
 
     event_columns = [
@@ -223,9 +252,10 @@ def test_sampling_is_reproducible_ordered_and_unsorted(prepared):
     )
 
 
-def test_all_summary_quantiles_recompute_from_draws(prepared):
-    _, _, picks = prepared
-    draws, _ = uncertainty.sample_realizations(picks, n_realizations=300, seed=11)
+def test_all_summary_quantiles_recompute_from_draws(prepared, uncertainty):
+    _, picks = prepared
+    draws, _ = uncertainty.sample_realizations(
+        uncertainty.states_so4, uncertainty.configs, n_realizations=300, seed=11)
     summary = uncertainty.build_summary(picks, draws)
     assert summary.columns.tolist() == [
         "composite_event_id",
@@ -259,54 +289,53 @@ def test_all_summary_quantiles_recompute_from_draws(prepared):
         np.testing.assert_allclose(observed, expected)
 
 
-def test_age_realization_plot_data_compare_with_rounded_original(prepared):
-    _, _, picks = prepared
-    draws, _ = uncertainty.sample_realizations(picks, n_realizations=300, seed=19)
+def test_age_plot_uses_unrounded_offsets_and_original_labels(prepared, uncertainty):
+    _, picks = prepared
+    draws, _ = uncertainty.sample_realizations(
+        uncertainty.states_so4, uncertainty.configs, n_realizations=300, seed=19)
     summary = uncertainty.build_summary(picks, draws)
-    original = summary[
-        ["composite_event_id", "composite_event_number", "nominal_event_age_ka_bp"]
-    ].rename(columns={"nominal_event_age_ka_bp": "event_age_ka_bp"})
-    original["event_age_ka_bp"] = original["event_age_ka_bp"].round(3)
-
-    plot_data, correlation = uncertainty.prepare_age_realization_plot_data(
-        summary, draws, original
-    )
-    assert plot_data["composite_event_number"].tolist() == list(
-        range(1, uncertainty.N_EVENTS + 1)
-    )
-    assert correlation.shape == (uncertainty.N_EVENTS, uncertainty.N_EVENTS)
-    np.testing.assert_allclose(np.diag(correlation), 1.0)
-    first_values = (
-        draws["MIS6_DO_01_age_ka_bp"].to_numpy(float)
-        - original.loc[0, "event_age_ka_bp"]
-    )
-    assert plot_data.loc[0, "age_offset_median_ka"] == pytest.approx(
-        np.median(first_values)
-    )
+    scope = vars(uncertainty).copy()
+    scope.update(summary=summary, draws=draws)
+    exec(uncertainty.cells["age-plot"], scope)
+    plot_data, correlation = scope["plot_data"], scope["correlation"]
+    assert plot_data.composite_event_number.tolist() == list(range(1, 22))
+    np.testing.assert_allclose(np.diag(correlation), 1)
+    anomalies = draws.iloc[:, 1:].to_numpy() - uncertainty.original_events.event_age_ka_bp.to_numpy()
+    np.testing.assert_array_equal(correlation, np.corrcoef(anomalies, rowvar=False))
+    np.testing.assert_allclose(plot_data.age_offset_median_ka, np.median(anomalies, axis=0))
+    plt.close(scope["fig"])
 
 
-def test_provenance_records_shared_draws_and_excluded_terms(prepared):
-    _, envelope, picks = prepared
-    _, sampling = uncertainty.sample_realizations(picks, n_realizations=20, seed=5)
-    provenance = uncertainty.build_provenance_table(envelope, sampling)
-    assert provenance.columns.tolist() == ["scope", "parameter", "value", "note"]
-
-    shared = provenance.loc[provenance["parameter"].eq("shared_chronology_draw")]
-    assert set(shared["scope"]) == {"MF"}
-    local = provenance.loc[provenance["parameter"].eq("chronology_draw"), "value"].iloc[0]
-    assert "independent normal errors at dated-depth knots" in local
-    assert shared["value"].str.contains("one standard-normal z").all()
-
-    excluded = " ".join(
-        provenance.loc[
-            provenance["parameter"].eq("excluded_uncertainty_terms"), "value"
-        ].astype(str)
-    ).lower()
-    assert "resolution" in excluded
-    assert "synchronization" in excluded
-    conversions = " ".join(
-        provenance.loc[
-            provenance["parameter"].eq("conversion_to_1sigma"), "value"
-        ].astype(str)
-    ).lower()
-    assert "resolution" not in conversions
+def test_export_retains_joint_draws_compact_ranges_and_settings(prepared, tmp_path, uncertainty):
+    _, picks = prepared
+    scope = vars(uncertainty).copy()
+    scope["draws"], scope["sampling"] = uncertainty.sample_realizations(
+        uncertainty.states_so4, uncertainty.configs, 80, 27)
+    scope["alternative"], scope["alternative_sampling"] = uncertainty.sample_realizations(
+        uncertainty.states_so57, uncertainty.configs, 80, 27, sofular_component="So-57")
+    for cell in ("summaries", "age-plot"):
+        exec(uncertainty.cells[cell], scope)
+    scope.update(output_dir=tmp_path / "processed", diagnostic_dir=tmp_path / "qc",
+                 figure_dir=tmp_path / "figures")
+    exec(uncertainty.cells["export"], scope)
+    assert len(list(scope["output_dir"].glob("*.csv"))) == 6
+    assert len(list(scope["diagnostic_dir"].glob("*.csv"))) == 7
+    for suffix, ensemble in (("", scope["draws"]), ("_so57_overlap", scope["alternative"])):
+        name = f"mis6_event_age_uncertainty_summary{suffix}.csv"
+        compact = pd.read_csv(scope["output_dir"] / name)
+        detailed = pd.read_csv(scope["diagnostic_dir"] / name)
+        assert compact.shape == (21, 10) and detailed.shape == (21, 16)
+        pd.testing.assert_frame_equal(compact, detailed[compact.columns])
+        saved = pd.read_csv(scope["output_dir"] / f"mis6_event_age_realizations{suffix}.csv")
+        pd.testing.assert_frame_equal(saved, ensemble.round(6))
+        expected = np.quantile(ensemble.iloc[:, 1:], [0.025, 0.5, 0.975], axis=0).T
+        np.testing.assert_allclose(compact[["sampled_age_q025_ka_bp", "sampled_age_median_ka_bp",
+                                           "sampled_age_q975_ka_bp"]], expected, atol=5.1e-7, rtol=0)
+        parameters = pd.read_csv(scope["output_dir"] / f"parameters_and_provenance{suffix}.csv")
+        assert parameters.columns.tolist() == ["scope", "parameter", "value", "note"]
+        settings = parameters.set_index("parameter")["value"]
+        assert int(settings["random_seed"]) == 27 and int(settings["accepted_realizations"]) == 80
+        assert "synchronization" in settings["excluded_uncertainty_terms"]
+        assert "MIS 6.21 always uses So-4" in " ".join(parameters.note.dropna())
+    assert {p.suffix for p in scope["figure_dir"].iterdir()} == {".png", ".pdf"}
+    plt.close(scope["fig"])

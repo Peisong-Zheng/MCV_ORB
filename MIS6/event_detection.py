@@ -1,6 +1,6 @@
 """Shared MIS 6 record preparation and directional-gradient event picking.
 
-Used by MIS6_composite_event_record.ipynb and MIS6_event_age_uncertainty.py.
+Used by MIS6_composite_event_record.ipynb and MIS6_event_age_uncertainty.ipynb.
 Ages are in kyr BP1950; smoothing and search widths are in kyr.
 This module writes no files.
 """

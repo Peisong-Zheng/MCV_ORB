@@ -192,7 +192,8 @@ def plot_uncertainty(events, controls, control_offsets):
         ax.axvline(knots[-2], color=BLUE, ls=":", lw=0.8)
         ax.spines[["top", "right"]].set_visible(False)
         ax.text(-0.095, 1.035, label, transform=ax.transAxes, fontweight="bold", fontsize=11)
-        ax.set_xlim(0, 405)
+        # BP age decreases to the right, following the project-wide convention.
+        ax.set_xlim(405, 0)
         ax.set_xticks(np.arange(0, 401, 50))
     ax = axes[0]
     ax.plot(knots, width, color="0.2", lw=1.2)
@@ -201,7 +202,7 @@ def plot_uncertainty(events, controls, control_offsets):
     ax.set_ylabel("Proposal half-width (kyr)")
     ax.set_ylim(0, 3.85)
     ax.text(290, 3.6, "No internal\nalignment", ha="center", va="top", fontsize=8)
-    ax.legend(loc="upper left", frameon=False, fontsize=8)
+    ax.legend(loc="upper right", frameon=False, fontsize=8)
 
     age = np.unique(np.r_[np.linspace(knots[0], knots[-1], 1001), knots])
     offsets = interpolate_offsets(age, controls, control_offsets)
@@ -218,7 +219,7 @@ def plot_uncertainty(events, controls, control_offsets):
             ms=5, label="Warming events", clip_on=False)
     ax.set_xlabel("Age (kyr BP)")
     ax.set_ylabel("Age offset (kyr)")
-    ax.legend(loc="upper left", ncol=3, frameon=False, fontsize=8)
+    ax.legend(loc="upper right", ncol=3, frameon=False, fontsize=8)
     return fig
 
 

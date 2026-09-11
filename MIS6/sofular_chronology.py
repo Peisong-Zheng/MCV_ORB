@@ -369,3 +369,62 @@ def projection_diagnostics(context: SofularChronologyContext) -> pd.DataFrame:
         frame[f"bracket_{side}_model_age_ka_bp"] = context.nominal_model_control_ages_ka[indices]
         frame[f"weight_{side}"] = context.interpolation_weights[np.arange(len(frame)), indices]
     return frame
+
+
+def save_diagnostics(picks, output_dir, sources=None):
+    """Expose the dated depths, projection assumptions and alternate components."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if sources is None:
+        sources = load_sources()
+    control_diagnostics(sources).to_csv(
+        output_dir / "sofular_raw_control_diagnostics.csv", index=False
+    )
+    local = picks.loc[picks["source_record"].eq("Sofular")]
+    projection_tables = []
+    sensitivity_rows = []
+    covariance_rows = []
+    for config_id, group in local.groupby("algorithm_config_id"):
+        group = group.sort_values("composite_event_number")
+        ages = group["definition_pick_age_ka_bp"].to_numpy(float)
+        labels = group["composite_event_id"].to_numpy()
+        for component in ("So-4", "So-57"):
+            selected = np.arange(len(group) if component == "So-4" else len(group) - 1)
+            for lag in (-1.0, -0.5, 0.0, 0.5, 1.0):
+                context = build_context(
+                    ages[selected], component=component, mapping_lag_ka=lag,
+                    sources=sources,
+                )
+                if lag == 0:
+                    projection = projection_diagnostics(context)
+                    projection.insert(0, "composite_event_id", labels[selected])
+                    projection.insert(0, "algorithm_config_id", config_id)
+                    projection_tables.append(projection)
+                basis = context.interpolation_weights * context.control_sigmas_ka
+                covariance = basis @ basis.T
+                for j, event_id in enumerate(labels[selected]):
+                    sensitivity_rows.append({
+                        "algorithm_config_id": config_id,
+                        "component": component,
+                        "mapping_lag_ka": lag,
+                        "composite_event_id": event_id,
+                        "projected_depth_mm": context.event_depth_mm[j],
+                        "chronology_sigma_before_conditioning_ka": context.nominal_sigma_ka[j],
+                    })
+                    for k, other_id in enumerate(labels[selected]):
+                        covariance_rows.append({
+                            "algorithm_config_id": config_id,
+                            "component": component,
+                            "mapping_lag_ka": lag,
+                            "event_id": event_id,
+                            "other_event_id": other_id,
+                            "covariance_before_conditioning_ka2": covariance[j, k],
+                        })
+    pd.concat(projection_tables, ignore_index=True).to_csv(
+        output_dir / "sofular_event_depth_projection.csv", index=False
+    )
+    pd.DataFrame(sensitivity_rows).to_csv(
+        output_dir / "sofular_component_mapping_sensitivity.csv", index=False
+    )
+    pd.DataFrame(covariance_rows).to_csv(
+        output_dir / "sofular_component_mapping_covariance.csv", index=False
+    )

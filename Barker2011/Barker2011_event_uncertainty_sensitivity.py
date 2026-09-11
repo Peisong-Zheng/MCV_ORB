@@ -15,6 +15,7 @@ import time
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from toolbox.phase_response_plotting import format_phase_response_axis, mark_preferred_phase
 from matplotlib.lines import Line2D
 from matplotlib.ticker import FuncFormatter, MultipleLocator
 import numpy as np
@@ -194,8 +195,6 @@ def plot_sensitivity(results, point, curves):
         ax.axvline(point[key], color="black", lw=1.2)
         ax.axvline(np.median(values), color=main_analysis.EVENT_COLOR, lw=1.2, ls="--")
         ax.set_xlabel(label)
-        ax.grid(axis="y", color="0.9", lw=0.5)
-        ax.set_axisbelow(True)
     ax = axes[0, 1]
     fraction = valid.nominal_LR_p.lt(P_THRESHOLD).mean()
     ax.text(0.98, 1.035, f"p < 0.05: {fraction:.2%}", transform=ax.transAxes,
@@ -205,10 +204,16 @@ def plot_sensitivity(results, point, curves):
     ax.plot(curves.phase_deg, curves.point_multiplier, color="black", lw=1.2)
     ax.plot(curves.phase_deg, curves.mc_median, color=main_analysis.EVENT_COLOR, lw=1.2, ls="--")
     ax.axhline(1, color="0.6", lw=0.65, ls=":")
-    ax.set(xlabel="Precession phase (°)", ylabel="Phase rate multiplier", xlim=(0, 360))
-    ax.set_xticks([0, 90, 180, 270, 360])
-    ax.text(0.04, 0.96, "Shading: 95% MC range", transform=ax.transAxes, va="top", fontsize=8)
+    format_phase_response_axis(ax, fontsize=6)
+    mark_preferred_phase(ax, point["pre_phase_preferred_deg"], point["pre_phase_rate_ratio_max_vs_min"])
+    ax.set_title("Fitted warming-event rate", fontsize=8, pad=10)
+    ax.text(0.04, 0.96, "Point ages:\n"
+            f"Preferred phase: {point['pre_phase_preferred_deg']:.1f}°\n"
+            f"Max/min rate ratio: {point['pre_phase_rate_ratio_max_vs_min']:.2f}",
+            transform=ax.transAxes, va="top", fontsize=6.3,
+            bbox=dict(facecolor="white", edgecolor="none", alpha=0.85, pad=1))
     for label, ax in zip("abcdef", axes.flat):
+        ax.grid(False)
         ax.spines[["top", "right"]].set_visible(False)
         ax.text(-0.16, 1.04, label, transform=ax.transAxes, fontweight="bold", fontsize=11)
         ax.tick_params(labelsize=8)

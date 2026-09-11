@@ -1,37 +1,26 @@
 scope,parameter,value,note
-analysis,random_seed,20260904,NumPy Generator
-analysis,requested_realizations,10000,complete 21-event sequences
-analysis,accepted_realizations,10000,complete 21-event sequences
+analysis,random_seed,20260904,
+analysis,requested_realizations,10000,
+analysis,accepted_realizations,10000,
 analysis,total_proposals,10661,
 analysis,rejected_proposals,661,
-analysis,rejection_fraction,0.06200168839696089,rejected / total proposals
-analysis,minimum_event_separation_ka,0.0,kyr
-analysis,event_order_rule,fixed event rank; reject a complete proposal if events cross,event ages are never sorted after sampling
-analysis,definition_sampling,one of nine equally weighted detector settings per record,accepted distribution is conditional on fixed event order
-analysis,definition_interpretation,method-sensitivity proxy,not a posterior or confidence interval
-analysis,excluded_uncertainty_terms,cross-record synchronization; proxy resolution; separate smoothing error,working sensitivity ensemble; not a complete chronology posterior
-MF,event_count,16,
-MF,chronology_input,published age_lower and age_upper curves,Fohlmeister et al. (2023)
-MF,reported_scale,approximately 95% age-model envelope,
-MF,conversion_to_1sigma,maximum distance to repaired envelope / 1.95996398454,symmetric sampling error at each event pick
-MF,shared_chronology_draw,one standard-normal z for all MF events,remaining one-factor simplification; not an estimated MF covariance
-MF,source_study,Fohlmeister et al. (2023),
-MF,source_filename,Fohlmeister J et al-2023-data-mf_d18o_stack.txt,data and age bounds
-MF,uncertainty_scale_source_filename,Fohlmeister J et al-2023-SOM.pdf,bounds interpreted from Fig. S3
-MF,source_valid_rows,4244,rows with finite age bounds
-MF,source_unique_ages,4077,duplicate ages merged using the outer envelope
-MF,source_rows_needing_bound_repair,188,nominal age lay outside the reported bound pair
-Sofular,event_count,5,
-Sofular,chronology_input,"complete raw U-Th dates, depths and published StalAge curve",Held et al. (2024)
-Sofular,reported_scale,2sigma,individual corrected U-Th dates
-Sofular,conversion_to_1sigma,"each raw corrected age error / 2, then propagate control covariance",pre-monotonicity-conditioning analytical sigma
-Sofular,chronology_draw,independent normal errors at dated-depth knots; interpolate their displacement,published age-depth shape preserved between knots; reject nonmonotone segment curves
-Sofular,main_component,So-4,So-4 covers all five events; So-57 overlap saved separately
-Sofular,depth_projection,assumed_age_coordinate_projection,stack event age mapped onto individual StalAge curve; physical event depth is not identified
-Sofular,model_interpretation,analytical-error transfer around published age-depth curve,"not a new StalAge/iscam posterior; knots centered on model curve, not measured U-Th means"
-Sofular,excluded_uncertainty_terms,unknown U-Th systematic covariance; stack alignment and age-model structural uncertainty,component and mapping-lag sensitivity do not recover the missing iscam transformations
-Sofular,source_filename,held2024-so-4.txt; held2024-so-57.txt,"data/raw/Held2024/source_manifest.csv contains original paths, DOI and SHA256"
-Sofular,growth_hiatus_depth_mm,781.5,So-4; do not interpolate across hiatus or extrapolate beyond dated/proxy support
-analysis,rejected_nonmonotone_chronologies,232,complete proposals
-analysis,rejected_event_order,429,complete proposals
-analysis,age_reference,ka BP1950,raw Sofular U-Th fields explicitly use 1950
+analysis,rejected_nonmonotone_chronologies,232,
+analysis,rejected_event_order,429,
+analysis,sofular_component,So-4,
+analysis,rejection_fraction,0.06200168839696089,
+analysis,minimum_event_separation_ka,0.0,
+analysis,age_reference,kyr BP1950,all source ages aligned to 1950 CE
+analysis,definition_sampling,one of nine equally weighted settings per record,method sensitivity
+analysis,event_order_rule,reject complete nonmonotone or crossed proposals,no sorting or clipping
+analysis,excluded_uncertainty_terms,proxy noise; growth history; dating systematics; stack alignment; synchronization,not a complete posterior
+MF,source_filename,Fohlmeister J et al-2023-data-mf_d18o_stack.txt,Fohlmeister et al. (2023); approximate 95% envelope
+MF,conversion_to_1sigma,outer half-width / 1.95996398454,include nominal age; retain outer bounds at duplicates
+MF,shared_chronology_draw,one standard-normal z for all MF events,not an estimated covariance
+Sofular,source_filename,held2024-so-4.txt; held2024-so-57.txt,Held2024 raw controls and individual StalAge curves
+Sofular,conversion_to_1sigma,each reported 2sigma error / 2,before monotonicity/order conditioning
+Sofular,chronology_draw,independent normal control offsets; interpolate displacement,center on published model ages; preserve curve shape
+Sofular,component_rule,So-4,MIS 6.21 always uses So-4; other Sofular events use this component
+Sofular,depth_projection,assumed age-coordinate projection,no hiatus crossing or extrapolation; not verified event depths
+MF,valid_row_count,4244,input-envelope checks
+MF,unique_age_count,4077,input-envelope checks
+MF,source_rows_needing_bound_repair,188,input-envelope checks

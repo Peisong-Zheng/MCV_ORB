@@ -187,7 +187,8 @@ def plot_uncertainty(events, draws):
         axis.spines[["top", "right"]].set_visible(False)
         axis.tick_params(which="major", direction="out", length=3, width=0.7)
         axis.tick_params(which="minor", direction="out", length=1.5, width=0.5)
-    axes[1].set(xlim=(10, 123), xticks=np.arange(20, 121, 20))
+    # BP ages decrease to the right, so both panels follow forward time.
+    axes[1].set(xlim=(123, 10), xticks=np.arange(20, 121, 20))
     return fig
 
 

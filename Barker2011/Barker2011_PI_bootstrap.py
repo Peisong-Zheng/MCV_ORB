@@ -32,7 +32,6 @@ import pandas as pd
 from scipy.stats import chi2
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from paper_figure_export import copy_pdf_to_paper
 from Barker2011 import Barker2011_event_phase_analysis as main_analysis
 from Barker2011 import Barker2011_event_uncertainty_sensitivity as age_sensitivity
 from NGRIP_MIS6_PI_bootstrap import empirical_p_value, clopper_pearson_interval
@@ -256,7 +255,6 @@ def plot_null_distribution(replicates, summary):
             f"95% simulation interval: {row.empirical_p_ci95_low:.4f}–{row.empirical_p_ci95_high:.4f}",
             transform=ax.transAxes, ha="right", va="top", fontsize=7.5)
     ax.set(xlabel="Likelihood-ratio statistic", ylabel="Probability density", xlim=(0, xmax))
-    ax.set_title("Barker 2011 · variable threshold", loc="left", fontsize=9, pad=9)
     ax.legend(frameon=False, loc="upper right", fontsize=7.5)
     ax.spines[["top", "right"]].set_visible(False)
     fig.tight_layout(pad=1.1)
@@ -327,9 +325,22 @@ independence from other reconstructed climate records.
     (NOTE_DIR / f"{RUN_NAME}_Caption.txt").write_text(caption, encoding="utf-8")
 
 
+def save_figure(replicates, summary):
+    """Save the source plot, then rebuild and sync the two-catalogue figure."""
+    from Figure_PI_bootstrap import build_figure, SOURCES
+
+    OUT_FIG_DIR.mkdir(parents=True, exist_ok=True)
+    fig = plot_null_distribution(replicates, summary)
+    fig.savefig(OUT_FIG_DIR / f"{RUN_NAME}.png", dpi=600)
+    fig.savefig(OUT_FIG_DIR / f"{RUN_NAME}.pdf")
+    plt.close(fig)
+    source = OUT_FIG_DIR / f"{RUN_NAME}.pdf"
+    if source.resolve() == (main_analysis.PROJECT_ROOT / SOURCES[1]).resolve():
+        build_figure()
+
+
 def save_results(result):
     OUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    OUT_FIG_DIR.mkdir(parents=True, exist_ok=True)
     for key, name in (("replicates", "bootstrap_replicates"), ("summary", "summary")):
         result[key].to_csv(OUT_DATA_DIR / f"{name}.csv", index=False)
     pd.DataFrame(result["parameters"].items(), columns=["parameter", "value"]).to_csv(
@@ -347,11 +358,7 @@ def save_results(result):
     pd.DataFrame([dict(path=str(path.relative_to(main_analysis.PROJECT_ROOT)),
                        sha256=hashlib.sha256(path.read_bytes()).hexdigest()) for path in paths]).to_csv(
         OUT_DATA_DIR / "input_code_sha256.csv", index=False)
-    fig = plot_null_distribution(result["replicates"], result["summary"])
-    fig.savefig(OUT_FIG_DIR / f"{RUN_NAME}.png", dpi=600)
-    fig.savefig(OUT_FIG_DIR / f"{RUN_NAME}.pdf")
-    copy_pdf_to_paper(OUT_FIG_DIR / f"{RUN_NAME}.pdf")
-    plt.close(fig)
+    save_figure(result["replicates"], result["summary"])
     write_notes(result)
 
 

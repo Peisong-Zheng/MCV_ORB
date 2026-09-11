@@ -349,19 +349,20 @@ together the bootstrap, event-definition and interaction findings.
 
 ## Manuscript preparation
 
-The [paper plan](monsoon_paper/paper_plan.md) maps the current evidence to main
+The [paper plan](orbital_event_paper/paper_plan.md) maps the current evidence to main
 and supporting sections, citations, figures and tables. The manuscript
 folder follows the previous project's `main.tex`, `SI.tex`, `reference.bib`
 and numbered `figures/` structure. Both TeX files now contain complete English
-first drafts, with four main figures, fourteen SI figures and five SI table groups.
+first drafts, with four main figures, eleven SI figures and one MIS6 event-age table.
 
 Run `python paper_figure_export.py` to refresh the mapped PDFs, or
-`make -C monsoon_paper pdf` to regenerate manuscript figures/tables from saved
+`make -C orbital_event_paper pdf` to regenerate manuscript figures/tables from saved
 results, synchronize and build both drafts. Selected
-research figure exporters also synchronize their PDFs when run. All eighteen
-figures are available, including three new main summary compositions.
-See the [manuscript README](monsoon_paper/README.md) for the mapping and build
-workflow, and the [reference audit](monsoon_paper/reference_audit.md) for
+research figure exporters also synchronize their PDFs when run. The bootstrap
+and LR04-interaction exporters rebuild their combined SI figure before syncing.
+All fifteen figures are available, including three main summary compositions.
+See the [manuscript README](orbital_event_paper/README.md) for the mapping and build
+workflow, and the [reference audit](orbital_event_paper/reference_audit.md) for
 bibliographic sources and verification limits.
 
 ## Active project layout
@@ -380,7 +381,9 @@ MCV_ORB/
 ├── paper_figure_export.py
 ├── paper_summary_figures.py
 ├── paper_tables.py
-├── monsoon_paper/
+├── Figure_PI_bootstrap.py
+├── Figure_climate_phase_interaction.py
+├── orbital_event_paper/
 │   ├── paper_plan.md
 │   ├── main.tex
 │   ├── SI.tex
@@ -394,7 +397,7 @@ MCV_ORB/
 ├── MIS6/
 │   ├── Speleothem_published_event_plot.ipynb
 │   ├── MIS6_composite_event_record.ipynb
-│   ├── MIS6_event_age_uncertainty.py
+│   ├── MIS6_event_age_uncertainty.ipynb
 │   ├── event_detection.py
 │   ├── sofular_chronology.py
 │   ├── data/{raw,curated,processed}/
@@ -484,7 +487,7 @@ Run the primary workflow in this order:
 cd MIS6
 jupyter nbconvert --to notebook --execute --inplace Speleothem_published_event_plot.ipynb
 jupyter nbconvert --to notebook --execute --inplace MIS6_composite_event_record.ipynb
-python MIS6_event_age_uncertainty.py
+jupyter nbconvert --to notebook --execute --inplace MIS6_event_age_uncertainty.ipynb
 cd ..
 cd NGRIP
 jupyter nbconvert --to notebook --execute --inplace ngrip_data_preparation.ipynb

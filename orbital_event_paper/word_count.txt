@@ -1,0 +1,29 @@
+File: main.tex
+Encoding: ascii
+Sum count: 3362
+Words in text: 2689
+Words in headers: 60
+Words outside text (captions, etc.): 550
+Number of headers: 17
+Number of floats/tables/figures: 4
+Number of math inlines: 61
+Number of math displayed: 2
+Subcounts:
+  text+headers+captions (#headers/#floats/#inlines/#displayed)
+  0+11+0 (1/0/0/0) _top_
+  180+3+0 (2/0/2/0) Section: Key Points
+  157+3+0 (1/0/0/0) Section: Plain Language Summary
+  404+1+0 (1/0/0/0) Section: Introduction
+  0+3+0 (1/0/0/0) Section: Data and methods
+  226+5+92 (1/1/2/0) Subsection: Event inventories and observation intervals
+  219+5+0 (1/0/14/2) Subsection: Covariates and conditional rate model
+  276+4+0 (1/0/4/0) Subsection: Calibration, uncertainty, and sensitivity
+  0+1+0 (1/0/0/0) Section: Results
+  156+6+151 (1/1/18/0) Subsection: Conditional phase association and catalogue comparison
+  174+5+137 (1/1/9/0) Subsection: Chronology robustness and effect precision
+  195+5+170 (1/1/7/0) Subsection: Model specification and orbital alternatives
+  529+1+0 (1/0/4/0) Section: Discussion
+  94+1+0 (1/0/1/0) Section: Conclusions
+  66+2+0 (1/0/0/0) Section: Open Research
+  13+4+0 (1/0/0/0) Section: Acknowledgements and author statements
+

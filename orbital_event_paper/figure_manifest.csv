@@ -1,0 +1,16 @@
+paper_name,source_relpath,tex_file,figure_label,status
+Fig01.pdf,figures/paper_summary/data_overview.pdf,main.tex,fig:data_framework,ready
+Fig02.pdf,figures/paper_summary/phase_comparison.pdf,main.tex,fig:phase_comparison,ready
+Fig03.pdf,figures/NGRIP_MIS6_effect_uncertainty/NGRIP_MIS6_effect_uncertainty.pdf,main.tex,fig:effect_precision,ready
+Fig04.pdf,figures/paper_summary/orbital_comparison.pdf,main.tex,fig:orbital_comparison,ready
+FigS01.pdf,MIS6/figures/Speleothem_published_event_plot/Sofular_MF_comparison.pdf,SI.tex,fig:S01,ready
+FigS02.pdf,MIS6/figures/MIS6_composite_event_record/MIS6_composite_event_record.pdf,SI.tex,fig:S02,ready
+FigS03.pdf,NGRIP/figures/ngrip_event_age_uncertainty/ngrip_event_age_uncertainty.pdf,SI.tex,fig:S03,ready
+FigS04.pdf,MIS6/figures/MIS6_event_age_uncertainty/MIS6_event_age_uncertainty.pdf,SI.tex,fig:S04,ready
+FigS05.pdf,Barker2011/figures/Barker2011_event_age_uncertainty/Barker2011_event_age_uncertainty.pdf,SI.tex,fig:S05,ready
+FigS06.pdf,figures/NGRIP_MIS6_event_uncertainty_sensitivity/NGRIP_MIS6_event_uncertainty_sensitivity.pdf,SI.tex,fig:S06,ready
+FigS07.pdf,Barker2011/figures/Barker2011_event_uncertainty_sensitivity/Barker2011_event_uncertainty_sensitivity.pdf,SI.tex,fig:S07,ready
+FigS08.pdf,figures/Figure_PI_bootstrap/Figure_PI_bootstrap.pdf,SI.tex,fig:bootstrap_comparison,ready
+FigS09.pdf,figures/NGRIP_MIS6_PI_design_sensitivity/NGRIP_MIS6_PI_design_sensitivity.pdf,SI.tex,fig:S09,ready
+FigS10.pdf,figures/NGRIP_MIS6_PI_model_sensitivity/NGRIP_MIS6_PI_model_sensitivity.pdf,SI.tex,fig:S10,ready
+FigS11.pdf,figures/Figure_climate_phase_interaction/Figure_climate_phase_interaction.pdf,SI.tex,fig:climate_phase_comparison,ready

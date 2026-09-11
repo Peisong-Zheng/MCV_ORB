@@ -20,6 +20,7 @@ import sys
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from toolbox.phase_response_plotting import format_phase_response_axis, mark_preferred_phase
 import numpy as np
 import pandas as pd
 
@@ -27,6 +28,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT.parent))
 from paper_figure_export import copy_pdf_to_paper
+from toolbox.catalogue_colors import CATALOGUE_COLORS
 from toolbox import combined_pi, event_inputs, orbital_phase, poisson
 from toolbox.data_checks import require_unique_values
 from toolbox.model_stats import nested_likelihood_metrics
@@ -47,7 +49,8 @@ AGE_COLUMN = "SpeloAge (kyr).1"  # The second SpeleoAge column belongs to Table 
 PICK_COLUMN = "DO pick variable threshold"
 PICK_COLUMNS = {"variable_threshold": PICK_COLUMN, "fixed_threshold": "DO pick"}
 EXPECTED_COUNTS = {"variable_threshold": 70, "fixed_threshold": 59}
-DEFINITION_COLORS = {"variable_threshold": "#CC6677", "fixed_threshold": "#4477AA"}
+DEFINITION_COLORS = {"variable_threshold": CATALOGUE_COLORS["variable"],
+                     "fixed_threshold": CATALOGUE_COLORS["fixed"]}
 EVENT_COLOR = DEFINITION_COLORS["variable_threshold"]
 ANALYSIS_START_KA, ANALYSIS_END_KA = 0.0, 400.0
 # Read shared defaults directly so the two main analyses use the same settings.
@@ -324,10 +327,12 @@ def plot_results(result, fixed_result=None):
         phase, multiplier = phase_response_curve(beta["pre_phase_sin"], beta["pre_phase_cos"])
         response.plot(phase, multiplier, color=color, lw=1.8, ls="--" if fixed else "-")
         response.axvline(s.pre_phase_preferred_deg, color=color, lw=0.8, ls=":", alpha=0.85)
-        # Keep only the principal conditional metric in the panel; details are in the caption.
-        response.text(0.06, 0.96 - 0.10 * index,
-                      f"PI = {s.info_bits_per_event:.3f}; nominal p = {s.nominal_LR_p:.3f}",
-                      color=color, transform=response.transAxes, ha="left", va="top", fontsize=8,
+        # Pair each definition's conditional fit with its phase and effect size.
+        mark_preferred_phase(response, s.pre_phase_preferred_deg, s.pre_phase_rate_ratio_max_vs_min, color)
+        response.text(0.06, 0.96 - 0.15 * index,
+                      f"PI = {s.info_bits_per_event:.3f}; nominal p = {s.nominal_LR_p:.3f}\n"
+                      f"Preferred phase: {s.pre_phase_preferred_deg:.1f}°; max/min: {s.pre_phase_rate_ratio_max_vs_min:.2f}",
+                      color=color, transform=response.transAxes, ha="left", va="top", fontsize=7.2,
                       bbox=dict(facecolor="white", edgecolor="none", alpha=0.85, pad=1))
         rayleigh = current["rayleigh"]
         polar.text(0.02, -0.20 - 0.10 * index,
@@ -337,15 +342,17 @@ def plot_results(result, fixed_result=None):
     timeline.set_title("Barker 2011 · SpeleoAge", loc="left", fontsize=9, pad=12)
     timeline.legend(loc="lower right", bbox_to_anchor=(1.01, 1.02), frameon=False,
                     ncol=2, fontsize=8, handletextpad=0.35, columnspacing=1.1)
-    timeline.set(xlim=(ANALYSIS_START_KA, ANALYSIS_END_KA), xlabel="Age (kyr BP)", ylabel="Precession index")
+    # Reverse only the absolute-age axis: older ages are on the left.
+    timeline.set(xlim=(ANALYSIS_END_KA, ANALYSIS_START_KA), xlabel="Age (kyr BP)", ylabel="Precession index")
     timeline.grid(axis="y", color="#D9D9D9", lw=0.55)
     timeline.spines[["top", "right"]].set_visible(False)
     _plot_rayleigh(polar, results)
 
     response.axhline(1, color="#777777", lw=0.9, ls=":")
-    response.set(xlim=(0, 360), xticks=[0, 90, 180, 270, 360], xlabel="Precession phase (°)",
-                 ylabel="Multiplicative contribution to event rate", title="Conditional predictive information")
-    response.grid(color="#D9D9D9", lw=0.55)
+    format_phase_response_axis(response)
+    response.set_ylim(0, 2.5)
+    response.set_title("Fitted warming-event rate")
+    response.grid(False)
     response.spines[["top", "right"]].set_visible(False)
     _add_panel_label(timeline, "a", x=-0.047)
     _add_panel_label(polar, "b", x=-0.21)
@@ -439,11 +446,11 @@ def write_notes(result, fixed_result):
     )
     caption = f"""Barker et al. (2011) SpeleoAge warming events: sensitivity to the published event definition.
 
-Rose denotes variable threshold (primary catalogue, n = {variable.n_rayleigh_events}); blue denotes fixed threshold (sensitivity, n = {fixed.n_rayleigh_events}). Both use Table S3's SpeleoAge column and the same 0–400 kyr observation interval. (a) Events on the La2004 precession index, shown by filled circles and open squares, respectively. Shared picks display both symbols. The gray 398.5–400 kyr interval supplies event history but is excluded from the PI response; all events lie within the 0–398.5 kyr response interval. Ages are treated as kyr BP relative to 1950; the precise reference year of the source SpeleoAge column remains unverified. Astronomical ages receive the documented J2000-to-BP1950 correction.
+Rose denotes variable threshold (primary catalogue, n = {variable.n_rayleigh_events}); green denotes fixed threshold (sensitivity, n = {fixed.n_rayleigh_events}). Both use Table S3's SpeleoAge column and the same 0–400 kyr observation interval. (a) Events on the La2004 precession index, shown by filled circles and open squares, respectively. Shared picks display both symbols. Older ages are on the left and younger ages on the right. The gray 398.5–400 kyr interval supplies event history but is excluded from the PI response; all events lie within the 0–398.5 kyr response interval. Ages are treated as kyr BP relative to 1950; the precise reference year of the source SpeleoAge column remains unverified. Astronomical ages receive the documented J2000-to-BP1950 correction.
 
-(b) Descriptive event counts in twelve 30° sectors: filled rose bars and dashed blue outlines. Phase zero denotes a precession-index minimum, 180° a maximum, and phase increases toward older BP ages. Colored arrows show mean directions; both arrow lengths equal the mean resultant length times the largest sector count across the two catalogues. Radial ticks denote event counts. Text gives mean resultant length (Rbar) and nominal Rayleigh p in matching colors.
+(b) Descriptive event counts in twelve 30° sectors: filled rose bars and dashed green outlines. Phase zero denotes a precession-index minimum, 180° a maximum, and phase increases toward older BP ages. Colored arrows show mean directions; both arrow lengths equal the mean resultant length times the largest sector count across the two catalogues. Radial ticks denote event counts. Text gives mean resultant length (Rbar) and nominal Rayleigh p in matching colors.
 
-(c) Fitted phase multipliers exp[beta_sin sin(phi) + beta_cos cos(phi)], shown by a solid rose line and a dashed blue line. Vertical dotted lines mark their preferred phases; the horizontal dotted line marks unity. The reduced Poisson model contains an intercept, a preceding 1.5-kyr event count, LR04 and atmospheric CO2; the full model adds phase sine and cosine. Both definitions use the same 0.2-kyr nominal bins, actual bin-duration offsets and response-range climate scaling, with history recomputed from each catalogue. PI is the fitted log-likelihood gain in bits per event; panel p values are nominal chi-square likelihood-ratio p values with two degrees of freedom. Preferred phases are {variable.pre_phase_preferred_deg:.1f}° and {fixed.pre_phase_preferred_deg:.1f}°, and maximum/minimum phase rate ratios are {variable.pre_phase_rate_ratio_max_vs_min:.2f} and {fixed.pre_phase_rate_ratio_max_vs_min:.2f}, respectively.
+(c) Fitted warming-event rate multipliers exp[beta_sin sin(phi) + beta_cos cos(phi)], shown by a solid rose line and a dashed green line. Peak dots and vertical dotted lines mark fitted preferred phases; the horizontal dotted line marks unity. Minimum/Maximum tick labels identify precession-index extrema, not rate extrema. The smooth curves follow the sine/cosine model; unity means zero phase contribution in the full model, not the mean rate or a separately refitted reduced-model rate. The reduced Poisson model contains an intercept, a preceding 1.5-kyr event count, LR04 and atmospheric CO2; the full model adds phase sine and cosine. Both definitions use the same 0.2-kyr nominal bins, actual bin-duration offsets and response-range climate scaling, with history recomputed from each catalogue. PI is the fitted log-likelihood gain in bits per event; panel p values are nominal chi-square likelihood-ratio p values with two degrees of freedom. Preferred phases are {variable.pre_phase_preferred_deg:.1f}° and {fixed.pre_phase_preferred_deg:.1f}°, and maximum/minimum phase rate ratios are {variable.pre_phase_rate_ratio_max_vs_min:.2f} and {fixed.pre_phase_rate_ratio_max_vs_min:.2f}, respectively.
 
 This figure compares point-age estimates. The catalogues are alternative definitions of the same source record, not independent samples. Reduced-model bootstrap and chronology sensitivity are separate analyses of the primary variable-threshold catalogue only; no bootstrap p or age-uncertainty band is attached to the fixed-threshold result.
 """

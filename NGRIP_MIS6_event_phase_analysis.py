@@ -22,10 +22,12 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from toolbox.phase_response_plotting import format_phase_response_axis, mark_preferred_phase
 import numpy as np
 import pandas as pd
 
 from toolbox import combined_pi
+from toolbox.catalogue_colors import CATALOGUE_COLORS
 from toolbox.orbital_phase import rayleigh_rbar_threshold, rayleigh_test
 from toolbox.project_config import (
     CO2_XLSX,
@@ -45,7 +47,6 @@ OUT_FIG_DIR = PROJECT_ROOT / "figures" / RUN_NAME
 
 CATALOGUE_LABEL = "NGRIP warming + MIS 6 transitions"
 EVENT_TYPE = "warming_transition"
-SEGMENT_COLORS = {"NGRIP": "#D55E00", "MIS6": "#0072B2"}
 
 HISTORY_WINDOW_KYR = combined_pi.DEFAULT_HISTORY_WINDOW_KA
 BIN_WIDTH_KYR = combined_pi.DEFAULT_BIN_WIDTH_KA
@@ -310,7 +311,7 @@ def _plot_segment_timeline(
     segment = context.segments[segment_id]
     bins = context.bins.loc[context.bins["segment_id"].eq(segment_id)]
     phases = event_phases.loc[event_phases["segment_id"].eq(segment_id)]
-    color = SEGMENT_COLORS[segment_id]
+    color = CATALOGUE_COLORS["primary"]
 
     axis.axvspan(
         segment.response_end_kyr_bp,
@@ -346,7 +347,8 @@ def _plot_segment_timeline(
         va="top",
         fontsize=9,
     )
-    axis.set_xlim(segment.observation_start_kyr_bp, segment.observation_end_kyr_bp)
+    # Older BP ages are on the left; event ages and phase values are unchanged.
+    axis.set_xlim(segment.observation_end_kyr_bp, segment.observation_start_kyr_bp)
     axis.set_xlabel("Age (kyr BP)")
     axis.grid(axis="y", color="#D9D9D9", lw=0.55)
     axis.spines[["top", "right"]].set_visible(False)
@@ -381,7 +383,7 @@ def _plot_rayleigh(axis: plt.Axes, result: dict[str, object]) -> None:
         counts,
         width=np.diff(edges)[0],
         align="edge",
-        color="#7A6AA6",
+        color=CATALOGUE_COLORS["primary"],
         alpha=0.72,
         edgecolor="white",
         linewidth=0.7,
@@ -408,14 +410,14 @@ def _plot_rayleigh(axis: plt.Axes, result: dict[str, object]) -> None:
     axis.tick_params(axis="y", labelsize=7.5)
     axis.set_title("Rayleigh test (descriptive)", pad=20, fontsize=10)
     axis.text(
-        0.02,
-        -0.08,
+        0.5,
+        -0.17,
         (
             rf"$\bar{{R}}$ = {rayleigh['mean_resultant_length']:.2f}; "
             f"p = {rayleigh['rayleigh_p']:.3f}"
         ),
         transform=axis.transAxes,
-        ha="left",
+        ha="center",
         va="top",
         fontsize=8.5,
     )
@@ -433,7 +435,7 @@ def _plot_phase_response(axis: plt.Axes, fit: combined_pi.CombinedPIFit) -> None
     )
     preferred = float(fit.summary["pre_phase_preferred_deg"])
 
-    axis.plot(phase_deg, multiplier, color="#3E6C8E", lw=2.0)
+    axis.plot(phase_deg, multiplier, color=CATALOGUE_COLORS["primary"], lw=2.0)
     axis.axhline(1.0, color="#777777", lw=0.9, ls=":")
     axis.axvline(preferred, color="#333333", lw=1.0, ls=(0, (4, 2)))
     axis.text(
@@ -444,7 +446,7 @@ def _plot_phase_response(axis: plt.Axes, fit: combined_pi.CombinedPIFit) -> None
             f"LR = {fit.summary['LR_statistic']:.2f}; "
             f"nominal p = {fit.summary['nominal_LR_p']:.3g}\n"
             f"Preferred phase = {preferred:.1f}°\n"
-            f"Max/min rate = {fit.summary['pre_phase_rate_ratio_max_vs_min']:.2f}"
+            f"Max/min rate ratio = {fit.summary['pre_phase_rate_ratio_max_vs_min']:.2f}"
         ),
         transform=axis.transAxes,
         ha="left",
@@ -452,14 +454,11 @@ def _plot_phase_response(axis: plt.Axes, fit: combined_pi.CombinedPIFit) -> None
         fontsize=8.5,
         bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.85, "pad": 2.0},
     )
-    axis.set(
-        xlim=(0.0, 360.0),
-        xticks=[0, 90, 180, 270, 360],
-        xlabel="Precession phase (°)",
-        ylabel="Multiplicative contribution to event rate",
-        title="Conditional predictive information",
-    )
-    axis.grid(color="#D9D9D9", lw=0.55)
+    format_phase_response_axis(axis)
+    axis.set_ylim(0, 3.1)  # Leave room for the fitted-summary label above the curve.
+    mark_preferred_phase(axis, preferred, fit.summary['pre_phase_rate_ratio_max_vs_min'], CATALOGUE_COLORS["primary"])
+    axis.set_title("Fitted warming-event rate")
+    axis.grid(False)
     axis.spines[["top", "right"]].set_visible(False)
 
 
@@ -478,24 +477,25 @@ def plot_results(result: dict[str, object]) -> plt.Figure:
         left=0.09,
         right=0.98,
         bottom=0.11,
-        top=0.96,
+        top=0.93,
     )
-    timeline = grid[0, :].subgridspec(1, 2, width_ratios=(117, 72), wspace=0.07)
-    ngrip_axis = fig.add_subplot(timeline[0, 0])
-    mis6_axis = fig.add_subplot(timeline[0, 1], sharey=ngrip_axis)
+    # The older MIS 6 segment precedes NGRIP in the left-to-right time sequence.
+    timeline = grid[0, :].subgridspec(1, 2, width_ratios=(72, 111), wspace=0.07)
+    mis6_axis = fig.add_subplot(timeline[0, 0])
+    ngrip_axis = fig.add_subplot(timeline[0, 1], sharey=mis6_axis)
     rayleigh_axis = fig.add_subplot(grid[1, 0], projection="polar")
     response_axis = fig.add_subplot(grid[1, 1])
 
     _plot_segment_timeline(ngrip_axis, "NGRIP", result)
     _plot_segment_timeline(mis6_axis, "MIS6", result)
-    ngrip_axis.set_ylabel("Precession index")
-    _mark_discontinuous_axis(ngrip_axis, mis6_axis)
+    mis6_axis.set_ylabel("Precession index")
+    _mark_discontinuous_axis(mis6_axis, ngrip_axis)
     _plot_rayleigh(rayleigh_axis, result)
     _plot_phase_response(response_axis, result["fit"])
 
-    _add_panel_label(ngrip_axis, "a", x=-0.08)
+    _add_panel_label(mis6_axis, "a", x=-0.14)
     _add_panel_label(rayleigh_axis, "b", x=-0.21)
-    _add_panel_label(response_axis, "c", x=-0.13)
+    _add_panel_label(response_axis, "c", x=-0.22)
     return fig
 
 

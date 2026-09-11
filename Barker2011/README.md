@@ -162,7 +162,7 @@ explains the symbols and panel interpretation.
 
 The main figure overlays both definitions with consistent colors and symbols:
 variable threshold (70 events, filled rose circles and solid response curve)
-and fixed threshold (59 events, open blue squares and dashed response curve).
+and fixed threshold (59 events, open green squares and dashed response curve).
 The polar panel overlays sector counts. The primary nine tables remain
 primary-only, so existing age and orbital analyses retain their inputs.
 `event_definition_sensitivity.csv` adds a two-row comparison, and the

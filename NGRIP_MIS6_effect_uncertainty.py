@@ -28,6 +28,7 @@ for variable in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS",
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from toolbox.phase_response_plotting import format_phase_response_axis, mark_preferred_phase
 import numpy as np
 import pandas as pd
 import scipy
@@ -261,9 +262,15 @@ def plot_results(summary, curves, region, replicates, figure_dir=FIGURE_DIR):
     ax.plot(curves.phase_deg, curves.C_pointwise_q975, color=colors["C_joint"], linestyle=":")
     ax.plot(curves.phase_deg, curves.point_multiplier, color="black", linewidth=1.2, label="Point fit")
     ax.axhline(1, color="#999999", linewidth=0.6)
-    ax.set(xlabel="Precession phase (°)", ylabel="Phase rate multiplier", xticks=[0, 90, 180, 270, 360])
-    ax.set_title("d  Conditional phase response", loc="left")
-    ax.legend(fontsize=6.5, frameon=False)
+    format_phase_response_axis(ax)
+    point_phase = summary.loc[summary.quantity.eq("preferred_phase_deg"), "point_estimate"].iloc[0]
+    point_ratio = summary.loc[summary.quantity.eq("max_min_rate_ratio"), "point_estimate"].iloc[0]
+    mark_preferred_phase(ax, point_phase, point_ratio)
+    ax.set_title("d  Fitted warming-event rate", loc="left", fontsize=9)
+    ax.legend(fontsize=6.5, frameon=False, loc="upper left")
+    ax.text(0.25, 0.63, f"Preferred phase: {point_phase:.1f}°\n"
+            f"Max/min rate ratio: {point_ratio:.2f}", transform=ax.transAxes,
+            va="top", fontsize=6.5)
     for ax in axes.flat:
         ax.spines[["top", "right"]].set_visible(False)
     fig.text(0.5, 0.035, "A, C: central working ranges. B: approximate joint-region projections.\n"

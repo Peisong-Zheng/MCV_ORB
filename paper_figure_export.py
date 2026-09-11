@@ -1,6 +1,6 @@
-"""Copy the current manuscript's selected PDFs into monsoon_paper/figures.
+"""Copy the current manuscript's selected PDFs into orbital_event_paper/figures.
 
-The explicit mapping is in monsoon_paper/figure_manifest.csv. Analysis
+The explicit mapping is in orbital_event_paper/figure_manifest.csv. Analysis
 exporters call copy_pdf_to_paper after saving their canonical PDF; running
 this script refreshes all available mapped figures without rerunning fits.
 Planned figures remain pending until their new source PDFs are produced.
@@ -13,7 +13,7 @@ import shutil
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-MANIFEST_PATH = Path("monsoon_paper/figure_manifest.csv")
+MANIFEST_PATH = Path("orbital_event_paper/figure_manifest.csv")
 
 
 def figure_manifest(project_root=PROJECT_ROOT):
@@ -23,7 +23,7 @@ def figure_manifest(project_root=PROJECT_ROOT):
 
 
 def paper_path(entry, project_root=PROJECT_ROOT):
-    return Path(project_root) / "monsoon_paper/figures" / entry["paper_name"]
+    return Path(project_root) / "orbital_event_paper/figures" / entry["paper_name"]
 
 
 def copy_pdf_to_paper(source_pdf, project_root=PROJECT_ROOT):

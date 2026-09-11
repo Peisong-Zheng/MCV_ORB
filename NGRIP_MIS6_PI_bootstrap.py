@@ -20,7 +20,6 @@ from concurrent.futures import ProcessPoolExecutor
 import multiprocessing as mp
 import os
 from pathlib import Path
-from paper_figure_export import copy_pdf_to_paper
 import tempfile
 import time
 
@@ -734,11 +733,25 @@ def run_analysis(
     }
 
 
+def save_figure(replicates, summary):
+    """Save the source plot, then rebuild and sync the two-catalogue figure."""
+    import matplotlib.pyplot as plt
+    from Figure_PI_bootstrap import build_figure, SOURCES
+
+    OUT_FIG_DIR.mkdir(parents=True, exist_ok=True)
+    figure = plot_null_distribution(replicates, summary)
+    figure.savefig(OUT_FIG_DIR / f"{RUN_NAME}.png", dpi=400, bbox_inches="tight")
+    figure.savefig(OUT_FIG_DIR / f"{RUN_NAME}.pdf", bbox_inches="tight")
+    plt.close(figure)
+    source = OUT_FIG_DIR / f"{RUN_NAME}.pdf"
+    if source.resolve() == (PROJECT_ROOT / SOURCES[0]).resolve():
+        build_figure()
+
+
 def save_results(result: dict[str, object]) -> None:
     """Write the compact bootstrap tables and publication-ready figure."""
 
     OUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    OUT_FIG_DIR.mkdir(parents=True, exist_ok=True)
     result["replicates"].to_csv(
         OUT_DATA_DIR / "bootstrap_replicates.csv", index=False
     )
@@ -747,15 +760,7 @@ def save_results(result: dict[str, object]) -> None:
         OUT_DATA_DIR / "parameters_and_provenance.csv", index=False
     )
 
-    import matplotlib.pyplot as plt
-
-    figure = plot_null_distribution(result["replicates"], result["summary"])
-    figure.savefig(
-        OUT_FIG_DIR / f"{RUN_NAME}.png", dpi=400, bbox_inches="tight"
-    )
-    figure.savefig(OUT_FIG_DIR / f"{RUN_NAME}.pdf", bbox_inches="tight")
-    copy_pdf_to_paper(OUT_FIG_DIR / f"{RUN_NAME}.pdf")
-    plt.close(figure)
+    save_figure(result["replicates"], result["summary"])
 
 
 def parse_args() -> argparse.Namespace:
