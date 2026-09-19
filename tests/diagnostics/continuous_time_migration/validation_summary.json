@@ -1,0 +1,21 @@
+{
+  "status": "complete",
+  "tests_passed": 187,
+  "paper_pages": {
+    "main": 14,
+    "SI": 21
+  },
+  "paper_figures_synced": 15,
+  "upstream_files_byte_identical": 44,
+  "dependency_hashes_verified": 169,
+  "final_engine_replays": 14,
+  "final_engine_max_difference": 4.312710188969504e-10,
+  "phase_null_replicates_per_catalogue": 9999,
+  "history_null_replicates_per_catalogue": 4999,
+  "primary_full_replicates": 5000,
+  "primary_joint_replicates": 10000,
+  "barker_gof_replicates": 1999,
+  "primary_deletion_replicates": 2000,
+  "barker_deletion_replicates": 1000,
+  "archive_sha256": "041e51c37e9b35619674a43768ec21b8d739a8b360da37d6b66378d65d07fa5e"
+}

@@ -1,7 +1,7 @@
 metric,refitted,saved_main,matches
-info_bits_per_event,0.1793296359853951,0.179329636,True
-LR_statistic,13.673201473152972,13.6732015,True
-n_events,55.0,55.0,True
-exposure_kyr,180.0,180.0,True
-phase_preferred_deg,329.99851179797105,329.998512,True
-phase_rate_ratio,4.938027096057828,4.9380271,True
+gain_bits_per_event,0.24822357610742327,0.24822357610742252,True
+LR_statistic,18.23788002430095,18.237880024300893,True
+n_events,53.0,53.0,True
+exposure_kyr,165.05800000000002,165.058,True
+phase_preferred_deg,328.08368244245503,328.0836823478582,True
+phase_rate_ratio,7.182865381876795,7.1828657310746395,True

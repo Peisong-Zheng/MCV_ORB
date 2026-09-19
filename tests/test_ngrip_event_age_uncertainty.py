@@ -142,13 +142,21 @@ def test_small_draws_have_stable_ids_and_independent_rows(events, grid):
         uncertainty.sample_age_realizations(events, grid, n_realizations=0)
 
 
-def test_grid_screening_caller_uses_prepared_inputs(events, grid):
+def test_grid_screening_reuses_saved_exact_ages(monkeypatch):
     from docs.reviews import ngrip_knot_spacing_sensitivity as screening
-    assert screening.NGRIP_EVENTS == NGRIP / uncertainty.EVENTS_CSV
-    assert screening.NGRIP_GRID == NGRIP / uncertainty.GRID_CSV
-    summary, detail, gaps, knots = screening.analytic_basis_diagnostics(events, grid, 5.0)
-    assert len(summary) == 2 and len(detail) == 69 and len(knots) == 25
-    assert np.isfinite(gaps.unconditioned_gap_sigma_ka).all()
+    from toolbox import combined_likelihood as likelihood
+    catalogue = likelihood.load_event_catalogue()
+    def forbid_sampling(*args, **kwargs):
+        raise AssertionError("Refitting saved chronological sequences must not resample ages")
+    monkeypatch.setattr(np.random, "default_rng", forbid_sampling)
+    paired = screening.load_saved_pairings(catalogue, screening.OUT_DATA_DIR, 3)
+    columns = screening.pooled.combined_age_columns(catalogue)
+    with np.load(screening.OUT_DATA_DIR / "age_realizations.npz", allow_pickle=False) as saved:
+        for spacing, frame in paired.items():
+            tag = f"knots_{spacing:g}".replace(".", "p")
+            np.testing.assert_array_equal(frame[columns], saved[f"{tag}__paired_55_ages_ka_bp"][:3])
+    mis6 = [col for col in columns if "MIS6:" in col]
+    np.testing.assert_array_equal(paired[2.5][mis6], paired[10.0][mis6])
 
 
 def test_old_active_input_paths_are_gone():

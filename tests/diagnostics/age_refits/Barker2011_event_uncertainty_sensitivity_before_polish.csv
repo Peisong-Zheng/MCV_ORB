@@ -1,0 +1,4 @@
+realization_id,fit_valid,invalid_reason,n_response_events,n_conditioning_events,response_exposure_kyr,gain_bits_per_event,LR_statistic,nominal_LR_p,delta_AIC_full_minus_reduced,pre_phase_preferred_deg,pre_phase_rate_ratio_max_vs_min,pre_phase_amplitude,beta_history,beta_pre_phase_sin,beta_pre_phase_cos,all_models_converged,likelihood_nesting_ok
+Barker_MC_00328,False,numerical_fit: Fit failed KKT/convergence checks: ABNORMAL: ; projected gradient = 7.49e-07,,,,,,,,,,,,,,,
+Barker_MC_02793,False,numerical_fit: Fit failed KKT/convergence checks: ABNORMAL: ; projected gradient = 1.21e-06,,,,,,,,,,,,,,,
+Barker_MC_07623,False,numerical_fit: Fit failed KKT/convergence checks: ABNORMAL: ; projected gradient = 3.85e-07,,,,,,,,,,,,,,,

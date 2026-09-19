@@ -1,0 +1,2 @@
+n_realizations,n_valid,n_invalid,n_numerical_failures,age_input_reused,event_count_pattern_cache,model_version
+10000,9982,18,0,True,False,continuous_exponential_inhibition_2026-09-12

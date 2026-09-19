@@ -1,4 +1,4 @@
-driver_id,raw_column,scaled_column,units,response_mean,response_min,response_max,response_range,n_response_bins,scaling
-ecc,ecc,ecc_scaled,dimensionless,0.030035120976692566,0.013701,0.048042,0.034341,901,(value - response-bin arithmetic mean) / response-bin range
-obl,obl_deg,obl_scaled,degrees,23.23644124751276,22.20632580111361,24.437051032786204,2.2307252316725936,901,(value - response-bin arithmetic mean) / response-bin range
-insol65n,insol65n_Wm2,insol65n_scaled,W m-2,492.2758043481825,440.5844131469727,539.9537567138672,99.36934356689449,901,(value - response-bin arithmetic mean) / response-bin range
+driver_id,raw_column,scaled_column,units,response_mean,response_min,response_max,response_range,scaling
+ecc,ecc,ecc_scaled,dimensionless,0.028621997274776136,0.013701,0.04528072,0.031579720000000006,(value - nominal exposure-time mean) / nominal interpolant range
+obl,obl,obl_scaled,degrees,23.26326387468768,22.206297153223854,24.437051032786204,2.23075387956235,(value - nominal exposure-time mean) / nominal interpolant range
+insol65n,insol65n,insol65n_scaled,W m-2,491.83426747588305,441.0513619995117,540.0289306640625,98.9775686645508,(value - nominal exposure-time mean) / nominal interpolant range

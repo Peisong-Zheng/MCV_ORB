@@ -66,7 +66,6 @@ class SofularChronologyContext:
     nominal_covariance_ka2: np.ndarray
     control_depth_mm: np.ndarray
     control_ids: tuple[str, ...]
-    control_segment_ids: np.ndarray
     bracket_left_ids: tuple[str, ...]
     bracket_right_ids: tuple[str, ...]
     mapping_lag_ka: float
@@ -302,7 +301,6 @@ def build_context(
         nominal_sigma_ka=np.sqrt(np.diag(covariance)), nominal_covariance_ka2=covariance,
         control_depth_mm=controls["depth_mm"].to_numpy(float),
         control_ids=tuple(controls["control_id"].astype(str)),
-        control_segment_ids=controls["segment_id"].to_numpy(int),
         bracket_left_ids=tuple(left_ids), bracket_right_ids=tuple(right_ids),
         mapping_lag_ka=float(mapping_lag_ka),
     )

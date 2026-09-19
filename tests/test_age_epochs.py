@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from toolbox import combined_pi, event_inputs, orbital_phase
+from toolbox import combined_likelihood, event_inputs, orbital_phase
 from toolbox.project_config import (
     AGE_EPOCH,
     B2K_TO_BP1950_KA,
@@ -63,10 +63,10 @@ def test_bp1950_climate_covariates_are_not_shifted():
 
 
 def test_curated_ngrip_and_pooled_ages_have_exactly_one_b2k_conversion():
-    source = pd.read_csv(combined_pi.PROJECT_ROOT / "NGRIP/data/processed/ngrip_warming_cooling_starts.csv")
+    source = pd.read_csv(combined_likelihood.PROJECT_ROOT / "NGRIP/data/processed/ngrip_warming_cooling_starts.csv")
     np.testing.assert_allclose(source.age_ka_bp, source.age_ka_b2k-0.05,
                                atol=1e-10, rtol=0)
-    pooled = combined_pi.load_event_catalogue().query("segment_id == 'NGRIP'")
+    pooled = combined_likelihood.load_event_catalogue().query("segment_id == 'NGRIP'")
     merged = pooled.merge(source[["event_label", "age_ka_bp"]], on="event_label",
                           validate="one_to_one")
     assert len(merged) == 34

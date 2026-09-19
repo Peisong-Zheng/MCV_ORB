@@ -1,0 +1,19 @@
+parameter,value
+catalogue_id,barker_variable_threshold_speleo_0_400
+model_version,continuous_exponential_inhibition_2026-09-12
+seed,20260913
+n_replicates_per_scenario,500
+deletion_probabilities,0.1;0.2
+scopes,all
+history_tau_kyr,1.5
+initial_history,0.0
+history_coefficient_domain,beta_H <= 0
+quadrature_order,4
+response_exposure_kyr,396.4642638777152
+initialization,original oldest event in each segment fixed and retained
+history,recomputed using only retained events
+support_scaling,fixed to nominal undeleted catalogue
+interpretation,extra independent deletion stress test; not inferred missingness or chronology uncertainty
+scenario_pairing,same replicate uniforms across probabilities and eligible scopes
+nested_bootstrap,False
+elapsed_seconds,21.766401292057708

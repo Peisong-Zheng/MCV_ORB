@@ -1,0 +1,133 @@
+\begin{thebibliography}{20}
+\providecommand{\natexlab}[1]{#1}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi:\discretionary{}{}{}#1}\else
+  \providecommand{\doi}{doi:\discretionary{}{}{}\begingroup
+  \urlstyle{rm}\Url}\fi
+
+\bibitem[{\textit{Barker et~al.}(2011)\textit{Barker, Knorr, Edwards, Parrenin,
+  Putnam, Skinner, Wolff, and Ziegler}}]{barker2011800}
+Barker, S., G.~Knorr, R.~L. Edwards, F.~Parrenin, A.~E. Putnam, L.~C. Skinner,
+  E.~Wolff, and M.~Ziegler, 800,000 years of abrupt climate variability,
+  \textit{Science}, \textit{334}(6054), 347--351,
+  \doi{10.1126/science.1203580}, 2011.
+
+\bibitem[{\textit{Brown et~al.}(2002)\textit{Brown, Barbieri, Ventura, Kass,
+  and Frank}}]{brown2002rescaling}
+Brown, E.~N., R.~Barbieri, V.~Ventura, R.~E. Kass, and L.~M. Frank, The
+  time-rescaling theorem and its application to neural spike train data
+  analysis, \textit{Neural Computation}, \textit{14}(2), 325--346,
+  \doi{10.1162/08997660252741149}, 2002.
+
+\bibitem[{\textit{Corrick et~al.}(2020)\textit{Corrick, Drysdale, Hellstrom,
+  Capron, Rasmussen, Zhang, Fleitmann, Couchoud, and
+  Wolff}}]{corrick2020synchronous}
+Corrick, E.~C., R.~N. Drysdale, J.~C. Hellstrom, E.~Capron, S.~O. Rasmussen,
+  X.~Zhang, D.~Fleitmann, I.~Couchoud, and E.~Wolff, Synchronous timing of
+  abrupt climate changes during the last glacial period, \textit{Science},
+  \textit{369}(6506), 963--969, \doi{10.1126/science.aay5538}, 2020.
+
+\bibitem[{\textit{Davison and Hinkley}(1997)}]{davison1997bootstrap}
+Davison, A.~C., and D.~V. Hinkley, \textit{Bootstrap Methods and their
+  Application}, Cambridge University Press, \doi{10.1017/CBO9780511802843},
+  1997.
+
+\bibitem[{\textit{Fohlmeister}(2012)}]{fohlmeister2012statistical}
+Fohlmeister, J., A statistical approach to construct composite climate records
+  of dated archives, \textit{Quaternary Geochronology}, \textit{14}, 48--56,
+  \doi{10.1016/j.quageo.2012.06.007}, 2012.
+
+\bibitem[{\textit{Fohlmeister
+  et~al.}(2023{\natexlab{a}})}]{fohlmeister2023mfData}
+Fohlmeister, J., et~al., {NOAA/WDS} paleoclimatology - {Melchsee-Frutt} caves,
+  {Switzerland} {$\delta^{18}$O} and {$\delta^{13}$C} data over the past
+  202,000 years, [Data set]. NOAA National Centers for Environmental
+  Information, \doi{10.25921/jgzt-2n35}, 2023{\natexlab{a}}.
+
+\bibitem[{\textit{Fohlmeister
+  et~al.}(2023{\natexlab{b}})}]{fohlmeister2023role}
+Fohlmeister, J., et~al., The role of {Northern Hemisphere} summer insolation
+  for millennial-scale climate variability during the penultimate glacial,
+  \textit{Communications Earth \& Environment}, \textit{4}(1), 245,
+  \doi{10.1038/s43247-023-00908-0}, 2023{\natexlab{b}}.
+
+\bibitem[{\textit{Held}(2024)}]{held2024sofularData}
+Held, F., {NOAA/WDS} paleoclimatology - speleothem stable isotope data of the
+  last 200,000 years from the {Black Sea} region, [Data set]. NOAA National
+  Centers for Environmental Information, \doi{10.25921/b84y-cm81}, 2024.
+
+\bibitem[{\textit{Held et~al.}(2024)\textit{Held, Cheng, Edwards,
+  T{\"u}ys{\"u}z, Ko{\c{c}}, and Fleitmann}}]{held2024dansgaard}
+Held, F., H.~Cheng, R.~L. Edwards, O.~T{\"u}ys{\"u}z, K.~Ko{\c{c}}, and
+  D.~Fleitmann, {Dansgaard-Oeschger} cycles of the penultimate and last glacial
+  period recorded in stalagmites from {T{\"u}rkiye}, \textit{Nature
+  Communications}, \textit{15}(1), 1183, \doi{10.1038/s41467-024-45507-5},
+  2024.
+
+\bibitem[{\textit{Holm}(1979)}]{holm1979simple}
+Holm, S., A simple sequentially rejective multiple test procedure,
+  \textit{Scandinavian Journal of Statistics}, \textit{6}(2), 65--70, 1979.
+
+\bibitem[{\textit{Kling and Vetter}(2026)}]{kling2026goodness}
+Kling, J. C.~F., and M.~Vetter, On goodness-of-fit testing for self-exciting
+  point processes, \textit{Scandinavian Journal of Statistics}, \textit{53}(1),
+  102--139, \doi{10.1111/sjos.70029}, 2026.
+
+\bibitem[{\textit{Laskar et~al.}(2004)\textit{Laskar, Robutel, Joutel,
+  Gastineau, Correia, and Levrard}}]{laskar2004long}
+Laskar, J., P.~Robutel, F.~Joutel, M.~Gastineau, A.~C.~M. Correia, and
+  B.~Levrard, A long-term numerical solution for the insolation quantities of
+  the {Earth}, \textit{Astronomy \& Astrophysics}, \textit{428}(1), 261--285,
+  \doi{10.1051/0004-6361:20041335}, 2004.
+
+\bibitem[{\textit{Mardia and Jupp}(2000)}]{mardia2000directional}
+Mardia, K.~V., and P.~E. Jupp, \textit{Directional Statistics}, John Wiley \&
+  Sons, Chichester, \doi{10.1002/9780470316979}, 2000.
+
+\bibitem[{\textit{Moseley et~al.}(2020)\textit{Moseley, Sp{\"o}tl,
+  Brandst{\"a}tter, Erhardt, Luetscher, and Edwards}}]{moseley2020nalps19}
+Moseley, G.~E., C.~Sp{\"o}tl, S.~Brandst{\"a}tter, T.~Erhardt, M.~Luetscher,
+  and R.~L. Edwards, {NALPS19}: sub-orbital-scale climate variability recorded
+  in northern {Alpine} speleothems during the last glacial period,
+  \textit{Climate of the Past}, \textit{16}(1), 29--50,
+  \doi{10.5194/cp-16-29-2020}, 2020.
+
+\bibitem[{\textit{{North Greenland Ice Core Project
+  members}}(2004)}]{ngrip2004high}
+{North Greenland Ice Core Project members}, High-resolution record of {Northern
+  Hemisphere} climate extending into the last interglacial period,
+  \textit{Nature}, \textit{431}(7005), 147--151, \doi{10.1038/nature02805},
+  2004.
+
+\bibitem[{\textit{Rasmussen et~al.}(2022)\textit{Rasmussen, Svensson, and
+  Vinther}}]{rasmussen2022gicc05}
+Rasmussen, S.~O., A.~M. Svensson, and B.~M. Vinther, {Greenland Ice-Core
+  Chronology} 2005 ({GICC05}) for various {Greenland} ice cores, [Data set].
+  PANGAEA, \doi{10.1594/PANGAEA.943193}, 2022.
+
+\bibitem[{\textit{Rasmussen et~al.}(2014)}]{rasmussen2014stratigraphic}
+Rasmussen, S.~O., et~al., A stratigraphic framework for abrupt climatic changes
+  during the {Last Glacial} period based on three synchronized {Greenland}
+  ice-core records: refining and extending the {INTIMATE} event stratigraphy,
+  \textit{Quaternary Science Reviews}, \textit{106}, 14--28,
+  \doi{10.1016/j.quascirev.2014.09.007}, 2014.
+
+\bibitem[{\textit{Scholz and Hoffmann}(2011)}]{scholz2011stalage}
+Scholz, D., and D.~L. Hoffmann, {StalAge} -- an algorithm designed for
+  construction of speleothem age models, \textit{Quaternary Geochronology},
+  \textit{6}(3-4), 369--382, \doi{10.1016/j.quageo.2011.02.002}, 2011.
+
+\bibitem[{\textit{Svensson et~al.}(2008)}]{svensson2008sixty}
+Svensson, A., et~al., A 60 000 year {Greenland} stratigraphic ice core
+  chronology, \textit{Climate of the Past}, \textit{4}(1), 47--57,
+  \doi{10.5194/cp-4-47-2008}, 2008.
+
+\bibitem[{\textit{Truccolo et~al.}(2005)\textit{Truccolo, Eden, Fellows,
+  Donoghue, and Brown}}]{truccolo2005point}
+Truccolo, W., U.~T. Eden, M.~R. Fellows, J.~P. Donoghue, and E.~N. Brown, A
+  point process framework for relating neural spiking activity to spiking
+  history, neural ensemble, and extrinsic covariate effects, \textit{Journal of
+  Neurophysiology}, \textit{93}(2), 1074--1089, \doi{10.1152/jn.00697.2004},
+  2005.
+
+\end{thebibliography}

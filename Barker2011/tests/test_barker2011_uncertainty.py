@@ -1,4 +1,4 @@
-"""Scientific checks for the control interpolation and chronological PI refits."""
+"""Scientific checks for the control interpolation and chronological G refits."""
 
 import re
 
@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from pypdf import PdfReader
+from toolbox import combined_likelihood as c, age_sensitivity
 
 from Barker2011 import Barker2011_event_age_uncertainty as age_mc
 from Barker2011 import Barker2011_event_phase_analysis as main_analysis
@@ -16,7 +17,7 @@ from Barker2011 import Barker2011_event_uncertainty_sensitivity as sensitivity
 def prepared():
     controls = age_mc.prepare_controls()
     events = age_mc.prepare_events(controls)
-    context = sensitivity.prepare_context(events)
+    context = sensitivity.prepare_context()
     return controls, events, context
 
 
@@ -96,29 +97,26 @@ def test_crossed_control_proposal_is_rejected_as_a_whole(monkeypatch):
     np.testing.assert_allclose(draws, np.tile(events.event_age_ka, (3, 1)))
 
 
-def test_nominal_pi_is_identical_to_main_and_history_updates(prepared):
+def test_nominal_gain_is_identical_to_main_and_exact_history_updates(prepared):
     controls, events, context = prepared
-    point = sensitivity.fit_ages(events.event_age_ka.to_numpy(), context)
+    point = c.fit_catalogue(context.events, context)
     reference = main_analysis.run_analysis()["summary"].iloc[0]
-    for key in sensitivity.METRICS:
-        assert point[key] == pytest.approx(reference[key], abs=1e-9)
-    assert point["n_predictive_events"] == 70 and point["n_predictive_bins"] == 1993
-    assert point["response_exposure_kyr"] == 398.5
+    for key in ("gain_bits_per_event", "LR_statistic", "pre_phase_preferred_deg"):
+        assert point.summary[key] == pytest.approx(reference[key], abs=1e-9)
+    assert point.summary["n_response_events"] == 69
+    assert point.summary["response_exposure_kyr"] == pytest.approx(context.events[c.EVENT_AGE_COLUMN].max())
     draws, _, _ = age_mc.sample_realizations(events, controls, 3, seed=100)
-    moved = events.copy()
-    moved["event_age_ka"] = draws[0]
-    rebuilt, _ = main_analysis.prepare_bins(moved)
-    expected = rebuilt.loc[rebuilt.in_response_interval]
-    actual = sensitivity.frame_for_ages(draws[0], context)
-    np.testing.assert_array_equal(actual.event_count, expected.event_count)
-    np.testing.assert_array_equal(actual.same_type_history_count, expected.same_type_history_count)
-    assert not np.array_equal(actual.same_type_history_count, context["frame"].same_type_history_count)
-    for key in ("lr04_scaled", "co2_scaled", "pre_phase_sin", "pre_phase_cos", "dt_ka"):
-        np.testing.assert_array_equal(actual[key], context["frame"][key])
-    models, likelihood = main_analysis.fit_models(expected)
-    fitted = sensitivity.fit_ages(draws[0], context)
-    assert fitted["info_bits_per_event"] == pytest.approx(likelihood.iloc[0].info_bits_per_event, abs=1e-10)
-    assert fitted["loglik_full"] == pytest.approx(models[1].log_likelihood, abs=1e-10)
+    table = pd.DataFrame(draws, columns=age_mc.age_columns(events))
+    table.insert(0, "realization_id", ["d1", "d2", "d3"])
+    results = sensitivity.fit_realizations(table, context)
+    moved = context.events.copy()
+    moved[c.EVENT_AGE_COLUMN] = draws[0]
+    local = c.condition_context(context, moved)
+    fitted = c.fit_catalogue(moved, local, fixed_support=True)
+    assert results.gain_bits_per_event.iloc[0] == pytest.approx(fitted.summary["gain_bits_per_event"])
+    assert local.scaling == context.scaling
+    np.testing.assert_allclose(fitted.design.event_frame.age_kyr_bp, draws[0, :-1])
+    assert not np.array_equal(fitted.design.event_frame[c.HISTORY_TERM], point.design.event_frame[c.HISTORY_TERM])
 
 
 def test_unsupported_draws_remain_visible_and_phase_wraps(prepared):
@@ -128,18 +126,15 @@ def test_unsupported_draws_remain_visible_and_phase_wraps(prepared):
     ages[1, -1] = 401.0
     table = pd.DataFrame(ages, columns=age_mc.age_columns(events))
     table.insert(0, "realization_id", ["nominal", "outside"])
-    results = sensitivity.fit_realizations(events, table, context)
+    results = sensitivity.fit_realizations(table, context)
     assert results.fit_valid.tolist() == [True, False]
-    assert results.invalid_reason.iloc[1] == "outside observation support"
-    assert np.isnan(results.info_bits_per_event.iloc[1])
-    point = sensitivity.fit_ages(nominal, context)
-    summary = sensitivity.build_summary(results, point).iloc[0]
-    assert summary.n_realizations == 2 and summary.robustness_denominator == 1
-    assert summary.fraction_nominal_p_below_0p05 == 1
-    assert summary.fraction_nominal_p_below_0p05_all_draws_lower_bound == 0.5
-    np.testing.assert_allclose(sensitivity.unwrap_phase([355., 5.], 350.), [355., 365.])
-    curves = sensitivity.phase_response_summary(results, point)
-    np.testing.assert_allclose(curves.point_multiplier, curves.mc_median, atol=1e-12)
+    assert results.invalid_reason.iloc[1] == "outside_Barker2011_observation_support"
+    assert np.isnan(results.gain_bits_per_event.iloc[1])
+    point = c.fit_catalogue(context.events, context)
+    summary = age_sensitivity.summarize(results, point.summary).iloc[0]
+    assert summary.n_realizations == 2 and summary.n_valid == 1
+    assert summary.fraction_nominal_p_below_0p05 == float(results.nominal_LR_p.iloc[0] < .05)
+    np.testing.assert_allclose(age_sensitivity.unwrap_phase([355., 5.], 350.), [355., 365.])
 
 
 def test_saved_chronologies_reconstruct_from_saved_control_ages():
@@ -156,17 +151,18 @@ def test_saved_chronologies_reconstruct_from_saved_control_ages():
     assert np.all(np.diff(draws.iloc[:, 1:], axis=1) > 0)
 
 
-def test_saved_pi_rows_match_selected_saved_age_sequences(prepared):
+def test_selected_saved_age_sequences_are_refitted_without_changed_ids(prepared):
     _, events, context = prepared
-    draws = pd.read_csv(sensitivity.AGE_INPUT, float_precision="round_trip")
-    results = pd.read_csv(sensitivity.OUT_DATA_DIR / "pi_realizations.csv")
-    assert len(results) == 10000 and results.realization_id.equals(draws.realization_id)
-    assert results.fit_valid.all() and results.n_predictive_events.eq(70).all()
+    saved = pd.read_csv(sensitivity.AGE_INPUT, float_precision="round_trip")
+    draws = saved.iloc[[0, 5000, 9999]].copy()
+    results = sensitivity.fit_realizations(draws, context)
+    assert results.realization_id.tolist() == draws.realization_id.tolist()
+    assert results.fit_valid.all() and results.n_response_events.eq(69).all()
     assert results.all_models_converged.all() and results.likelihood_nesting_ok.all()
-    assert not results.eta_clipping_used.any()
-    np.testing.assert_allclose(results.info_bits_per_event,
-                               results.LR_statistic / (2 * results.n_predictive_events * np.log(2)), atol=1e-11)
-    for index in (0, 5000, 9999):
-        fresh = sensitivity.fit_ages(draws.loc[index, age_mc.age_columns(events)].to_numpy(float), context)
-        for key in sensitivity.METRICS:
-            assert fresh[key] == pytest.approx(results.loc[index, key], abs=1e-7, rel=1e-9)
+    np.testing.assert_allclose(results.gain_bits_per_event,
+                               results.LR_statistic / (2 * results.n_response_events * np.log(2)), atol=1e-11)
+    for i, (_, row) in enumerate(draws.iterrows()):
+        moved = context.events.copy()
+        moved[c.EVENT_AGE_COLUMN] = row[age_mc.age_columns(events)].to_numpy(float)
+        fresh = c.fit_catalogue(moved, context)
+        assert results.gain_bits_per_event.iloc[i] == pytest.approx(fresh.summary["gain_bits_per_event"])

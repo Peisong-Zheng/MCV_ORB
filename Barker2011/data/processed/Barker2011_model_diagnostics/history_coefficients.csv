@@ -1,0 +1,12 @@
+model_id,term,beta
+no_history,intercept,-1.8585308811
+no_history,lr04_scaled,3.07619129872
+no_history,co2_scaled,2.66122552303
+no_history,pre_phase_sin,-0.165536508943
+no_history,pre_phase_cos,0.44152127124
+full,intercept,-1.61804613552
+full,same_type_exponential_history,-1.1293684495
+full,lr04_scaled,3.31773002271
+full,co2_scaled,2.82108738027
+full,pre_phase_sin,-0.261033707332
+full,pre_phase_cos,0.540793128008

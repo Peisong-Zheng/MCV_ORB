@@ -1,0 +1,15 @@
+check,catalogue,replicate,max_abs_difference
+saved_age_final_engine,primary,joint_00001,5.551115123125783e-17
+saved_age_final_engine,primary,joint_05001,0.0
+saved_age_final_engine,primary,joint_10000,8.326672684688674e-17
+saved_age_final_engine,primary,joint_06739,5.551115123125783e-17
+saved_age_final_engine,Barker,Barker_MC_00001,8.326672684688674e-17
+saved_age_final_engine,Barker,Barker_MC_05001,1.7763568394002505e-15
+saved_age_final_engine,Barker,Barker_MC_10000,6.938893903907228e-17
+saved_age_final_engine,Barker,Barker_MC_02794,6.938893903907228e-17
+saved_effect_final_engine,primary,1:0:1,3.2787283998914063e-10
+saved_effect_final_engine,primary,1:0:2500,2.7498003873915877e-10
+saved_effect_final_engine,primary,1:0:5000,4.312710188969504e-10
+saved_effect_final_engine,primary,2:1:1,1.6780177247710526e-10
+saved_effect_final_engine,primary,2:100:25,4.723688107333146e-11
+saved_effect_final_engine,primary,2:200:50,2.766569195955526e-10

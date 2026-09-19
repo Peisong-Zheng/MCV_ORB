@@ -1,0 +1,19 @@
+parameter,value
+catalogue_id,ngrip_warming_plus_mis6
+model_version,continuous_exponential_inhibition_2026-09-12
+seed,20260912
+n_replicates_per_scenario,500
+deletion_probabilities,0.1;0.2
+scopes,both;MIS6_only
+history_tau_kyr,1.5
+initial_history,0.0
+history_coefficient_domain,beta_H <= 0
+quadrature_order,4
+response_exposure_kyr,165.058
+initialization,original oldest event in each segment fixed and retained
+history,recomputed using only retained events
+support_scaling,fixed to nominal undeleted catalogue
+interpretation,extra independent deletion stress test; not inferred missingness or chronology uncertainty
+scenario_pairing,same replicate uniforms across probabilities and eligible scopes
+nested_bootstrap,False
+elapsed_seconds,29.497080249944702

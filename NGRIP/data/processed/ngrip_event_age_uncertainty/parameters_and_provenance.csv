@@ -13,7 +13,7 @@ chronology_model,cumulative Gaussian variance increments; linear offset interpol
 knot_sigma,MCE-equivalent envelope / 2; not a hard bound
 modelext_envelope,0.045 * age_b2k; exact 60.202 ka counted endpoint retained
 order_condition,reject crossed knot maps and combined event ages; never sort draws
-observation_support,not truncated here; checked by downstream PI
+observation_support,not truncated here; checked by downstream G
 omitted_uncertainties,systematic counting bias; event membership; forcing chronology; alternate model extension
 events_path,data/processed/ngrip_warming_cooling_starts.csv
 events_sha256,fbc910e83506bf5b0f53c09940aa6dd2ef44b2594b21f3154b30d2e16c1ef2ae

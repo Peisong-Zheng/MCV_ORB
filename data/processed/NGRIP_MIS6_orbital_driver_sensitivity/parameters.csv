@@ -1,14 +1,17 @@
 parameter,value
 catalogue,NGRIP–MIS6 warming events
+method,continuous conditional point process
 n_realizations,500
-seed,20260909
-bin_width_kyr,0.2
-history_window_kyr,1.5
-origin_fraction,0.0
-response_mode,maximal_for_history
-response_exposure_kyr,180.0
+selection_seed,20260909
+history_tau_kyr,1.5
+initial_history,0.0
+history_coefficient_domain,beta_H <= 0
+quadrature_order,4
+response_exposure_kyr,165.05800000000002
+full_terms,same_type_exponential_history;lr04_scaled;co2_scaled;mis6_segment;pre_phase_sin;pre_phase_cos
 age_epoch,BP1950
-source_realizations,data/processed/NGRIP_MIS6_event_uncertainty_sensitivity/combined_event_age_realizations.csv
+source_realizations,data/processed/NGRIP_MIS6_orbital_driver_sensitivity/selected_realizations.csv
+selection,"saved orbital-experiment rows, original order and exact ages; no new draw"
 n_new_comparisons,9
 p_method,nominal chi-square; within-catalogue Holm family of 9
-interval,2.5–97.5% age sensitivity; not sampling confidence interval
+interval,2.5–97.5% chronology sensitivity; not full sampling confidence

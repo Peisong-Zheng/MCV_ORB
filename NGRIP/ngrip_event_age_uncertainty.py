@@ -18,6 +18,7 @@ import pandas as pd
 # The paper exporter lives in the project root.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from paper_figure_export import copy_pdf_to_paper
+from toolbox.figure_style import add_panel_label
 
 EVENTS_CSV = Path("data/processed/ngrip_warming_cooling_starts.csv")
 GRID_CSV = Path("data/processed/ngrip_chronology_grid.csv")
@@ -182,8 +183,7 @@ def plot_uncertainty(events, draws):
                 ha="center", va="top", fontsize=8, color="0.2")
     for letter, axis in zip("ab", axes):
         axis.axvline(join_age, color="0.45", lw=0.75, ls=(0, (4, 3)), zorder=0)
-        axis.text(-0.085, 1.01, f"({letter})", transform=axis.transAxes,
-                  ha="left", va="bottom", fontsize=10, fontweight="bold")
+        add_panel_label(axis, letter, x=-0.085, y=1.01)
         axis.spines[["top", "right"]].set_visible(False)
         axis.tick_params(which="major", direction="out", length=3, width=0.7)
         axis.tick_params(which="minor", direction="out", length=1.5, width=0.5)
@@ -224,7 +224,7 @@ def main():
         "knot_sigma": "MCE-equivalent envelope / 2; not a hard bound",
         "modelext_envelope": "0.045 * age_b2k; exact 60.202 ka counted endpoint retained",
         "order_condition": "reject crossed knot maps and combined event ages; never sort draws",
-        "observation_support": "not truncated here; checked by downstream PI",
+        "observation_support": "not truncated here; checked by downstream conditional-model fitting",
         "omitted_uncertainties": "systematic counting bias; event membership; forcing chronology; alternate model extension",
     }
     for name, path in (("events", EVENTS_CSV), ("grid", GRID_CSV),

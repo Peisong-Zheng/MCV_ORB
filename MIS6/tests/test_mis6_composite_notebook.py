@@ -73,8 +73,12 @@ def test_catalogue_schema_and_figure_outputs(prepared, tmp_path):
     exec(cells[5], namespace)
     fig = namespace["fig"]
     assert len(fig.axes) == 3
-    assert all(ax.get_title(loc="left").startswith(f"({label})")
-               for ax, label in zip(fig.axes, "abc"))
+    expected_labels = [f"({label})" for label in "abc"]
+    for ax, expected in zip(fig.axes, expected_labels):
+        labels = [text for text in ax.texts
+                  if text.get_visible() and text.get_text() in expected_labels]
+        assert [text.get_text() for text in labels] == [expected]
+        assert labels[0].get_transform() is ax.transAxes
     assert fig.axes[2].yaxis_inverted()
     namespace["output_csv"] = tmp_path / "mis6_composite_event_record.csv"
     namespace["figure_dir"] = tmp_path / "figures"

@@ -1,0 +1,2 @@
+dataset_id,comparison_id,reduced_model_id,full_model_id,df,LR_statistic,LR_p_value,gain_bits_per_event,delta_AIC_full_minus_reduced
+barker_variable_threshold_speleo_0_400,phase_after_climate,reduced,full,2,10.582480594,0.00503551085596,0.110632552705,-6.58248059399

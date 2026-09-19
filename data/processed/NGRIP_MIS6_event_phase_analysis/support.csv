@@ -1,0 +1,3 @@
+segment_id,observation_start_kyr_bp,observation_end_kyr_bp,response_start_kyr_bp,response_end_kyr_bp,anchor_age_kyr_bp
+NGRIP,12,123,12,115.32,115.32
+MIS6,132.5,204.5,132.5,194.238,194.238

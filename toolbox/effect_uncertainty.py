@@ -1,93 +1,36 @@
-"""Full-model event simulation and approximate conditional effect intervals.
+"""Full-model simulation and approximate conditional effect intervals.
 
-This simulator is independent of the retained reduced-model null bootstrap.
-Bootstrap estimates approximate sampling from the fitted process, not from a
-chronology posterior. See Geyer, Parametric Bootstrap:
-https://www.stat.umn.edu/geyer/5601/examp/parm.html
+The full and reduced generators have separate public entry points. Their
+continuous thinning implementation and exact event history are shared.
 """
-
-from __future__ import annotations
-
 import numpy as np
 from scipy.optimize import minimize_scalar
-
-from toolbox import combined_pi, event_process, poisson
-
+from toolbox import combined_likelihood
 
 PHASE_TERMS = ("pre_phase_sin", "pre_phase_cos")
-PHASE_INDICES = [1 + combined_pi.FULL_TERMS.index(term) for term in PHASE_TERMS]
-
+PHASE_INDICES = [1 + combined_likelihood.FULL_TERMS.index(term) for term in PHASE_TERMS]
 
 class InvalidEffectSimulation(RuntimeError):
-    """An expected numerical failure that must remain visible in the run."""
+    """A numerical failure retained under its original replicate identity."""
 
+def prepare_full_simulation(context, full_model):
+    if full_model.terms != ("intercept", *context.full_terms):
+        raise ValueError("The effect generator must be the fitted full model")
+    return combined_likelihood.prepare_model_simulation(context, full_model)
 
-def prepare_full_simulation(context, full_beta):
-    """Prepare full-model predictors; history is generated anew per catalogue."""
-    terms = combined_pi.FULL_TERMS
-    beta = np.asarray(full_beta, dtype=float)
-    if beta.shape != (len(terms) + 1,) or not np.isfinite(beta).all():
-        raise ValueError("full_beta must contain all finite full-model coefficients")
-    history_index = terms.index(event_process.HISTORY_TERM)
-    fixed_indices = [i for i in range(len(terms)) if i != history_index]
-    fixed_terms = [terms[i] for i in fixed_indices]
-    prepared = {}
-    for segment_id in combined_pi.SEGMENT_IDS:
-        segment = context.segments[segment_id]
-        frame = context.bins.loc[context.bins.segment_id.eq(segment_id)]
-        if len(frame) != len(segment.bin_edges) - 1:
-            raise ValueError("Full-model simulation grid and segment disagree")
-        dt = frame.dt_kyr.to_numpy(float)
-        fixed = frame[fixed_terms].to_numpy(float)
-        if not np.isfinite(fixed).all() or not np.all(np.isfinite(dt) & (dt > 0)):
-            raise ValueError("Simulation requires finite predictors and positive exposure")
-        if not np.allclose(dt, np.diff(segment.bin_edges), rtol=0, atol=1e-10):
-            raise ValueError("Simulation exposure does not match bin edges")
-        prepared[segment_id] = {
-            "segment": segment,
-            "dt": dt,
-            "eta_fixed": beta[0] + fixed @ beta[1 + np.array(fixed_indices)],
-            "history_beta": beta[1 + history_index],
-        }
-    return prepared
+def simulate_prepared_full_events(prepared, rng):
+    return combined_likelihood.simulate_prepared_events(prepared, rng)
 
-
-def simulate_prepared_full_counts(prepared, rng):
-    """Simulate oldest to youngest; independent segments start with zero history."""
-    result = {}
-    for segment_id in combined_pi.SEGMENT_IDS:
-        part = prepared[segment_id]
-        segment = part["segment"]
-        counts = np.zeros(len(part["dt"]), dtype=int)
-        used_history = np.zeros(len(counts))
-        for i in range(len(counts) - 1, -1, -1):
-            history = counts[segment.history_left[i]:segment.history_right[i]].sum()
-            used_history[i] = history
-            eta = part["eta_fixed"][i] + part["history_beta"] * history
-            if not np.isfinite(eta) or eta < poisson.ETA_MIN or eta > poisson.ETA_MAX:
-                raise InvalidEffectSimulation(f"{segment_id}: simulated eta outside numerical limits")
-            counts[i] = rng.poisson(part["dt"][i] * np.exp(eta))
-        if not np.array_equal(used_history, combined_pi.history_from_counts(counts, segment)):
-            raise RuntimeError("Full-model simulated history disagrees with fitting history")
-        result[segment_id] = counts
-    return result
-
-
-def simulate_full_model_counts(context, full_beta, rng):
-    """Public full-model simulator; does not call or alter the null simulator."""
-    return simulate_prepared_full_counts(prepare_full_simulation(context, full_beta), rng)
-
+def simulate_full_model_events(context, full_model, rng):
+    return simulate_prepared_full_events(prepare_full_simulation(context, full_model), rng)
 
 def validate_effect_fit(fit):
-    """Report numerical failures; never reclassify input/program errors as draws."""
     values = np.r_[fit.full.beta, fit.reduced.beta,
                    fit.full.log_likelihood, fit.reduced.log_likelihood]
     if not np.isfinite(values).all():
         raise InvalidEffectSimulation("Non-finite fitted coefficients or likelihood")
     if not fit.full.converged or not fit.reduced.converged:
         raise InvalidEffectSimulation("At least one fitted model did not converge")
-    if fit.summary["eta_clipping_used"]:
-        raise InvalidEffectSimulation("Fit used numerical eta clipping")
     if fit.full.log_likelihood < fit.reduced.log_likelihood - 1e-7:
         raise InvalidEffectSimulation("Full/reduced likelihood nesting failed")
 

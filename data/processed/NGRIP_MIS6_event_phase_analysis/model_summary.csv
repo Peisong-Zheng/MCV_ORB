@@ -1,0 +1,3 @@
+model_id,log_likelihood,aic,n_parameters,n_response_events,converged
+reduced,-111.241797586,232.483595172,5,53,True
+full,-102.122857574,218.245715148,7,53,True

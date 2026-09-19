@@ -23,7 +23,7 @@
 | `wolff2010millennial` | Wolff et al. (2010), *Quaternary Science Reviews*, 29, 2828–2838. [出版社](https://www.sciencedirect.com/science/article/pii/S0277379109003588)，DOI `10.1016/j.quascirev.2009.10.013` | 格陵兰突变综述、GICC05modelext 结构；讨论年代独立性的限制 |
 | `southon2004radiocarbon` | Southon (2004), *Radiocarbon*, 46, 1239–1259. [原文](https://journals.uair.arizona.edu/index.php/radiocarbon/article/download/4180/3605)，[Crossref](https://api.crossref.org/works/10.1017/S0033822200033129)，DOI `10.1017/S0033822200033129` | 旧格陵兰年代模型/轨道约束的背景；与 Wolff (2010) 配套，不能单凭该文证明本项目处理已经完全消除了调谐影响 |
 | `myrvollnilsen2022comprehensive` | Myrvoll-Nilsen et al. (2022), *Climate of the Past*, 18, 1275–1294. [出版社](https://cp.copernicus.org/articles/18/1275/2022/)，DOI `10.5194/cp-18-1275-2022` | 层计误差相关性、潜在系统偏差、年代不确定性局限；本项目没有实施其完整统计框架 |
-| `davison1997bootstrap` | Davison & Hinkley (1997), *Bootstrap Methods and their Application*, Cambridge University Press. [Crossref](https://api.crossref.org/works/10.1017/CBO9780511802843)，DOI `10.1017/CBO9780511802843` | reduced-model 参数 bootstrap 与 full-model 效应抽样不确定性的通用方法依据；不是本研究专属 PI 指标的来源 |
+| `davison1997bootstrap` | Davison & Hinkley (1997), *Bootstrap Methods and their Application*, Cambridge University Press. [Crossref](https://api.crossref.org/works/10.1017/CBO9780511802843)，DOI `10.1017/CBO9780511802843` | reduced-model 参数 bootstrap 与 full-model 效应抽样不确定性的通用方法依据；不是本研究专属 G 指标的来源 |
 | `holm1979simple` | Holm (1979), *Scandinavian Journal of Statistics*, 6, 65–70. [JSTOR](https://www.jstor.org/stable/4615733)，[原文扫描](https://sci2s.ugr.es/keel/pdf/specific/articulo/0052_001.pdf) | 其他轨道驱动比较的 Holm 多重检验校正，适合 SI |
 | `wang2008millennial` | Wang et al. (2008), *Nature*, 451, 1090–1093. [出版社](https://www.nature.com/articles/nature06692)，DOI `10.1038/nature06692` | 当代于 Barker (2011) 的中国石笋记录来源、年代继承链；如保留 Sanbao 对照图亦需要 |
 | `cheng2009ice` | Cheng et al. (2009), *Science*, 326, 248–252. [出版社](https://www.science.org/doi/10.1126/science.1177840)，[Crossref](https://api.crossref.org/works/10.1126/science.1177840)，DOI `10.1126/science.1177840` | Barker 石笋时间轴的历史资料背景；具体匹配点仍应直接引用 Barker 原文/SOM |
@@ -52,7 +52,7 @@
 - `rousseau2023reliable` 留在文献库以保留旧项目来历，但不进入当前事件数据、结果或核心证据链。文献库不是最终引用清单，正文未引用的条目不会自动出现在正常参考文献列表中。
 - 引言可复用 `dansgaard1993evidence`、`lohmann2018random`、`sun2021persistent`、`zhang2021direct`、`hodell20231` 等。事件起始发生率与千年尺度振幅/变率强度不同，引用时应说明当前研究的新增问题，不能把它们的统计量当成同一量。
 - 物理讨论可择要引用 `zhang2014abrupt`、`zhang2017abrupt`、`vettoretti2022atmospheric`、`dokken2013dansgaard`、`pedro2022dansgaard`、`malmierca2023dansgaard`。本研究的统计交互不足以确认机制，这些文献提供机制背景。
-- `mardia2000directional` 支持圆统计；`davis2003observation`、`truccolo2005point` 支持包含历史项及外部协变量的计数/点过程建模。`kim2011granger` 只有在解释似然信息增益与相关方法的联系时才需要，不能借其标题把本项目的条件关联称为因果证明。
+- `mardia2000directional` 支持圆统计；`davis2003observation`、`truccolo2005point` 支持包含历史项及外部协变量的计数/点过程建模。`kim2011granger` 只有在解释对数似然增益与相关方法的联系时才需要，不能借其标题把本项目的条件关联称为因果证明。
 - `moseley2020nalps19` 支持外推到约120 ka时达到约4.5%的做法；把整个模型延伸段都赋予年龄的±4.5%是**本项目的工作情景**。不要写成 Moseley 提供了一条逐点4.5%误差曲线。
 - `scholz2011stalage` 和 `fohlmeister2012statistical` 是已发表原始年龄模型的方法来源。本项目在参考年代上施加扰动，不是重新获得 StalAge/iscam 的完整后验。
 - `cheng2016asian` 可以用于后续中国石笋背景或对照图；它晚于 Barker (2011)，不能成为 Barker 原有 SpeleoAge 轴的原始资料出处。
@@ -61,7 +61,7 @@
 
 ## 4. 留待正式写作时核实的事项
 
-1. Barker `SpeleoAge` 的确切年代参考年仍是项目已记录的待核事项；现流程按 BP1950 使用。查到 Wang/Cheng 的来源信息并不自动证明 Barker 输出列的零点。
+1. **Barker 年代零点已补查（2026-09-19）。** 保留发表的 `SpeleoAge` 数值，按 BP1950 使用，来源依据见下文。此前“零点无法核实、仅为工作假设”的表述已从 S2 删除。
 2. NOAA 数据引用中的作者、发表年与研究论文可能不同，本次采用数据登记字段；正式数据可用性声明还应补最终归档地址、版本和访问日期。
 3. 若使用四记录背景图（Sanbao、Huagapo、Sofular、MF），需另外核对 Burns et al. (2019) 的 Huagapo 数据引用。本轮未将未核验的该条目写进 `.bib`；当前主分析不使用 Huagapo 事件。
 4. MIS6 工作目录名不等于所有事件严格落在通常定义的 MIS6 内：最老事件约194 ka。图注和数据章节需准确给出实际时段，避免仅凭文件夹名定义地层范围。
@@ -100,3 +100,24 @@
 - 将活动条目作者字段中连写的多字母缩写（如 `JB`、`ACM`）分开为 `J. B.`、`A. C. M.`，避免 BibTeX 将它们误作单个名字而漏掉后续首字母；没有推测或补造全名。
 - 使用实际的 `agu.bst` 在临时目录 `/private/tmp/mcv_agu_bib_capitalization` 编译37条参考文献，BibTeX 无错误或警告，pdfLaTeX 连续编译通过。
 - 阅读 Southon (2004) pp.1244、1246 与 Wolff et al. (2010) pp.2830–2831，核实 ss09/ss09sea 的早期 SPECMAP 年代约束以及 GICC05 模型延伸的继承关系。该证据支持有限的年代构建依赖，不能写成逐个 NGRIP 事件都经过岁差调谐；详见 [literature_notes.md](literature_notes.md)。
+
+## 8. Barker SpeleoAge 的年代零点（2026-09-19）
+
+本次读取了本地 Barker (2011) 正文、SOM 和两份 XLS，继续追溯其匹配的石笋年代，而非仅依据输出列名判断。
+
+- **来源链：** Barker 正文 p.350、SOM p.5（PDF 第6页）的 “Derivation of absolute timescales” 说明，SpeleoAge 通过将重建冷事件匹配到中国石笋弱季风事件建立。SOM Table S1（印刷 p.24，PDF 第25页）将控制点的绝对年代误差追溯至 Wang (2001)、Wang (2008) 和 Cheng (2009)。这些是被匹配的年代来源，不只是背景引文。Barker 的表头本身仅写 SpeleoAge/SpeloAge (kyr)，未另列参考年，也未发现将石笋年龄改为 b2k 的说明。
+- **Wang et al. (2001)：** 本地正文 PDF 第2页明确写出年代 “relative to 1950 A.D.”，即 Hulu 记录采用 BP1950。
+- **Wang et al. (2008)：** 本地 SOM 第3页、Supplement Figure 2 图注明确定义 “present = 1950 AD”，即 Sanbao 记录采用 BP1950。
+- **Cheng et al. (2009)：** 本地 SOM 的表格和[正文](https://www.whoi.edu/cms/files/Cheng_2009_Science_53103.pdf)使用 ky BP，未找到单独的 1950 定义句。[作者提交的 NOAA 原始数据](https://www.ncei.noaa.gov/pub/data/paleo/speleothem/asia/china/sanbao-linzhu2009.txt)同样标为 Age kyBP；[NOAA 数据登记](https://catalog-old.data.gov/dataset/noaa-wds-paleoclimatology-cheng-et-al-2009-sanbao-and-linzhu-caves-glacial-terminations-d18o-da2)将 386950–127100 cal yr BP 对应为公历年份 −385000 至 −125150，按 `calendar year = 1950 − age BP` 换算，支持相同的 1950 基准。
+
+**结论：** 依据上述年代构建链，保留 Barker 发表的 SpeleoAge 数值并按 BP1950 使用有来源依据，无需额外减去 50 yr。这里的判断来自被匹配的石笋年代及其数据登记，不应误写成“Barker 本文直接声明了 1950”。此前 S2 将未注明表头零点等同于只能作无依据假设，核查不够完整。此次仅简化 S2、更新相关论文核验说明，没有改变事件年龄、误差宽度或分析结果。
+
+## 9. 石笋定义误差表与 MF 年代界限（2026-09-19）
+
+**定义误差表。** Git 提交 `0f763fb` 的简化前 `monsoon_paper/SI.tex` 中，旧 Table S2 只概括各记录的误差假设，旧 Table S4(g) 是 Sofular 年代投影诊断；二者都没有逐事件的定义误差。新增的逐事件定义误差列已合并入 Table S1，与默认年代同表展示；数据来自 `MIS6/data/processed/MIS6_event_age_uncertainty/mis6_event_age_uncertainty_summary.csv`，并与 `MIS6/tests/diagnostics/MIS6_event_age_uncertainty/definition_picks_and_chronology.csv` 的全部 189 个定时结果核对。21 个事件各有九组结果；误差列报告相对默认年代的最小/最大偏移，不混入年代模型误差。MF 6.10 和 6.14 的范围宽度分别为 211 和 365 yr，其余事件不超过 40 yr。
+
+**MF 界限的来源。** `MIS6/data/raw/Fohlmeister J et al-2023-data-mf_d18o_stack.txt` 有 4,244 行有效年代/上下限，其中 188 行的标称年代落在配对界限之外：75 行在 163.1499–163.1945 ka、32 行在 165.1383–165.1392 ka、81 行在 190.205–195.976 ka。例如原始文件第 2415 行的标称年代为 165.1383 ka，下限为 164.5324 ka，上限为 165.0372 ka。这里的“标称年代”指原始代理数据采样点，不是选定的 DO 事件。原始记录未解释这些配对情况的成因，不据此断言原作者计算错误。
+
+最早保留的处理说明见 `archive/MIS6_three_record_composite_2026-09-05/docs/plans/2026-09-04-mis6-event-age-uncertainty.md`，原实现已包括对上下限排序、必要时扩至包含标称年代、相同年代保留最外界限。当前 notebook 和 provenance 继承这一处理。原数据实际上没有上下限颠倒的行；端点排序是防御性处理。共有 110 个重复年代坐标、277 行，对应去重后 4,077 个年代。
+
+**对研究事件的影响。** 16 个 MF 事件在全部九组设置下的 144 个定时点，其 `source_bound_repair_applied` 都是 False。独立插值核对确认，是否扩展原始界限、以及重复年代取外界限还是均值，都不改变这些定时点的插值界限。因此 S2 删去这段预处理细节，只描述实际用于事件的界限插值、标准差转换和共享扰动。数据处理代码、误差集合及分析结果均未改变。

@@ -1,0 +1,20 @@
+parameter,value
+model_version,continuous_exponential_inhibition_2026-09-12
+n_bootstrap,9999
+seed,20260909
+n_workers,3
+history_tau_kyr,1.5
+history_coefficient_domain,beta_H <= 0
+initial_unobserved_history,0.0
+conditioning,exact oldest event per segment; all younger exposure to the fixed endpoint
+simulation,continuous thinning with a certified background envelope
+refit_history,rebuilt from each simulated event sequence
+response_exposure_kyr,396.4642638777152
+reduced_terms,same_type_exponential_history+lr04_scaled+co2_scaled
+full_terms,same_type_exponential_history+lr04_scaled+co2_scaled+pre_phase_sin+pre_phase_cos
+conditioned_response_total,False
+chronology_nested,False
+quadrature_order,4
+numerical_recovery,same events; one retry with doubled quadrature order; no substitute catalogue
+zero_events,"likelihood supremum 0, LR=0, G undefined"
+empirical_p_rule,(1 + simulated LR >= observed LR) / (B + 1)

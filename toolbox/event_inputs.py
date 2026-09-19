@@ -1,8 +1,7 @@
-"""Input preparation helpers for binned climate-event analyses."""
+"""Native climate and orbital input helpers."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 import warnings
 
@@ -19,17 +18,6 @@ from toolbox.project_config import (
 )
 
 _WARNED_LINEAR_EXTRAPOLATION_CONTEXTS: set[str] = set()
-
-
-@dataclass
-class EventDataset:
-    """One event catalogue represented by event ages in kyr BP."""
-
-    dataset_id: str
-    label: str
-    color: str
-    ages_ka: np.ndarray
-    source: str
 
 
 def source_label(path: Path, project_root: Path | None = None) -> str:
@@ -161,25 +149,13 @@ def interpolate_with_linear_extrapolation(
     return out, extrapolated
 
 
-def make_bin_edges(
-    analysis_start_ka: float, analysis_end_ka: float, bin_width_ka: float
-) -> np.ndarray:
-    """Return rounded bin edges for a fixed-width age grid."""
-
-    edges = np.arange(
-        analysis_start_ka, analysis_end_ka + bin_width_ka / 2.0, bin_width_ka
-    )
-    edges[-1] = analysis_end_ka
-    return np.round(edges, 10)
-
-
 def load_lr04(
-    centers_ka: np.ndarray,
+    query_ages_ka: np.ndarray,
     path: Path,
     *,
     project_root: Path | None = None,
 ) -> tuple[np.ndarray, dict]:
-    """Interpolate LR04 to bin centers and return scaled and raw values."""
+    """Interpolate LR04 to requested ages and return scaled and raw values."""
 
     raw = pd.read_excel(path)
     age_col = find_column(raw.columns, "time")
@@ -187,7 +163,7 @@ def load_lr04(
     age, value = clean_series(
         raw[age_col].to_numpy(), raw[value_col].to_numpy(), context="LR04 series"
     )
-    interpolated = interpolate_checked(centers_ka, age, value, context="LR04 series")
+    interpolated = interpolate_checked(query_ages_ka, age, value, context="LR04 series")
     scaled, mean, vmin, vmax, value_range = scale_to_zero_mean_range_one(interpolated)
     meta = {
         "forcing_id": "lr04",
@@ -206,12 +182,12 @@ def load_lr04(
 
 
 def load_co2(
-    centers_ka: np.ndarray,
+    query_ages_ka: np.ndarray,
     path: Path,
     *,
     project_root: Path | None = None,
 ) -> tuple[np.ndarray, dict]:
-    """Interpolate atmospheric CO2 to bin centers and return scaled/raw values."""
+    """Interpolate atmospheric CO2 to requested ages and return scaled/raw values."""
 
     raw = pd.read_excel(path, sheet_name="Sheet2")
     age_col = find_column(raw.columns, "gasage")
@@ -221,7 +197,7 @@ def load_co2(
         raw[value_col].to_numpy(),
         context="CO2 series",
     )
-    interpolated = interpolate_checked(centers_ka, age, value, context="CO2 series")
+    interpolated = interpolate_checked(query_ages_ka, age, value, context="CO2 series")
     scaled, mean, vmin, vmax, value_range = scale_to_zero_mean_range_one(interpolated)
     meta = {
         "forcing_id": "co2",
@@ -240,12 +216,12 @@ def load_co2(
 
 
 def build_precession_phase(
-    centers_ka: np.ndarray,
+    query_ages_ka: np.ndarray,
     precession_path: Path,
     *,
     project_root: Path | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Evaluate the shared precession phase on an event-bin grid."""
+    """Evaluate the shared precession phase at requested ages."""
 
     phase_product = build_phase_series(
         "pre",
@@ -256,16 +232,16 @@ def build_precession_phase(
             "source": source_label(precession_path, project_root),
         },
     )
-    phases = evaluate_phase_at_ages(centers_ka, phase_product.extrema)
+    phases = evaluate_phase_at_ages(query_ages_ka, phase_product.extrema)
     pre_at_center = interpolate_checked(
-        centers_ka,
+        query_ages_ka,
         phase_product.series["age_ka"].to_numpy(dtype=float),
         phase_product.series["value"].to_numpy(dtype=float),
         context="precession index series",
     )
     phase_table = pd.DataFrame(
         {
-            "age_ka": centers_ka,
+            "age_ka": query_ages_ka,
             "precession_index": pre_at_center,
             "pre_phase_unwrapped_rad": phases["phase_unwrapped_rad"],
             "pre_phase_rad": phases["phase_rad"],
@@ -288,84 +264,3 @@ def build_precession_phase(
         ]
     ]
     return phase_table, extrema
-
-
-def build_binned_inputs(
-    events: list[EventDataset],
-    *,
-    analysis_start_ka: float,
-    analysis_end_ka: float,
-    bin_width_ka: float,
-    lr04_path: Path,
-    co2_path: Path,
-    precession_path: Path,
-    project_root: Path | None = None,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Build the binned event-count table and shared climate/orbital inputs."""
-
-    edges = make_bin_edges(analysis_start_ka, analysis_end_ka, bin_width_ka)
-    centers = 0.5 * (edges[:-1] + edges[1:])
-    dt = np.diff(edges)
-
-    lr04_scaled, lr04_info = load_lr04(centers, lr04_path, project_root=project_root)
-    co2_scaled, co2_info = load_co2(centers, co2_path, project_root=project_root)
-    phase_table, phase_extrema = build_precession_phase(
-        centers,
-        precession_path,
-        project_root=project_root,
-    )
-
-    base = pd.DataFrame(
-        {
-            "bin_start_ka": edges[:-1],
-            "bin_end_ka": edges[1:],
-            "bin_center_ka": centers,
-            "dt_ka": dt,
-            "lr04": lr04_info["raw"],
-            "lr04_scaled": lr04_scaled,
-            "co2": co2_info["raw"],
-            "co2_scaled": co2_scaled,
-        }
-    )
-    base = pd.concat([base, phase_table.drop(columns=["age_ka"])], axis=1)
-
-    rows = []
-    for dataset in events:
-        counts, _ = np.histogram(dataset.ages_ka, bins=edges)
-        dataset_frame = base.copy()
-        dataset_frame.insert(0, "dataset_id", dataset.dataset_id)
-        dataset_frame.insert(1, "dataset_label", dataset.label)
-        dataset_frame["event_count"] = counts.astype(int)
-        dataset_frame["n_events_total"] = int(len(dataset.ages_ka))
-        dataset_frame["source"] = dataset.source
-        rows.append(dataset_frame)
-
-    scale_summary = pd.DataFrame(
-        [
-            lr04_info["meta"],
-            co2_info["meta"],
-            {
-                "forcing_id": "pre_phase_sin",
-                "forcing_label": "sin(precession phase)",
-                "source": source_label(precession_path, project_root),
-                "mean": float(np.nanmean(base["pre_phase_sin"])),
-                "min": float(np.nanmin(base["pre_phase_sin"])),
-                "max": float(np.nanmax(base["pre_phase_sin"])),
-                "range": float(
-                    np.nanmax(base["pre_phase_sin"]) - np.nanmin(base["pre_phase_sin"])
-                ),
-            },
-            {
-                "forcing_id": "pre_phase_cos",
-                "forcing_label": "cos(precession phase)",
-                "source": source_label(precession_path, project_root),
-                "mean": float(np.nanmean(base["pre_phase_cos"])),
-                "min": float(np.nanmin(base["pre_phase_cos"])),
-                "max": float(np.nanmax(base["pre_phase_cos"])),
-                "range": float(
-                    np.nanmax(base["pre_phase_cos"]) - np.nanmin(base["pre_phase_cos"])
-                ),
-            },
-        ]
-    )
-    return pd.concat(rows, ignore_index=True), scale_summary, phase_extrema

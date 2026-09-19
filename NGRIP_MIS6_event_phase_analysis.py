@@ -1,59 +1,150 @@
 #!/usr/bin/env python3
-"""Point-age phase analysis of the pooled NGRIP--MIS 6 event catalogue.
+"""Nominal-age continuous event analysis for the pooled NGRIP--MIS6 catalogue.
 
-The catalogue contains 34 published NGRIP warming starts and 21 published
-MIS 6 speleothem transitions.  NGRIP and MIS 6 are treated as two disjoint
-observation segments; the age gap between them is never counted as exposure.
-
-Rayleigh's test is reported as a descriptive phase-concentration check.  The
-main analysis is a nested Poisson comparison: the reduced model includes a
-1.5-kyr event-history term, LR04, CO2, and a record-segment intercept, while
-the full model adds sine and cosine of precession phase.  The segment term
-allows MIS 6 and NGRIP to have different conditional baseline event rates.
-Sampling resolution and age uncertainty are not included in this point-age
-analysis; uncertainty is handled by the separate Monte Carlo experiment.
+Each record conditions on its exact oldest event. The full conditional
+intensity adds precession sine/cosine to LR04, CO2, inhibitory exponential
+history (tau = 1.5 kyr), and a segment intercept. Rayleigh statistics use all
+55 inventory events; likelihood comparisons use 53 response events.
 """
 
-from __future__ import annotations
-
+import argparse
 from pathlib import Path
-
 import matplotlib
-
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from toolbox.phase_response_plotting import format_phase_response_axis, mark_preferred_phase
 import numpy as np
 import pandas as pd
 
-from toolbox import combined_pi
+from toolbox import combined_likelihood, event_inputs
 from toolbox.catalogue_colors import CATALOGUE_COLORS
 from toolbox.orbital_phase import rayleigh_rbar_threshold, rayleigh_test
+from toolbox.phase_response_plotting import format_phase_response_axis, mark_preferred_phase
 from toolbox.project_config import (
-    CO2_XLSX,
-    LR04_XLSX,
-    ORBITAL_AGE_OFFSET_TO_BP1950_KA,
-    ORBITAL_REFERENCE,
-    ORBITAL_SOLUTION,
-    ORBITAL_SOURCE_EPOCH,
-    PRE_TXT,
-    PROJECT_ROOT,
+    PROJECT_ROOT, LR04_XLSX, CO2_XLSX, PRE_TXT,
+    ORBITAL_SOLUTION, ORBITAL_SOURCE_EPOCH, ORBITAL_AGE_OFFSET_TO_BP1950_KA,
 )
-
 
 RUN_NAME = "NGRIP_MIS6_event_phase_analysis"
 OUT_DATA_DIR = PROJECT_ROOT / "data/processed" / RUN_NAME
 OUT_FIG_DIR = PROJECT_ROOT / "figures" / RUN_NAME
-
 CATALOGUE_LABEL = "NGRIP warming + MIS 6 transitions"
 EVENT_TYPE = "warming_transition"
-
-HISTORY_WINDOW_KYR = combined_pi.DEFAULT_HISTORY_WINDOW_KA
-BIN_WIDTH_KYR = combined_pi.DEFAULT_BIN_WIDTH_KA
-BIN_ORIGIN_FRACTION = combined_pi.DEFAULT_ORIGIN_FRACTION
-RESPONSE_MODE = combined_pi.DEFAULT_RESPONSE_MODE
+HISTORY_TAU_KYR = combined_likelihood.DEFAULT_HISTORY_TAU_KA
 RESOLUTION_COVARIATE_INCLUDED = False
 
+
+def run_analysis():
+    """Read and fit; writing and paper export belong only to the run entrypoint."""
+    context = combined_likelihood.build_context(history_tau_ka=HISTORY_TAU_KYR)
+    fit = combined_likelihood.fit_catalogue(context.events, context)
+    events = fit.design.all_events
+    phases = combined_likelihood.sample_event_phases(events)
+    result = dict(events=events, context=fit.context, fit=fit, event_phases=phases,
+                  rayleigh=rayleigh_test(phases.pre_phase_rad.to_numpy(float)),
+                  fitted_rates=combined_likelihood.fitted_rate_table(fit))
+    result["summary"] = build_analysis_summary(result)
+    result.update(model_tables(fit))
+    _validate_results(result)
+    return result
+
+
+def _validate_results(result):
+    events, fit = result["events"], result["fit"]
+    if events.groupby("segment_id").size().to_dict() != {"MIS6": 21, "NGRIP": 34}:
+        raise RuntimeError("The pooled inventory must contain 34 NGRIP and 21 MIS6 events")
+    if events.event_role.value_counts().to_dict() != {"response": 53, "conditioning": 2}:
+        raise RuntimeError("Exactly one oldest event per segment must condition the fit")
+    if result["event_phases"].pre_phase_extrapolated.any():
+        raise RuntimeError("An inventory event has an extrapolated precession phase")
+    if not fit.summary["all_models_converged"] or not fit.summary["likelihood_nesting_ok"]:
+        raise RuntimeError("Inspect finite-MLE convergence and nested likelihoods")
+    for model in (fit.reduced, fit.full):
+        if dict(zip(model.terms, model.beta))[combined_likelihood.HISTORY_TERM] > 0:
+            raise RuntimeError("The history coefficient violates the inhibitory domain")
+
+
+def model_tables(fit):
+    """Small model-level tables; integration nodes are not statistical samples."""
+    rows = []
+    for name, model in (("reduced", fit.reduced), ("full", fit.full)):
+        rows.append(dict(model_id=name, log_likelihood=model.log_likelihood,
+                         aic=model.aic, n_parameters=len(model.terms),
+                         n_response_events=model.n_events, converged=model.converged))
+    return dict(models={"reduced": fit.reduced, "full": fit.full},
+                model_summary=pd.DataFrame(rows),
+                likelihood_tests=pd.DataFrame([dict(dataset_id=fit.context.catalogue_id,
+                    comparison_id="phase_after_climate",
+                    reduced_model_id="reduced", full_model_id="full",
+                    **{key:fit.summary[key] for key in ("df", "LR_statistic", "LR_p_value",
+                       "gain_bits_per_event", "delta_AIC_full_minus_reduced")})]),
+                coefficients=combined_likelihood.coefficient_table(fit),
+                scaling=combined_likelihood.scaling_table(fit.context))
+
+
+def build_coefficients(fit):
+    table = combined_likelihood.coefficient_table(fit)
+    notes = {
+        "intercept": "conditional log rate per kyr",
+        "same_type_exponential_history": "strictly older events weighted by exp(-age difference / 1.5 kyr); coefficient <= 0",
+        "lr04_scaled": "LR04 anomaly divided by its nominal continuous response-range span",
+        "co2_scaled": "CO2 anomaly divided by its nominal continuous response-range span",
+        "mis6_segment": "MIS6=1; NGRIP=0; conditional segment contrast",
+        "pre_phase_sin": "sine of BP1950 precession phase",
+        "pre_phase_cos": "cosine of BP1950 precession phase",
+    }
+    table["term_definition"] = table.term.map(notes)
+    return table
+
+
+def build_parameters(result):
+    context = result["context"]
+    rows = [
+        ("model_version", combined_likelihood.MODEL_VERSION, "", "continuous conditional intensity"),
+        ("age_unit", "kyr BP", "BP1950", "events and astronomical forcing"),
+        ("history_tau", context.history_tau_ka, "kyr", "fixed exponential decay time"),
+        ("history_coefficient_domain", "beta_H <= 0", "", "inhibition or no history effect"),
+        ("initial_unobserved_history", context.initial_history, "weighted events", "boundary approximation"),
+        ("conditioning", "exact oldest event per segment", "", "anchor is excluded from the event likelihood term"),
+        ("response_exposure", context.response_exposure_kyr, "kyr", "younger event-free tails retained; record gap excluded"),
+        ("segment_indicator", "MIS6=1; NGRIP=0", "", "conditional baseline contrast"),
+        ("likelihood", "event log intensity minus integrated intensity", "", "actual event ages"),
+        ("nominal_p", "chi-square reference, df=2", "", "bootstrap calibration is a separate experiment"),
+        ("climate_scaling", "time mean / response range", "", "fixed nominal continuous response support"),
+        ("orbital_solution", ORBITAL_SOLUTION, "", "La2004"),
+        ("orbital_source_epoch", ORBITAL_SOURCE_EPOCH, "", "source convention"),
+        ("orbital_age_offset_to_BP1950", ORBITAL_AGE_OFFSET_TO_BP1950_KA, "kyr", "applied before interpolation"),
+    ]
+    for name, path in [("event_catalogue", combined_likelihood.EVENT_CATALOGUE_CSV),
+                       ("observation_segments", combined_likelihood.OBSERVATION_SEGMENTS_CSV),
+                       ("lr04_input", LR04_XLSX), ("co2_input", CO2_XLSX), ("precession_input", PRE_TXT)]:
+        rows.append((name, str(path.relative_to(PROJECT_ROOT)), "", "source input"))
+    return pd.DataFrame(rows, columns=["parameter", "value", "unit", "note"])
+
+
+def build_analysis_summary(result: dict) -> pd.DataFrame:
+    """Collect the point-age results used in the paper workflow."""
+
+    events = result["events"]
+    fit = result["fit"]
+    rayleigh = result["rayleigh"]
+    row = {
+        **fit.summary,
+        "catalogue_label": CATALOGUE_LABEL,
+        "n_ngrip_events": int(events["segment_id"].eq("NGRIP").sum()),
+        "n_mis6_events": int(events["segment_id"].eq("MIS6").sum()),
+        "rayleigh_role": "descriptive",
+        "rayleigh_mean_phase_deg": float(rayleigh["mean_phase_deg"]),
+        "rayleigh_mean_resultant_length": float(rayleigh["mean_resultant_length"]),
+        "rayleigh_R": float(rayleigh["rayleigh_R"]),
+        "rayleigh_z": float(rayleigh["rayleigh_z"]),
+        "rayleigh_p": float(rayleigh["rayleigh_p"]),
+        "rayleigh_significant_0p05": float(rayleigh["rayleigh_p"]) < 0.05,
+        "analysis_role": "primary",
+        "resolution_covariate_included": RESOLUTION_COVARIATE_INCLUDED,
+        "age_uncertainty_propagated": False,
+        "event_membership": "published events only",
+    }
+    return pd.DataFrame([row])
 
 def configure_plot_style() -> None:
     """Use readable journal-scale typography and editable PDF fonts."""
@@ -75,217 +166,6 @@ def configure_plot_style() -> None:
         }
     )
 
-
-def run_analysis() -> dict[str, object]:
-    """Run the point-age Rayleigh and conditional-PI calculations."""
-
-    events = combined_pi.load_event_catalogue()
-    context = combined_pi.build_context(
-        history_window_ka=HISTORY_WINDOW_KYR,
-        bin_width_ka=BIN_WIDTH_KYR,
-        origin_fraction=BIN_ORIGIN_FRACTION,
-        response_mode=RESPONSE_MODE,
-    )
-    fit = combined_pi.fit_catalogue(events, context)
-    event_phases = combined_pi.sample_event_phases(events)
-    rayleigh = rayleigh_test(event_phases["pre_phase_rad"].to_numpy(float))
-
-    _validate_results(events, context, fit, event_phases, rayleigh)
-    return {
-        "events": events,
-        "context": context,
-        "fit": fit,
-        "event_phases": event_phases,
-        "rayleigh": rayleigh,
-    }
-
-
-def _validate_results(
-    events: pd.DataFrame,
-    context: combined_pi.PIContext,
-    fit: combined_pi.CombinedPIFit,
-    event_phases: pd.DataFrame,
-    rayleigh: dict[str, float],
-) -> None:
-    """Check the scientific invariants of the main point analysis."""
-
-    if events.groupby("segment_id").size().to_dict() != {"MIS6": 21, "NGRIP": 34}:
-        raise RuntimeError("The main catalogue must contain 34 NGRIP and 21 MIS 6 events")
-    if len(event_phases) != len(events) or event_phases["pre_phase_extrapolated"].any():
-        raise RuntimeError("Every event needs a non-extrapolated precession phase")
-    if int(fit.summary["n_predictive_events"]) != len(events):
-        raise RuntimeError("Every published event must lie within the response support")
-    if not context.response_bins["same_type_history_complete"].all():
-        raise RuntimeError("At least one response bin lacks complete event history")
-
-    diagnostics = (
-        "LR_statistic",
-        "nominal_LR_p",
-        "info_bits_per_event",
-        "delta_AICc_full_minus_reduced",
-        "pre_phase_preferred_deg",
-        "pre_phase_rate_ratio_max_vs_min",
-        "mis6_vs_ngrip_rate_ratio_full",
-    )
-    if not np.isfinite([fit.summary[name] for name in diagnostics]).all():
-        raise RuntimeError("Conditional-PI results contain a non-finite value")
-    if not fit.summary["all_models_converged"]:
-        raise RuntimeError("At least one Poisson model did not converge")
-    if not fit.summary["likelihood_nesting_ok"]:
-        raise RuntimeError("The full-model likelihood is below the reduced model")
-    if fit.summary["eta_clipping_used"]:
-        raise RuntimeError("A fitted linear predictor reached a numerical clip bound")
-    if not np.isfinite([rayleigh["mean_phase_deg"], rayleigh["rayleigh_p"]]).all():
-        raise RuntimeError("Rayleigh results contain a non-finite value")
-
-
-def build_analysis_summary(result: dict[str, object]) -> pd.DataFrame:
-    """Collect the point-age results used in the paper workflow."""
-
-    events = result["events"]
-    fit = result["fit"]
-    rayleigh = result["rayleigh"]
-    row = {
-        **fit.summary,
-        "catalogue_label": CATALOGUE_LABEL,
-        "n_ngrip_events": int(events["segment_id"].eq("NGRIP").sum()),
-        "n_mis6_events": int(events["segment_id"].eq("MIS6").sum()),
-        "rayleigh_role": "descriptive",
-        "rayleigh_mean_phase_deg": float(rayleigh["mean_phase_deg"]),
-        "rayleigh_mean_resultant_length": float(rayleigh["mean_resultant_length"]),
-        "rayleigh_R": float(rayleigh["rayleigh_R"]),
-        "rayleigh_z": float(rayleigh["rayleigh_z"]),
-        "rayleigh_p": float(rayleigh["rayleigh_p"]),
-        "rayleigh_significant_0p05": float(rayleigh["rayleigh_p"]) < 0.05,
-        "pi_role": "primary",
-        "resolution_covariate_included": RESOLUTION_COVARIATE_INCLUDED,
-        "age_uncertainty_propagated": False,
-        "event_membership": "published events only",
-    }
-    return pd.DataFrame([row])
-
-
-def build_coefficients(fit: combined_pi.CombinedPIFit) -> pd.DataFrame:
-    """Add concise scientific definitions to the fitted coefficients."""
-
-    notes = {
-        "intercept": "conditional log event rate per kyr",
-        "same_type_history_count": "older events in the preceding 1.5 kyr",
-        "lr04_scaled": "LR04 anomaly divided by its response-range span",
-        "co2_scaled": "CO2 anomaly divided by its response-range span",
-        "mis6_segment": "MIS 6 = 1 and NGRIP = 0; conditional segment contrast",
-        "pre_phase_sin": "sine of BP1950-corrected La2004 precession phase",
-        "pre_phase_cos": "cosine of BP1950-corrected La2004 precession phase",
-    }
-    table = combined_pi.coefficient_table(fit)
-    table["term_definition"] = table["term"].map(notes)
-    return table
-
-
-def build_parameters(result: dict[str, object]) -> pd.DataFrame:
-    """Record model choices, observation support, units, and provenance."""
-
-    events = result["events"]
-    context = result["context"]
-    response = context.response_bins
-    rows: list[tuple[str, object, str, str]] = [
-        ("age_unit", "kyr BP", "BP1950", "used for every event and forcing"),
-        (
-            "event_catalogue",
-            str(combined_pi.EVENT_CATALOGUE_CSV.relative_to(PROJECT_ROOT)),
-            "",
-            "34 NGRIP warming starts and 21 MIS 6 transitions",
-        ),
-        (
-            "observation_segments",
-            str(combined_pi.OBSERVATION_SEGMENTS_CSV.relative_to(PROJECT_ROOT)),
-            "",
-            "two disjoint observation segments",
-        ),
-        (
-            "all_event_identities_published",
-            True,
-            "",
-            "MIS 6 operational transition ages are estimated here",
-        ),
-        ("history_window", HISTORY_WINDOW_KYR, "kyr", "characteristic D-O recurrence timescale"),
-        ("bin_width", BIN_WIDTH_KYR, "kyr", "Poisson event-count bins"),
-        ("bin_origin_fraction", BIN_ORIGIN_FRACTION, "bin width", "unshifted main grid"),
-        ("response_mode", RESPONSE_MODE, "", "maximal support with complete event history"),
-        ("response_exposure", context.response_exposure_kyr, "kyr", "sum of both segments only"),
-        ("response_gap_counted_as_exposure", False, "", "the NGRIP--MIS 6 gap is omitted"),
-        ("reduced_model_terms", "+".join(combined_pi.REDUCED_TERMS), "", "PI baseline"),
-        (
-            "full_model_terms",
-            "+".join(combined_pi.FULL_TERMS),
-            "",
-            "adds precession sine and cosine",
-        ),
-        (
-            "segment_indicator",
-            "MIS6=1; NGRIP=0",
-            "",
-            "allows different conditional baseline event rates",
-        ),
-        ("resolution_covariate_included", False, "", "not part of the PI model"),
-        ("event_age_uncertainty_propagated", False, "", "point-age analysis"),
-        ("rayleigh_role", "descriptive", "", "PI is the primary analysis"),
-        ("likelihood_p_value", "asymptotic chi-square", "df=2", "nominal point estimate"),
-        ("lr04_input", str(LR04_XLSX.relative_to(PROJECT_ROOT)), "", "LR04 benthic stack"),
-        ("co2_input", str(CO2_XLSX.relative_to(PROJECT_ROOT)), "", "composite atmospheric CO2"),
-        ("precession_input", str(PRE_TXT.relative_to(PROJECT_ROOT)), "", ORBITAL_REFERENCE),
-        ("orbital_solution", ORBITAL_SOLUTION, "", ORBITAL_REFERENCE),
-        ("orbital_source_epoch", ORBITAL_SOURCE_EPOCH, "", "source-file age convention"),
-        (
-            "orbital_age_offset_to_BP1950",
-            ORBITAL_AGE_OFFSET_TO_BP1950_KA,
-            "kyr",
-            "applied before phase interpolation",
-        ),
-    ]
-
-    for segment_id, segment in context.segments.items():
-        n_events = int(events["segment_id"].eq(segment_id).sum())
-        rows.extend(
-            [
-                (f"{segment_id}_event_count", n_events, "events", "published transitions"),
-                (
-                    f"{segment_id}_observation_interval",
-                    f"{segment.observation_start_kyr_bp:g}--{segment.observation_end_kyr_bp:g}",
-                    "kyr BP",
-                    "including history-only support",
-                ),
-                (
-                    f"{segment_id}_response_interval",
-                    f"{segment.response_start_kyr_bp:g}--{segment.response_end_kyr_bp:g}",
-                    "kyr BP",
-                    "included as event exposure",
-                ),
-            ]
-        )
-
-    forcing_units = {"lr04": "per mil", "co2": "ppm"}
-    for forcing in ("lr04", "co2"):
-        values = response[forcing].to_numpy(float)
-        rows.extend(
-            [
-                (
-                    f"{forcing}_response_mean",
-                    float(values.mean()),
-                    forcing_units[forcing],
-                    "zero point used in scaling",
-                ),
-                (
-                    f"{forcing}_response_range",
-                    float(np.ptp(values)),
-                    forcing_units[forcing],
-                    "divisor used in scaling",
-                ),
-            ]
-        )
-    return pd.DataFrame(rows, columns=["parameter", "value", "unit", "note"])
-
-
 def _add_panel_label(axis: plt.Axes, label: str, *, x: float = -0.12) -> None:
     axis.text(
         x,
@@ -298,7 +178,6 @@ def _add_panel_label(axis: plt.Axes, label: str, *, x: float = -0.12) -> None:
         fontsize=11,
     )
 
-
 def _plot_segment_timeline(
     axis: plt.Axes,
     segment_id: str,
@@ -309,7 +188,8 @@ def _plot_segment_timeline(
     context = result["context"]
     event_phases = result["event_phases"]
     segment = context.segments[segment_id]
-    bins = context.bins.loc[context.bins["segment_id"].eq(segment_id)]
+    ages = np.linspace(segment.observation_start_kyr_bp, segment.observation_end_kyr_bp, 1200)
+    precession = event_inputs.interpolate_checked(ages, *context.forcings["precession_index"], context="precession timeline")
     phases = event_phases.loc[event_phases["segment_id"].eq(segment_id)]
     color = CATALOGUE_COLORS["primary"]
 
@@ -321,14 +201,14 @@ def _plot_segment_timeline(
         zorder=0,
     )
     axis.plot(
-        bins["bin_center_kyr_bp"],
-        bins["precession_index"],
+        ages,
+        precession,
         color="#555555",
         lw=1.05,
         zorder=1,
     )
     axis.scatter(
-        phases[combined_pi.EVENT_AGE_COLUMN],
+        phases[combined_likelihood.EVENT_AGE_COLUMN],
         phases["precession_index"],
         s=21,
         color=color,
@@ -353,7 +233,6 @@ def _plot_segment_timeline(
     axis.grid(axis="y", color="#D9D9D9", lw=0.55)
     axis.spines[["top", "right"]].set_visible(False)
 
-
 def _mark_discontinuous_axis(left: plt.Axes, right: plt.Axes) -> None:
     """Mark the omitted gap between the two timeline axes."""
 
@@ -366,7 +245,6 @@ def _mark_discontinuous_axis(left: plt.Axes, right: plt.Axes) -> None:
     left.plot((1 - size, 1 + size), (1 - size, 1 + size), transform=left.transAxes, **line)
     right.plot((-size, +size), (-size, +size), transform=right.transAxes, **line)
     right.plot((-size, +size), (1 - size, 1 + size), transform=right.transAxes, **line)
-
 
 def _plot_rayleigh(axis: plt.Axes, result: dict[str, object]) -> None:
     """Draw the descriptive phase histogram and mean resultant vector."""
@@ -422,13 +300,12 @@ def _plot_rayleigh(axis: plt.Axes, result: dict[str, object]) -> None:
         fontsize=8.5,
     )
 
-
-def _plot_phase_response(axis: plt.Axes, fit: combined_pi.CombinedPIFit) -> None:
+def _plot_phase_response(axis: plt.Axes, fit: combined_likelihood.CombinedLikelihoodFit) -> None:
     """Plot the fitted multiplicative contribution of precession phase."""
 
-    beta = dict(zip(combined_pi.FULL_TERMS, fit.full.beta[1:]))
+    beta = dict(zip(fit.full.terms, fit.full.beta))
     phase_deg = np.linspace(0.0, 360.0, 721)
-    multiplier = combined_pi.phase_rate_multiplier(
+    multiplier = combined_likelihood.phase_rate_multiplier(
         phase_deg,
         beta["pre_phase_sin"],
         beta["pre_phase_cos"],
@@ -442,7 +319,7 @@ def _plot_phase_response(axis: plt.Axes, fit: combined_pi.CombinedPIFit) -> None
         0.04,
         0.96,
         (
-            f"PI = {fit.summary['info_bits_per_event']:.3f} bits event$^{{-1}}$\n"
+            f"G = {fit.summary['gain_bits_per_event']:.3f} bits event$^{{-1}}$\n"
             f"LR = {fit.summary['LR_statistic']:.2f}; "
             f"nominal p = {fit.summary['nominal_LR_p']:.3g}\n"
             f"Preferred phase = {preferred:.1f}°\n"
@@ -455,12 +332,11 @@ def _plot_phase_response(axis: plt.Axes, fit: combined_pi.CombinedPIFit) -> None
         bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.85, "pad": 2.0},
     )
     format_phase_response_axis(axis)
-    axis.set_ylim(0, 3.1)  # Leave room for the fitted-summary label above the curve.
+    axis.set_ylim(0, max(4.1, np.max(multiplier) * 1.4))  # Leave room for the fitted-summary label above the curve.
     mark_preferred_phase(axis, preferred, fit.summary['pre_phase_rate_ratio_max_vs_min'], CATALOGUE_COLORS["primary"])
     axis.set_title("Fitted warming-event rate")
     axis.grid(False)
     axis.spines[["top", "right"]].set_visible(False)
-
 
 def plot_results(result: dict[str, object]) -> plt.Figure:
     """Compose one compact GRL-scale diagnostic and result figure."""
@@ -498,58 +374,81 @@ def plot_results(result: dict[str, object]) -> plt.Figure:
     _add_panel_label(response_axis, "c", x=-0.22)
     return fig
 
-
-def write_outputs(result: dict[str, object], output_dir: Path = OUT_DATA_DIR) -> None:
-    """Save the compact tables needed to reproduce and interpret the result."""
-
+def write_outputs(result, output_dir=OUT_DATA_DIR):
+    output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    build_analysis_summary(result).to_csv(
-        output_dir / "analysis_summary.csv", index=False, float_format="%.9g"
-    )
-    result["event_phases"].to_csv(
-        output_dir / "event_precession_phases.csv", index=False, float_format="%.9g"
-    )
-    build_coefficients(result["fit"]).to_csv(
-        output_dir / "predictive_coefficients.csv", index=False, float_format="%.9g"
-    )
-    build_parameters(result).to_csv(
-        output_dir / "parameters_and_provenance.csv", index=False, float_format="%.9g"
-    )
+    tables = {
+        "analysis_summary.csv": result["summary"],
+        "event_catalogue_used.csv": result["events"],
+        "event_precession_phases.csv": result["event_phases"],
+        "model_coefficients.csv": build_coefficients(result["fit"]),
+        "model_summary.csv": result["model_summary"],
+        "likelihood_tests.csv": result["likelihood_tests"],
+        "fitted_rates.csv": result["fitted_rates"],
+        "phase_sector_fit.csv": combined_likelihood.phase_sector_observed_expected(result["fit"], n_sectors=18),
+        "predictor_scaling.csv": result["scaling"],
+        "support.csv": combined_likelihood.support_table(result["context"]),
+        "parameters_and_provenance.csv": build_parameters(result),
+    }
+    for name, table in tables.items():
+        table.to_csv(output_dir / name, index=False, float_format="%.12g")
 
 
-def save_figure(fig: plt.Figure, output_dir: Path = OUT_FIG_DIR) -> tuple[Path, Path]:
-    """Save a review PNG and an editable vector PDF."""
-
+def save_figure(fig, output_dir=OUT_FIG_DIR, *, paper_export=False):
+    output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    png = output_dir / f"{RUN_NAME}.png"
-    pdf = output_dir / f"{RUN_NAME}.pdf"
-    fig.savefig(png, dpi=600, facecolor="white")
+    png, pdf = [output_dir / f"{RUN_NAME}.{suffix}" for suffix in ("png", "pdf")]
+    fig.savefig(png, dpi=450, facecolor="white")
     fig.savefig(pdf, facecolor="white")
     plt.close(fig)
+    if paper_export:
+        from paper_figure_export import copy_pdf_to_paper
+        copy_pdf_to_paper(pdf)
     return png, pdf
 
 
-def main() -> None:
-    result = run_analysis()
-    write_outputs(result)
-    png, pdf = save_figure(plot_results(result))
-    summary = build_analysis_summary(result).iloc[0]
+def write_notes(result, notes_dir):
+    notes_dir = Path(notes_dir)
+    notes_dir.mkdir(parents=True, exist_ok=True)
+    s = result["summary"].iloc[0]
+    caption = f"""NGRIP--MIS6 warming events and their conditional precession-phase association.
 
-    print(
-        f"{CATALOGUE_LABEL}: N={summary.n_predictive_events}, "
-        f"PI={summary.info_bits_per_event:.4f} bits/event, "
-        f"nominal p={summary.nominal_LR_p:.4g}, "
-        f"phase={summary.pre_phase_preferred_deg:.1f}°"
-    )
-    print(
-        f"Rayleigh (descriptive): R-bar={summary.rayleigh_mean_resultant_length:.3f}, "
-        f"p={summary.rayleigh_p:.4g}"
-    )
-    print(f"Wrote tables to {OUT_DATA_DIR.relative_to(PROJECT_ROOT)}")
-    print(
-        f"Wrote figures to {png.relative_to(PROJECT_ROOT)} and "
-        f"{pdf.relative_to(PROJECT_ROOT)}"
-    )
+(a) Published event identities at their operational ages, plotted on the La2004 precession index. The broken age axis omits the record gap. Blue dots denote all 55 inventory events. Gray older intervals precede each exact conditioning event; they contribute no response exposure. Ages decrease toward the right.
+(b) Descriptive counts in twelve 30-degree phase sectors, with the mean direction and nominal Rayleigh p. Phase zero is a precession-index minimum and 180 degrees a maximum; radial labels are event counts. The mean arrow and dashed Rayleigh reference are scaled by the largest sector count.
+(c) Conditional phase multiplier exp(beta_sin sin(phi) + beta_cos cos(phi)). Unity denotes zero phase contribution, not the separately fitted reduced-model rate. The model describes warming occurrence over total observation time. The exponential history coefficient is nonpositive, with fixed decay time 1.5 kyr. Both models contain LR04, CO2 and a segment intercept; the full model adds precession sine and cosine. The continuous likelihood conditions on the exact oldest event in each record, using 53 response events over {s.response_exposure_kyr:.3f} kyr. G is in-sample log-likelihood gain per response event. The displayed LR p is nominal; bootstrap calibration and chronology sensitivity are separate experiments.
+"""
+    methods = f"""CONTINUOUS-TIME NGRIP--MIS6 MAIN ANALYSIS
+
+Source: 34 NGRIP GI starts and 21 MIS6 speleothem transitions. Data and event ages are unchanged. Each record conditions on its exact oldest event (115.320 and 194.238 kyr BP). Earlier unobserved weighted history is set to zero as a boundary approximation; the anchor contributes to all younger history. The young event-free tails remain exposed and histories do not cross the gap.
+
+The intensity is exp(beta0 + beta_history H + beta_L LR04 + beta_C CO2 + beta_S I_MIS6 [+ beta_sin sin(phi) + beta_cos cos(phi)]), where H sums strictly older events with exponential decay time 1.5 kyr and beta_history <= 0. Actual response-event log intensities minus the integrated intensity define the likelihood. Integration splits at source interpolation knots and actual events. Fixed nominal time-weighted climate means and ranges define the scaling.
+
+RESULTS
+Response events: {s.n_response_events}; duration: {s.response_exposure_kyr:.6f} kyr.
+G = {s.gain_bits_per_event:.9f} bits/event; LR = {s.LR_statistic:.9f}; nominal p = {s.nominal_LR_p:.9g}; Delta AIC (full minus reduced) = {s.delta_AIC_full_minus_reduced:.9f}.
+Preferred phase = {s.pre_phase_preferred_deg:.6f} degrees; maximum/minimum conditional phase rate ratio = {s.pre_phase_rate_ratio_max_vs_min:.6f}.
+Descriptive Rayleigh p = {s.rayleigh_p:.9g} using all 55 inventory events.
+
+Outputs separate support, event roles, model coefficients and summary, climate scaling, and sampled continuous fitted rates. Plotting ages are not fitting bins. These are nominal-age in-sample associations; no chronology or sampling interval is inferred from this figure.
+"""
+    (notes_dir / f"{RUN_NAME}_Caption.txt").write_text(caption)
+    (notes_dir / f"{RUN_NAME}_Methods_and_results.txt").write_text(methods)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-root", type=Path, default=PROJECT_ROOT,
+                        help="Project-shaped root for result tables, figures and notes")
+    parser.add_argument("--no-paper-export", action="store_true")
+    args = parser.parse_args(argv)
+    result = run_analysis()
+    write_outputs(result, args.output_root / "data/processed" / RUN_NAME)
+    save_figure(plot_results(result), args.output_root / "figures" / RUN_NAME,
+                paper_export=not args.no_paper_export and args.output_root.resolve() == PROJECT_ROOT.resolve())
+    write_notes(result, args.output_root / "experiment_note")
+    s = result["summary"].iloc[0]
+    print(f"{RUN_NAME}: {s.n_response_events} response events; G={s.gain_bits_per_event:.6f}; "
+          f"LR={s.LR_statistic:.6f}; nominal p={s.nominal_LR_p:.6g}; phase={s.pre_phase_preferred_deg:.3f}")
 
 
 if __name__ == "__main__":

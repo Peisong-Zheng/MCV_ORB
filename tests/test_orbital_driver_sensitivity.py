@@ -1,125 +1,96 @@
-"""Age alignment, nested comparisons and validity of the orbital experiments."""
+"""Continuous orbital comparisons, fixed exposure scales and chronology reuse."""
 
+from dataclasses import replace
 from pathlib import Path
-import sys
 
 import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from Barker2011 import Barker2011_event_phase_analysis as barker
-from toolbox import combined_pi
+from toolbox import combined_likelihood
 from toolbox import orbital_driver_sensitivity as orbital
+from toolbox import orbital_driver_reporting as reporting
 
 
 @pytest.fixture(scope="module", params=("pooled", "barker"))
 def point_analysis(request):
-    if request.param == "pooled":
-        main = combined_pi.fit_point_catalogue()
-        frame = main.response.rename(columns={
-            "bin_center_kyr_bp": "bin_center_ka", "dt_kyr": "dt_ka",
-        })
-        terms, expected = combined_pi.REDUCED_TERMS, main.summary
-    else:
-        main = barker.run_analysis()
-        frame = main["model_frame"]
-        terms, expected = barker.REDUCED_TERMS, main["summary"].iloc[0]
-    frame, scaling, provenance = orbital.prepare_drivers(frame)
-    return frame, terms, expected, orbital.fit_models(frame, terms)
+    context = (combined_likelihood.build_context() if request.param == "pooled"
+               else combined_likelihood.build_barker_context())
+    reference = combined_likelihood.fit_catalogue(context.events, context).summary
+    context, _, _ = orbital.prepare_drivers(context)
+    design = combined_likelihood.prepare_catalogue(context.events, context)
+    return context, design, reference, orbital.fit_models(design, context.reduced_terms)
 
 
-def test_native_driver_points_convert_epoch_once_and_select_65n():
-    # These BP1950 ages land exactly on native J2000 ages 10, 20 and 30 kyr.
+def test_native_driver_epoch_units_and_exact_65n_selection():
+    sources, _ = orbital.load_driver_sources()
     source_ages = np.array([10.0, 20.0, 30.0])
-    frame = pd.DataFrame({
-        "bin_center_ka": source_ages - 0.05,
-        "dt_ka": 0.2,
-        "event_count": [0, 1, 0],
-    })
-    actual, _, _ = orbital.prepare_drivers(frame)
-    for path, column, unit_factor in (
-        (orbital.ECC_TXT, "ecc", 1.0),
-        (orbital.OBL_TXT, "obl_deg", 180 / np.pi),
-    ):
+    target = source_ages - 0.05
+    for driver, path, factor in (("ecc", orbital.ECC_TXT, 1.0),
+                                  ("obl", orbital.OBL_TXT, 180 / np.pi)):
         raw = np.loadtxt(path)
-        expected = [raw[np.isclose(raw[:, 0], -age), 1].item() * unit_factor
-                    for age in source_ages]
-        np.testing.assert_allclose(actual[column], expected, rtol=0, atol=1e-10)
+        expected = [raw[np.isclose(raw[:, 0], -age), 1].item() * factor for age in source_ages]
+        np.testing.assert_allclose(np.interp(target, sources[driver]["age"], sources[driver]["values"]),
+                                   expected, rtol=0, atol=1e-10)
     with xr.open_dataset(orbital.INSOLATION_NC) as ds:
         latitude = np.flatnonzero(ds.latitude_degN.values == 65).item()
         time = [np.flatnonzero(ds.age_kyr_BP.values == age).item() for age in source_ages]
         expected = ds.daily_mean_insolation_Wm2.isel(latitude=latitude, time=time).values
-    np.testing.assert_allclose(actual.insol65n_Wm2, expected, rtol=0, atol=1e-10)
+    actual = np.interp(target, sources["insol65n"]["age"], sources["insol65n"]["values"])
+    np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-10)
 
 
-def test_driver_scaling_uses_response_exposure_grid_not_event_locations():
-    frame = pd.DataFrame({
-        "bin_center_ka": np.arange(0.1, 100, 0.2),
-        "dt_ka": 0.2,
-        "event_count": 0,
-    })
-    original, scaling, _ = orbital.prepare_drivers(frame)
-    moved_events = frame.copy()
-    moved_events.loc[::7, "event_count"] = 1
-    changed, changed_scaling, _ = orbital.prepare_drivers(moved_events)
-    columns = ["ecc_scaled", "obl_scaled", "insol65n_scaled"]
-    np.testing.assert_allclose(original[columns].mean(), 0, atol=2e-14)
-    np.testing.assert_allclose(np.ptp(original[columns].to_numpy(), axis=0), 1, atol=2e-14)
-    pd.testing.assert_frame_equal(original[columns], changed[columns])
-    pd.testing.assert_frame_equal(scaling, changed_scaling)
-    assert not set(columns).intersection(frame.columns)
+def test_scaling_uses_continuous_exposure_and_stays_fixed(point_analysis):
+    context, design, _, _ = point_analysis
+    columns = [f"{driver}_scaled" for driver in orbital.DRIVER_IDS]
+    values = design.integration_frame[columns].to_numpy(float)
+    np.testing.assert_allclose(np.average(values, axis=0, weights=design.weights), 0, atol=2e-13)
+    shifted = context.events.copy()
+    shifted.loc[0, combined_likelihood.EVENT_AGE_COLUMN] += 0.007
+    changed = combined_likelihood.prepare_catalogue(shifted, context)
+    assert changed.context.scaling == context.scaling
+    assert len(changed.event_frame) == len(design.event_frame)
+    assert not np.array_equal(changed.event_frame.pre_phase_sin, design.event_frame.pre_phase_sin)
+    assert not set(columns).intersection(context.events.columns)
 
 
-def test_drivers_reject_extrapolation():
-    frame = pd.DataFrame({
-        "bin_center_ka": [-1.0, 10.0, 20.0], "dt_ka": 0.2, "event_count": 0,
-    })
-    # Orbital TXT inputs extend into the future; the insolation file does not.
+def test_driver_preparation_rejects_required_extrapolation():
+    context = combined_likelihood.build_context()
     with pytest.raises(ValueError):
-        orbital.prepare_drivers(frame)
+        combined_likelihood.add_forcing(context, "ecc", [20., 40.], [0.01, 0.02])
 
 
-def test_model_matrix_uses_only_the_ten_prespecified_nested_comparisons(point_analysis):
-    frame, terms, expected, result = point_analysis
-    specs = orbital.model_specs(terms)
-    assert list(specs) == ["B", "BP", "B_ecc", "BP_ecc", "B_obl", "BP_obl",
-                           "B_insol65n", "BP_insol65n"]
-    assert len(result["models"]) == 8
+def test_ten_nested_comparisons_use_exact_event_terms_and_same_exposure(point_analysis):
+    context, design, expected, result = point_analysis
+    assert list(orbital.model_specs(context.reduced_terms)) == [
+        "B", "BP", "B_ecc", "BP_ecc", "B_obl", "BP_obl", "B_insol65n", "BP_insol65n"]
     comparisons = result["comparisons"].set_index("comparison_id")
+    assert len(result["models"]) == 8 and len(comparisons) == 10
     expected_df = {"phase_reference": 2}
-    for driver in ("ecc", "obl", "insol65n"):
+    for driver in orbital.DRIVER_IDS:
         expected_df.update({f"{driver}_after_base": 1, f"{driver}_after_phase": 1,
                             f"phase_after_{driver}": 2})
     assert comparisons.df.to_dict() == expected_df
     assert comparisons.fit_valid.all()
-    assert comparisons.info_bits_per_event.ge(-1e-9).all()
-    assert comparisons.n_events.eq(expected["n_predictive_events"]).all()
-    assert comparisons.n_bins.eq(len(frame)).all()
-    np.testing.assert_allclose(comparisons.exposure_kyr, frame.dt_ka.sum())
-    np.testing.assert_allclose(
-        comparisons.info_bits_per_event * frame.event_count.sum() * np.log(2),
-        comparisons.loglik_full - comparisons.loglik_reduced, atol=1e-8,
-    )
+    assert comparisons.n_events.eq(expected["n_response_events"]).all()
+    np.testing.assert_allclose(comparisons.exposure_kyr, context.response_exposure_kyr)
+    np.testing.assert_allclose(comparisons.gain_bits_per_event * len(design.event_frame) * np.log(2),
+                               comparisons.loglik_full - comparisons.loglik_reduced, atol=1e-8)
+    np.testing.assert_allclose(comparisons.delta_AIC, 2 * comparisons.df - comparisons.LR_statistic)
+    assert not {"n_bins", "AICc", "BIC"}.intersection(result["models"].columns)
+    history = result["coefficients"].query("term == 'same_type_exponential_history'")
+    assert history.beta.le(0).all()
 
 
-def test_phase_reference_reproduces_each_current_main_analysis(point_analysis):
-    frame, terms, expected, result = point_analysis
-    reference = result["comparisons"].set_index("comparison_id").loc["phase_reference"]
-    assert reference.info_bits_per_event == pytest.approx(expected["info_bits_per_event"], abs=1e-7)
-    assert reference.nominal_p == pytest.approx(expected["nominal_LR_p"], abs=1e-7)
-    phase = result["models"].set_index("model_id").loc["BP"]
-    for column in ("pre_phase_preferred_deg", "pre_phase_rate_ratio_max_vs_min"):
-        assert phase[column] == pytest.approx(expected[column], abs=1e-4)
+def test_phase_reference_matches_the_continuous_main_model(point_analysis):
+    _, _, expected, result = point_analysis
+    check = reporting.check_reference(result, pd.Series(expected))
+    assert check.matches.all()
 
 
-def test_holm_family_contains_nine_new_tests_and_excludes_main_reference(point_analysis):
-    _, _, _, result = point_analysis
-    comparisons = result["comparisons"].set_index("comparison_id")
+def test_holm_family_retains_nine_prespecified_tests(point_analysis):
+    comparisons = point_analysis[-1]["comparisons"].set_index("comparison_id")
     assert pd.isna(comparisons.loc["phase_reference", "holm_nominal_p"])
     family = comparisons.drop(index="phase_reference")
     p = family.nominal_p.to_numpy()
@@ -127,29 +98,22 @@ def test_holm_family_contains_nine_new_tests_and_excludes_main_reference(point_a
     expected = np.empty(9)
     expected[order] = np.minimum(1, np.maximum.accumulate(p[order] * np.arange(9, 0, -1)))
     np.testing.assert_allclose(family.holm_nominal_p, expected)
-    np.testing.assert_allclose(
-        orbital.holm_adjust([0.001, 0.01, 0.03, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0]),
-        [0.009, 0.08, 0.21, 0.6, 1, 1, 1, 1, 1],
-    )
-    # A failed fit remains in the prespecified family rather than reducing its size.
     np.testing.assert_allclose(orbital.holm_adjust([0.01, np.nan, 0.03]),
                                [0.03, np.nan, 0.06], equal_nan=True)
 
 
-def test_rank_deficient_models_remain_in_output_as_invalid(point_analysis):
-    frame, terms, _, _ = point_analysis
-    duplicated = frame.copy()
-    duplicated["ecc_scaled"] = duplicated.pre_phase_sin
-    result = orbital.fit_models(duplicated, terms)
+def test_rank_deficient_candidate_is_retained_as_invalid(point_analysis):
+    context, design, _, _ = point_analysis
+    events, integral = design.event_frame.copy(), design.integration_frame.copy()
+    for frame in (events, integral):
+        frame["ecc_scaled"] = frame.pre_phase_sin
+    duplicated = replace(design, event_frame=events, integration_frame=integral)
+    result = orbital.fit_models(duplicated, context.reduced_terms)
     models = result["models"].set_index("model_id")
-    assert len(models) == 8
-    assert not models.loc["BP_ecc", "fit_valid"]
-    assert models.loc["BP", "fit_valid"]
-    comparisons = result["comparisons"].set_index("comparison_id")
-    invalid = comparisons.loc[["ecc_after_phase", "phase_after_ecc"]]
+    assert models.loc["BP", "fit_valid"] and not models.loc["BP_ecc", "fit_valid"]
+    invalid = result["comparisons"].set_index("comparison_id").loc[["ecc_after_phase", "phase_after_ecc"]]
     assert not invalid.fit_valid.any()
-    assert invalid[["info_bits_per_event", "nominal_p", "holm_nominal_p"]].isna().all().all()
-    assert len(comparisons) == 10
+    assert invalid[["gain_bits_per_event", "nominal_p", "holm_nominal_p"]].isna().all().all()
 
 
 def test_phase_quantiles_cross_zero_and_exclude_failed_draws():
@@ -177,50 +141,32 @@ def test_phase_quantiles_cross_zero_and_exclude_failed_draws():
     assert summary.n_mc_invalid.eq(1).all()
 
 
-def test_shifted_pooled_events_update_history_without_changing_other_segment():
-    import NGRIP_MIS6_orbital_driver_sensitivity as experiment
 
-    events = combined_pi.load_event_catalogue()
-    context = combined_pi.build_context()
-    binned = combined_pi.bin_catalogue(events, context)
-    response = binned.loc[binned.in_response_interval].reset_index(drop=True).rename(
-        columns={"bin_center_kyr_bp": "bin_center_ka", "dt_kyr": "dt_ka"})
-    response, _, _ = orbital.prepare_drivers(response)
-    ages = events[combined_pi.EVENT_AGE_COLUMN].to_numpy().copy()
-    ages[0] -= 0.4
-    shifted = experiment.frame_for_ages(ages, events, context, response)
-    assert shifted.event_count.sum() == response.event_count.sum()
-    assert not shifted.event_count.equals(response.event_count)
-    assert not shifted.same_type_history_count.equals(response.same_type_history_count)
-    pd.testing.assert_frame_equal(shifted.loc[shifted.segment_id.eq("MIS6")],
-                                  response.loc[response.segment_id.eq("MIS6")])
-    predictors = ["ecc_scaled", "obl_scaled", "insol65n_scaled", "lr04_scaled",
-                  "co2_scaled", "pre_phase_sin", "pre_phase_cos", "dt_ka"]
-    pd.testing.assert_frame_equal(shifted[predictors], response[predictors])
-
-
-def test_all_unsupported_draws_remain_in_summary_denominators(point_analysis):
-    from toolbox import orbital_driver_reporting as reporting
-
-    _, _, _, point = point_analysis
+def test_unsupported_rows_preserve_every_denominator(point_analysis):
+    point = point_analysis[-1]
     invalid = reporting.invalid_tables(point, "outside observation support")
     summary = orbital.summarize_comparisons(point["comparisons"], invalid["comparisons"])
-    assert len(summary) == 10
-    assert summary.n_mc_total.eq(1).all()
-    assert summary.n_mc_valid.eq(0).all()
-    assert summary.info_bits_per_event_median.isna().all()
-    phases = orbital.summarize_phase(point["models"], invalid["models"])
-    assert phases.n_mc_invalid.eq(1).all()
-    assert phases.pre_phase_preferred_deg_median.isna().all()
+    assert len(summary) == 10 and summary.n_mc_total.eq(1).all()
+    assert summary.n_mc_valid.eq(0).all() and summary.gain_bits_per_event_median.isna().all()
+    assert invalid["comparisons"].exposure_kyr.isna().all()
 
 
-def test_saved_chronology_selection_is_reproducible_and_preserves_pairing():
-    from toolbox import orbital_driver_reporting as reporting
+def test_saved_selection_preserves_exact_ages_ids_and_pairing():
+    context = combined_likelihood.build_context()
+    path = Path("data/processed/NGRIP_MIS6_orbital_driver_sensitivity/selected_realizations.csv")
+    columns = [f"age_kyr_bp__{event_id}" for event_id in context.events.event_id]
+    original = pd.read_csv(path, float_precision="round_trip")
+    selected = reporting.read_selected_realizations(path, columns)
+    pd.testing.assert_frame_equal(selected, original, check_exact=True)
+    assert len(selected) == 500
+    pd.testing.assert_frame_equal(reporting.read_selected_realizations(path, columns, 3),
+                                   original.iloc[:3].reset_index(drop=True), check_exact=True)
 
-    table = pd.DataFrame(dict(realization_id=list("abcdef"), ngrip_id=np.arange(6),
-                              mis6_id=np.arange(6)[::-1], age_a=np.arange(6), age_b=np.arange(6) + 10))
-    selected = reporting.select_realizations(table, ["age_a", "age_b"], 4, 20260909)
-    pd.testing.assert_frame_equal(selected,
-        reporting.select_realizations(table, ["age_a", "age_b"], 4, 20260909))
-    assert selected.realization_id.nunique() == 4
-    assert (selected.ngrip_id + selected.mis6_id).eq(5).all()
+
+def test_weighted_correlation_does_not_count_nodes_as_observations():
+    frame = pd.DataFrame({"x": [0., 1., 3.], "y": [0., 2., 1.]})
+    weights = np.array([1., 4., 2.])
+    original = reporting.weighted_correlation(frame, weights)
+    duplicated = pd.concat([frame, frame.iloc[[1]]], ignore_index=True)
+    split_weights = [1., 2., 2., 2.]
+    pd.testing.assert_frame_equal(original, reporting.weighted_correlation(duplicated, split_weights))

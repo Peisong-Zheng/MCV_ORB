@@ -1,101 +1,66 @@
 #!/usr/bin/env python3
-"""Scalar orbital drivers and phase on Barker Table S3 SpeleoAge, 0–400 kyr.
+"""Continuous-time orbital-driver sensitivity on the primary Barker2011 catalogue.
 
-Use the same eight comparisons and plot layout as NGRIP–MIS6. Existing
-combined-age realizations are rebinned on the unchanged main-analysis grid.
+Reuse the frozen 500 chronology IDs and exact ages. Each chronology supplies
+its own conditioning anchor; all candidate models share that exact support.
 """
 
+import argparse
 from pathlib import Path
 import sys
-import time
-
-import numpy as np
-import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from Barker2011 import Barker2011_event_phase_analysis as main_analysis
-from Barker2011 import Barker2011_event_uncertainty_sensitivity as age_sensitivity
-from toolbox import combined_pi, orbital_driver_sensitivity as orbital
+
+from toolbox import combined_likelihood, orbital_driver_sensitivity as orbital
 from toolbox import orbital_driver_reporting as reporting
 from toolbox.project_config import PROJECT_ROOT, LR04_XLSX, CO2_XLSX, PRE_TXT, OBL_TXT
 
-ROOT = Path(__file__).resolve().parent
+ROOT = PROJECT_ROOT / "Barker2011"
 RUN_NAME = "Barker2011_orbital_driver_sensitivity"
 CATALOGUE_LABEL = "Barker 2011 SpeleoAge warming events"
 N_REALIZATIONS = 500
-SEED = 20260909
-AGE_INPUT = ROOT / "data/processed/Barker2011_event_age_uncertainty/event_age_realizations.csv"
-MAIN_SUMMARY = ROOT / "data/processed/Barker2011_event_phase_analysis/analysis_summary.csv"
+AGE_INPUT = ROOT / "data/processed" / RUN_NAME / "selected_realizations.csv"
 
 
-def run_analysis(n_realizations=N_REALIZATIONS, seed=SEED, show_progress=True):
-    events = main_analysis.load_barker_source()
-    # Source row IDs connect the fixed published event membership to saved ages.
-    events.insert(0, "event_id", [f"Barker_S3_{row:03d}" for row in events.source_excel_row])
-    context = age_sensitivity.prepare_context(events)
-    response, scaling, provenance = orbital.prepare_drivers(context["frame"].reset_index(drop=True))
-    context["frame"] = response
-    point = orbital.fit_models(response, main_analysis.REDUCED_TERMS)
-    if not point["models"].fit_valid.all() or not point["comparisons"].fit_valid.all():
-        raise RuntimeError(f"Inspect invalid point-age fits:\n{point['models'].to_string(index=False)}")
-    reference_check = reporting.check_reference(point, pd.read_csv(MAIN_SUMMARY).iloc[0])
-
-    age_columns = [f"age_ka_bp__{event_id}" for event_id in events.event_id]
-    selected = reporting.select_realizations(pd.read_csv(AGE_INPUT), age_columns, n_realizations, seed)
-    mc_models, mc_comparisons, status = [], [], []
-    segment = context["segment"]
-    started = time.perf_counter()
-    for index, row in selected.iterrows():
-        ages = row[age_columns].to_numpy(float)
-        outside = ages[0] < segment.bin_edges[0] or ages[-1] > segment.bin_edges[-1]
-        reason = "outside Barker observation support" if outside else ""
-        if outside:
-            fitted = reporting.invalid_tables(point, reason)
-        else:
-            frame = age_sensitivity.frame_for_ages(ages, context)
-            fitted = orbital.fit_models(frame, main_analysis.REDUCED_TERMS)
-        for key, output in (("models", mc_models), ("comparisons", mc_comparisons)):
-            output.append(fitted[key].assign(realization_id=row.realization_id))
-        valid = bool(fitted["comparisons"].fit_valid.all())
-        status.append(dict(realization_id=row.realization_id, within_observation_support=not outside,
-                           n_response_events=fitted["models"].iloc[0].n_events,
-                           all_comparisons_valid=valid, invalid_reason=reason or "; ".join(
-                               fitted["comparisons"].loc[~fitted["comparisons"].fit_valid, "invalid_reason"].unique())))
-        if show_progress and (index + 1) % 100 == 0:
-            print(f"Barker: {index + 1}/{n_realizations} chronologies "
-                  f"({time.perf_counter() - started:.0f} s)", flush=True)
-    mc_models = pd.concat(mc_models, ignore_index=True)
-    mc_comparisons = pd.concat(mc_comparisons, ignore_index=True)
-    support = pd.DataFrame([dict(segment_id="Barker2011", observation_start_kyr_bp=0.0,
-        observation_end_kyr_bp=400.0, response_start_kyr_bp=segment.response_start_kyr_bp,
-        response_end_kyr_bp=segment.response_end_kyr_bp)])
-    return dict(events=events, response=response, point=point, scaling=scaling, provenance=provenance,
-        support=support, selected_realizations=selected, realization_status=pd.DataFrame(status),
-        mc_models=mc_models, mc_comparisons=mc_comparisons, reference_check=reference_check,
-        comparison_summary=orbital.summarize_comparisons(point["comparisons"], mc_comparisons),
-        phase_summary=orbital.summarize_phase(point["models"], mc_models),
-        parameters=dict(catalogue=CATALOGUE_LABEL, n_realizations=n_realizations, seed=seed,
-            bin_width_kyr=main_analysis.BIN_WIDTH_KA, history_window_kyr=main_analysis.HISTORY_WINDOW_KA,
-            origin_fraction=main_analysis.BIN_ORIGIN_FRACTION, response_mode=main_analysis.RESPONSE_MODE,
-            response_exposure_kyr=response.dt_ka.sum(),
-            age_epoch="SpeleoAge treated as BP1950; reference year unverified",
-            source_realizations=str(AGE_INPUT.relative_to(PROJECT_ROOT)),
-            n_new_comparisons=9, p_method="nominal chi-square; within-catalogue Holm family of 9",
-            interval="2.5–97.5% age sensitivity; not sampling confidence interval"))
+def run_analysis(n_realizations=N_REALIZATIONS, show_progress=True, quadrature_order=4):
+    context = combined_likelihood.build_barker_context(quadrature_order=quadrature_order)
+    context, scaling, provenance = orbital.prepare_drivers(context)
+    age_columns = [f"age_ka_bp__{event_id}" for event_id in context.events.event_id]
+    selected = reporting.read_selected_realizations(AGE_INPUT, age_columns, n_realizations)
+    result = orbital.analyze_chronologies(context, selected, age_columns, show_progress=show_progress)
+    result.update(scaling=scaling, provenance=provenance, parameters=dict(
+        catalogue=CATALOGUE_LABEL, method="continuous conditional point process",
+        n_realizations=len(selected), selection_seed=20260909,
+        history_tau_kyr=context.history_tau_ka, initial_history=context.initial_history,
+        history_coefficient_domain="beta_H <= 0", quadrature_order=context.quadrature_order,
+        response_exposure_kyr=result["point"]["models"].iloc[0].exposure_kyr,
+        full_terms=";".join(context.full_terms), age_epoch="SpeleoAge treated as BP1950; reference year unverified",
+        source_realizations=str(AGE_INPUT.relative_to(PROJECT_ROOT)),
+        selection="saved orbital-experiment rows, original order and exact ages; no new draw",
+        n_new_comparisons=9, p_method="nominal chi-square; within-catalogue Holm family of 9",
+        interval="2.5–97.5% chronology sensitivity; not full sampling confidence"))
+    return result
 
 
 def main():
-    result = run_analysis()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-root", type=Path, default=ROOT)
+    parser.add_argument("--n-realizations", type=int, default=N_REALIZATIONS)
+    parser.add_argument("--quadrature-order", type=int, default=4)
+    parser.add_argument("--no-paper-export", action="store_true",
+                        help="This driver script only writes its own research artifacts.")
+    args = parser.parse_args()
+    result = run_analysis(args.n_realizations, quadrature_order=args.quadrature_order)
     inputs = [Path(__file__).resolve(), Path(orbital.__file__), Path(reporting.__file__),
-        Path(main_analysis.__file__), Path(age_sensitivity.__file__), Path(combined_pi.__file__),
-        PROJECT_ROOT / "toolbox/project_config.py", PROJECT_ROOT / "toolbox/poisson.py",
-        PROJECT_ROOT / "toolbox/model_stats.py", PROJECT_ROOT / "toolbox/event_inputs.py",
-        PROJECT_ROOT / "toolbox/orbital_phase.py", main_analysis.BARKER_XLS, AGE_INPUT,
-        MAIN_SUMMARY, LR04_XLSX, CO2_XLSX, PRE_TXT, OBL_TXT,
+        Path(combined_likelihood.__file__), PROJECT_ROOT / "toolbox/point_process.py",
+        PROJECT_ROOT / "toolbox/project_config.py", PROJECT_ROOT / "toolbox/event_inputs.py",
+        PROJECT_ROOT / "toolbox/orbital_phase.py", PROJECT_ROOT / "toolbox/event_process.py",
+        PROJECT_ROOT / "Barker2011/Barker2011_event_phase_analysis.py",
+        ROOT / "data/raw/Barker et al-2011-SOM.xls",
+        AGE_INPUT, LR04_XLSX, CO2_XLSX, PRE_TXT, OBL_TXT,
         PROJECT_ROOT / "data/raw/ecc_1000_60_inter100.txt",
-        PROJECT_ROOT / "data/raw/solstice_insolation_NH.nc",
-        PROJECT_ROOT / "data/curated/orbital_driver_input_audit.csv"]
-    data_dir, _ = reporting.save_results(result, ROOT, RUN_NAME, CATALOGUE_LABEL, inputs)
+        PROJECT_ROOT / "data/raw/solstice_insolation_NH.nc"]
+    data_dir, _ = reporting.save_results(result, args.output_root, RUN_NAME, CATALOGUE_LABEL, inputs)
     print(result["comparison_summary"].to_string(index=False))
     print(f"Saved {data_dir}")
 

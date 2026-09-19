@@ -25,6 +25,7 @@ import scipy
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from paper_figure_export import copy_pdf_to_paper
+from toolbox.figure_style import add_panel_label
 from Barker2011 import Barker2011_event_phase_analysis as main_analysis
 
 ROOT = main_analysis.ROOT
@@ -191,7 +192,7 @@ def plot_uncertainty(events, controls, control_offsets):
         ax.axvspan(knots[-2], knots[-1], color=BLUE, alpha=0.07, lw=0)
         ax.axvline(knots[-2], color=BLUE, ls=":", lw=0.8)
         ax.spines[["top", "right"]].set_visible(False)
-        ax.text(-0.095, 1.035, label, transform=ax.transAxes, fontweight="bold", fontsize=11)
+        add_panel_label(ax, label, x=-0.095, y=1.035)
         # BP age decreases to the right, following the project-wide convention.
         ax.set_xlim(405, 0)
         ax.set_xticks(np.arange(0, 401, 50))

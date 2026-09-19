@@ -1,0 +1,21 @@
+parameter,value
+model_version,continuous_exponential_inhibition_2026-09-12
+method,continuous conditional point process
+age_epoch,kyr BP relative to AD1950
+response_support,fixed exact nominal anchors; 53 response events over 165.058 kyr
+history_tau_kyr,1.5
+initial_unobserved_history,0
+quadrature_order,4
+climate_scaling,fixed nominal exposure-time mean / interpolant range
+polynomial_transform,squares and products of fixed scaled climate predictors
+elapsed_time_definition,strictly older event age minus current age within the same segment
+elapsed_time_scale_kyr,1.0
+log_elapsed_transform,log(1 + elapsed_time / 1 kyr)
+history_domains,exponential/rectangular nonpositive; elapsed/log elapsed unrestricted
+boundary_handling,exact conditioning anchor supplies history but no response event term
+phase_convention,index minimum 0 degrees; maximum 180; increases toward older BP age
+nominal_p_definition,chi-square(2) survival of twice nested continuous likelihood gain
+model_comparison,AIC only; no node-count finite-sample correction
+bootstrap_scope,none here; primary empirical p does not calibrate these alternative models
+selection_scope,all five climate and four history forms; no p-based model selection
+randomness,none; deterministic point-age fits

@@ -1,0 +1,13 @@
+model_id,term,beta,rate_ratio_per_unit,term_definition
+reduced,intercept,-0.924287662864,0.396813983759,conditional log rate per kyr
+reduced,same_type_exponential_history,-0.355630398,0.700731564167,strictly older events weighted by exp(-age difference / 1.5 kyr); coefficient <= 0
+reduced,lr04_scaled,0.995334371146,2.70562887427,LR04 anomaly divided by its nominal continuous response-range span
+reduced,co2_scaled,-0.147740847401,0.86265464517,CO2 anomaly divided by its nominal continuous response-range span
+reduced,mis6_segment,-0.193301131848,0.824233733737,MIS6=1; NGRIP=0; conditional segment contrast
+full,intercept,-0.744959256115,0.474753642854,conditional log rate per kyr
+full,same_type_exponential_history,-0.963961285489,0.381379138115,strictly older events weighted by exp(-age difference / 1.5 kyr); coefficient <= 0
+full,lr04_scaled,2.23280927157,9.32602866055,LR04 anomaly divided by its nominal continuous response-range span
+full,co2_scaled,0.528022550559,1.69557607536,CO2 anomaly divided by its nominal continuous response-range span
+full,mis6_segment,-0.209798579747,0.810747530498,MIS6=1; NGRIP=0; conditional segment contrast
+full,pre_phase_sin,-0.52119885936,0.593808228517,sine of BP1950 precession phase
+full,pre_phase_cos,0.836809670137,2.30898877774,cosine of BP1950 precession phase

@@ -11,7 +11,7 @@ from matplotlib.ticker import MultipleLocator
 import numpy as np
 import pandas as pd
 
-from toolbox import combined_pi
+from toolbox import combined_likelihood
 from toolbox.project_config import PROJECT_ROOT
 
 DRIVER_LABELS = {"ecc": "Eccentricity", "obl": "Obliquity",
@@ -19,28 +19,29 @@ DRIVER_LABELS = {"ecc": "Eccentricity", "obl": "Obliquity",
 DRIVER_COLORS = {"ecc": "#CC79A7", "obl": "#009E73", "insol65n": "#D55E00"}
 
 
-def select_realizations(table, age_columns, n_realizations, seed):
-    """Select saved chronologies once; retain original IDs and pairing columns."""
+def read_selected_realizations(path, age_columns, n_realizations=None):
+    """Read the frozen 500-row chronology selection without drawing new indices."""
+    table = pd.read_csv(path, float_precision="round_trip")
     if table.realization_id.isna().any() or table.realization_id.duplicated().any():
         raise ValueError("Saved chronology IDs must be present and unique")
-    if not 1 <= n_realizations <= len(table):
-        raise ValueError("Requested chronology sample exceeds the saved ensemble")
+    if n_realizations is not None:
+        if not 1 <= n_realizations <= len(table):
+            raise ValueError("Requested chronology subset exceeds the saved selection")
+        table = table.iloc[:n_realizations].copy()
     values = table.loc[:, age_columns].to_numpy(float)
     if not np.isfinite(values).all() or np.any(np.diff(values, axis=1) <= 0):
         raise ValueError("Chronologies must have finite, ordered event ages")
-    rng = np.random.default_rng(seed)
-    selected = rng.choice(len(table), n_realizations, replace=False)
-    return table.iloc[selected].reset_index(drop=True)
+    return table.reset_index(drop=True)
 
 
 def invalid_tables(point, reason):
     """Keep unsupported draws in every comparison's denominator, without estimates."""
     models = point["models"].iloc[:0].reindex(range(len(point["models"])))
     comparisons = point["comparisons"].iloc[:0].reindex(range(len(point["comparisons"])))
-    for column in ("model_id", "terms", "n_parameters", "n_bins", "exposure_kyr"):
+    for column in ("model_id", "terms", "n_parameters"):
         models[column] = point["models"][column].to_numpy()
     for column in ("comparison_id", "driver_id", "comparison_group", "reduced_model_id",
-                   "full_model_id", "df", "n_bins", "exposure_kyr"):
+                   "full_model_id", "df"):
         comparisons[column] = point["comparisons"][column].to_numpy()
     for frame in (models, comparisons):
         frame["fit_valid"] = False
@@ -53,9 +54,9 @@ def check_reference(point, reference):
     comparison = point["comparisons"].set_index("comparison_id").loc["phase_reference"]
     phase = point["models"].set_index("model_id").loc["BP"]
     checks = {
-        "info_bits_per_event": (comparison.info_bits_per_event, reference.info_bits_per_event),
+        "gain_bits_per_event": (comparison.gain_bits_per_event, reference.gain_bits_per_event),
         "LR_statistic": (comparison.LR_statistic, reference.LR_statistic),
-        "n_events": (comparison.n_events, reference.n_predictive_events),
+        "n_events": (comparison.n_events, reference.n_response_events),
         "exposure_kyr": (comparison.exposure_kyr, reference.response_exposure_kyr),
         "phase_preferred_deg": (phase.pre_phase_preferred_deg, reference.pre_phase_preferred_deg),
         "phase_rate_ratio": (phase.pre_phase_rate_ratio_max_vs_min,
@@ -86,25 +87,25 @@ def plot_comparisons(summary, catalogue_label):
     ]
     reference = summary.set_index("comparison_id").loc["phase_reference"]
     # A common minimum span keeps both catalogues directly comparable on reruns.
-    upper = np.nanmax(summary[["info_bits_per_event_point", "info_bits_per_event_q975"]])
+    upper = np.nanmax(summary[["gain_bits_per_event_point", "gain_bits_per_event_q975"]])
     xmax = max(0.30, np.ceil(upper / 0.05) * 0.05 + 0.01)
     for panel, (ax, (group, title)) in enumerate(zip(axes, specs)):
         subset = summary.loc[summary.comparison_group.eq(group)].set_index("driver_id")
         for y, driver in enumerate(DRIVER_LABELS):
             row = subset.loc[driver]
             color = DRIVER_COLORS[driver]
-            low, high = row.info_bits_per_event_q025, row.info_bits_per_event_q975
+            low, high = row.gain_bits_per_event_q025, row.gain_bits_per_event_q975
             if np.isfinite([low, high]).all():
                 ax.hlines(y, low, high, color=color, linewidth=2.3, alpha=0.55)
-                ax.plot(row.info_bits_per_event_median, y, "|", color=color,
+                ax.plot(row.gain_bits_per_event_median, y, "|", color=color,
                         markersize=11, markeredgewidth=1.5)
-            if np.isfinite(row.info_bits_per_event_point):
-                ax.plot(row.info_bits_per_event_point, y, "o", color=color,
+            if np.isfinite(row.gain_bits_per_event_point):
+                ax.plot(row.gain_bits_per_event_point, y, "o", color=color,
                         markersize=5, markeredgecolor="white", markeredgewidth=0.5)
         if panel != 1:
-            ax.axvline(reference.info_bits_per_event_point, color="0.35",
+            ax.axvline(reference.gain_bits_per_event_point, color="0.35",
                        linewidth=0.9, linestyle=(0, (3, 3)), zorder=0)
-        ax.set(xlim=(-0.009, xmax), ylim=(2.48, -0.48), xlabel="PI (bits event$^{-1}$)")
+        ax.set(xlim=(-0.009, xmax), ylim=(2.48, -0.48), xlabel="Gain (bits event$^{-1}$)")
         ax.xaxis.set_major_locator(MultipleLocator(0.1))
         ax.set_title(title, fontsize=8.5, pad=10)
         ax.text(0, 1.23, f"({chr(97 + panel)})", transform=ax.transAxes,
@@ -125,114 +126,86 @@ def plot_comparisons(summary, catalogue_label):
 
 
 def write_notes(result, note_dir, run_name, catalogue_label):
-    """Generate paper-ready methods and exact results from the saved analysis tables."""
+    """Generate continuous-time methods and results without fixed interpretation."""
     summary = result["comparison_summary"]
-    point = result["point"]["comparisons"]
-    reference = point.set_index("comparison_id").loc["phase_reference"]
+    point = result["point"]["comparisons"].set_index("comparison_id")
+    reference = point.loc["phase_reference"]
     phase = result["point"]["models"].set_index("model_id").loc["BP"]
     params = result["parameters"]
     status = result["realization_status"]
-    n_supported = int(status.within_observation_support.sum())
-    n_valid = int(status.all_comparisons_valid.sum())
     counts = result["mc_models"].loc[
         result["mc_models"].model_id.eq("B") & result["mc_models"].fit_valid, "n_events"]
     count_description = "; ".join(f"{int(count)} events in {int(number)} draws"
                                   for count, number in counts.value_counts().sort_index().items())
     lines = [f"{catalogue_label}: orbital-driver sensitivity", "", "Methods",
-        "We model warming-onset rates over the whole observed time interval with the "
-        "same binned conditional Poisson likelihood as the main analysis. B contains "
-        "an intercept, prior-event count, LR04 and CO2. The pooled analysis additionally "
-        "retains its MIS6 segment contrast. P contains sine and cosine of precession phase.",
-        f"The bin width is {params['bin_width_kyr']:g} kyr and the history window is "
-        f"{params['history_window_kyr']:g} kyr. There are {int(reference.n_events)} point-age "
-        f"response events, {int(reference.n_bins)} response bins and {reference.exposure_kyr:g} kyr "
-        "of exposure. Exact partial-bin durations enter the likelihood as offsets. "
-        "Event history uses strictly older bin centers and resets at each observation segment.",
-        "Precession-index minima define 0 degrees and maxima 180 degrees; unwrapped phase "
-        "increases toward older BP ages. The scalar orbital variables are used as values, "
-        "not transformed into phase.",
-        "We examine three scalar linear covariates X: eccentricity, obliquity and 65°N "
-        "summer-solstice daily mean top-of-atmosphere insolation (solar longitude 90°; "
-        "S0=1365 W m-2). Eight models are fitted: B, B+P, and B+X and B+P+X for each X. "
-        "No lag, quadratic term or phase-amplitude interaction is fitted. Eccentricity "
-        "represents the climatic-precession amplitude envelope, but its additive main "
-        "effect does not make the fitted phase rate ratio depend on eccentricity.",
-        "All orbital inputs use La2004. Signed orbital source times are converted to "
-        "positive BP1950 ages by -source_time-0.05 kyr. The insolation NetCDF has positive "
-        "ages and is shifted by -0.05 kyr; its J2000 origin is inferred from numerical "
-        "agreement with the raw orbital solution, not explicitly stated by its BP label. "
-        "See docs/orbital_driver_inputs.md. Insolation has a native 1-kyr sampling interval; "
-        "linear interpolation to event-bin centers does not increase native resolution. "
-        "Obliquity is converted from radians to degrees. Each new scalar is centered and "
-        "divided by its range over the fixed response bins of its own catalogue. Existing "
-        "climate scaling and phase conventions are retained.",
-        f"We select {params['n_realizations']} distinct saved combined-error chronologies "
-        f"without replacement (NumPy default_rng, seed {params['seed']}). Selected IDs are "
-        "saved. All eight models within a catalogue use the same chronologies, response "
-        "support and forcing scales. Counts and history are recalculated for every draw. "
-        "Cross-catalogue selection does not synchronize the two age models. Reported "
-        "2.5th–97.5th percentiles measure sensitivity to the adopted event-age model, "
-        "not event-process sampling uncertainty or a complete confidence interval. "
-        "Phase quantiles are unwrapped about each model's point-age peak.",
-        "For nested comparisons, PI=(logL_full-logL_reduced)/(N_events ln2). Scalar "
-        "additions have one degree of freedom; phase additions have two. Point-age "
-        "chi-square p values are nominal. Holm correction uses the nine new comparisons "
-        "within each catalogue; the original phase reference is outside that family. "
-        "These tests have not been calibrated by a new event-process bootstrap. "
-        "AIC is 2k-2logL; AICc follows the existing project convention using the number "
-        "of response bins. Raw PI alone does not establish the best nonnested model.",
-        "", "Results",
-        f"The main reference is reproduced: PI={reference.info_bits_per_event:.6f} bits/event, "
-        f"LR={reference.LR_statistic:.6f}, nominal p={reference.nominal_p:.6g}; "
-        f"preferred phase={phase.pre_phase_preferred_deg:.3f} degrees and phase max/min "
-        f"rate ratio={phase.pre_phase_rate_ratio_max_vs_min:.4f}.", "",
-        f"Of {len(status)} selected chronologies, {n_supported} lie within observation "
-        f"support and {n_valid} have all ten comparisons valid. Unsupported draws retain "
-        "their original IDs and invalid status; they are neither clipped nor replaced. "
-        "Each row below reports the valid denominator used for its quantiles.", "",
-        f"Response-event counts: {count_description}. Fixed source membership does not "
-        "force every event into the response interval: an age may enter a history-only "
-        "buffer. Such events still supply history. PI uses each realization's actual "
-        "response count, shared by all eight models in that realization.", "",
-        "Comparison | PI point | MC median [2.5%,97.5%] | df | nominal p | Holm nominal p | Delta AIC | valid MC"]
-    for _, row in summary.iterrows():
-        original = point.set_index("comparison_id").loc[row.comparison_id]
-        lines.append(f"{row.comparison_id} | {row.info_bits_per_event_point:.6f} | "
-                     f"{row.info_bits_per_event_median:.6f} "
-                     f"[{row.info_bits_per_event_q025:.6f}, {row.info_bits_per_event_q975:.6f}] | "
-                     f"{int(original.df)} | {original.nominal_p:.6g} | "
-                     f"{original.holm_nominal_p:.6g} | {original.delta_AIC:.6f} | "
-                     f"{int(row.n_mc_valid)}/{int(row.n_mc_total)}")
-    lookup = point.set_index("comparison_id")
-    q_base, q_added, phase_q = [lookup.loc[key] for key in (
-        "insol65n_after_base", "insol65n_after_phase", "phase_after_insol65n")]
-    best = result["point"]["models"].sort_values("AIC").iloc[0]
-    lines += ["", "Observed pattern",
-        f"Insolation added to B gives PI={q_base.info_bits_per_event:.6f} bits/event "
-        f"(nominal p={q_base.nominal_p:.6g}; Holm p={q_base.holm_nominal_p:.6g}). "
-        f"Its incremental PI after phase is {q_added.info_bits_per_event:.6f} "
-        f"(nominal p={q_added.nominal_p:.6g}; Holm p={q_added.holm_nominal_p:.6g}). "
-        f"Conversely, phase added after insolation gives PI={phase_q.info_bits_per_event:.6f}, "
-        f"nominal p={phase_q.nominal_p:.6g} and Holm p={phase_q.holm_nominal_p:.6g}. "
-        "Thus, these data do not establish a phase contribution independent of insolation "
-        "at the 0.05 level after the planned nine-test correction. This does not negate "
-        "the original phase-versus-background comparison.",
-        f"The lowest point-age AIC among the eight candidates is for {best.model_id} "
-        f"(AIC={best.AIC:.6f}). These rankings and the shared information between phase "
-        "and insolation do not uniquely identify a physical driver.",
+        "We fit the same continuous-time conditional point process as the main analysis. "
+        "The baseline (BG) includes an intercept, exponential prior-event history, LR04 and CO2; "
+        "NGRIP–MIS6 additionally includes a segment intercept contrast. Pre adds sine and cosine "
+        "of precession phase. The history coefficient is constrained to be nonpositive. "
+        f"Its decay time is {params['history_tau_kyr']:g} kyr, with unobserved prehistory set to zero.",
+        f"There are {int(reference.n_events)} point-age response events and "
+        f"{reference.exposure_kyr:.6f} kyr of exposure. Each segment conditions on its exact oldest "
+        "event, which initializes subsequent history but contributes no response event term. "
+        "The younger event-free tail remains exposed. BP ages decrease in forward process time.",
+        "The continuous log likelihood is the sum of event log intensities minus the time integral "
+        "of conditional intensity. Event ages are never rounded to a grid. The integral uses positive "
+        "Gauss–Legendre weights between actual events and all forcing/phase interpolation knots. "
+        "Integral nodes are numerical evaluation locations, not observations or sample size.",
+        "Three scalar orbital variables (Orb) are considered: eccentricity, obliquity and 65°N "
+        "summer-solstice daily-mean top-of-atmosphere insolation (solar longitude 90°, S0=1365 W m-2). "
+        "Eight models are fitted: BG, BG+Pre, and BG+Orb and BG+Pre+Orb for each scalar. "
+        "No lag search, quadratic driver or phase-amplitude interaction is included. Eccentricity "
+        "describes a climatic-precession amplitude envelope, but its additive term does not make "
+        "the phase rate ratio depend on eccentricity.",
+        "La2004 signed source ages are converted to BP1950 by -source_time-0.05 kyr. The insolation "
+        "NetCDF age is shifted by -0.05 kyr; its J2000 origin is inferred from numerical agreement "
+        "with the source solution. See docs/orbital_driver_inputs.md. Obliquity is converted from "
+        "radians to degrees. Native source knots are retained; interpolation does not increase "
+        "the source temporal resolution. Phase zero is at precession-index minima and 180° at "
+        "maxima, with unwrapped phase increasing toward older BP ages before sine/cosine evaluation.",
+        "All forcing values are centered by their exposure-time mean and divided by their true "
+        "piecewise-linear interpolant range over the catalogue's nominal continuous response support. "
+        "Event points and integral nodes use the same interpolant and scaling constants. Nominal "
+        "scales remain fixed in chronology refits. Predictor correlations use quadrature time weights, "
+        "so irregular integration-node density is not treated as exposure.",
+        f"The {params['n_realizations']} saved chronology rows are reused in their original order, "
+        "without resampling IDs or ages. Their initial selection seed was 20260909. Each row has "
+        "its own exact conditioning event and exposure; all eight models share that row's support, "
+        "response events and history. Unsupported draws retain their IDs and are not clipped or replaced. "
+        "Chronology quantiles describe age sensitivity, not process-sampling confidence intervals.",
+        "Nested gain G=(logL_full-logL_reduced)/(N_response ln2) is in bits/event. Scalar additions "
+        "have one parameter and phase additions two. Chi-square p values are nominal. Holm correction "
+        "uses the nine new comparisons within each catalogue; the original phase reference is outside "
+        "the family. These extra comparisons have no new null-bootstrap calibration. AIC=2k-2logL and "
+        "delta AIC=2*delta k-LR; no node-count AICc or BIC is used. Usual AIC penalties are approximate "
+        "when the history coefficient lies on its constraint boundary.", "", "Results",
+        f"Main phase reference: G={reference.gain_bits_per_event:.8f} bits/event, "
+        f"LR={reference.LR_statistic:.8f}, nominal p={reference.nominal_p:.8g}; "
+        f"preferred phase={phase.pre_phase_preferred_deg:.4f} degrees, "
+        f"phase max/min rate ratio={phase.pre_phase_rate_ratio_max_vs_min:.6f}.",
+        f"Of {len(status)} selected chronologies, {int(status.within_observation_support.sum())} are "
+        f"within observation support and {int(status.all_comparisons_valid.sum())} have all ten "
+        "comparisons valid. Each comparison reports its own valid denominator.",
+        f"Response-event counts among valid baseline fits: {count_description}.", "",
+        "Comparison | G point | MC median [2.5%,97.5%] | df | nominal p | Holm nominal p | Delta AIC | valid MC"]
+    for row in summary.itertuples(index=False):
+        original = point.loc[row.comparison_id]
+        lines.append(f"{row.comparison_id} | {row.gain_bits_per_event_point:.6f} | "
+            f"{row.gain_bits_per_event_median:.6f} "
+            f"[{row.gain_bits_per_event_q025:.6f}, {row.gain_bits_per_event_q975:.6f}] | "
+            f"{int(original.df)} | {original.nominal_p:.6g} | {original.holm_nominal_p:.6g} | "
+            f"{original.delta_AIC:.6f} | {int(row.n_mc_valid)}/{int(row.n_mc_total)}")
+    best = result["point"]["models"].loc[result["point"]["models"].fit_valid].sort_values("AIC").iloc[0]
+    lines += ["", f"Lowest point-age AIC among the eight candidates: {best.model_id} (AIC={best.AIC:.8f}).",
         "", "Interpretation and limitations",
-        "These are conditional associations after accounting for LR04, CO2 and event "
-        "history. A predictor that adds little after phase may contain shared orbital "
-        "information or act through background climate. Its lack of incremental "
-        "information does not exclude those pathways. Insolation and orbital components "
-        "are not independent forcings. Correlations and design-matrix diagnostics are saved.",
-        "Barker SpeleoAge continues to be treated as BP1950 without direct verification "
-        "of that column's reference year. Barker and the pooled catalogue are separate "
-        "analyses, not independent physical replications; no p values are pooled.",
-        "", "References",
+        "These are conditional associations given LR04, CO2 and history. An orbital driver may "
+        "share information with precession or act through background climate, so a small incremental "
+        "gain does not exclude indirect effects. Nonnegative gain is expected by model nesting and "
+        "does not itself establish significance. Age-range endpoints are not sampling confidence limits. "
+        "No combined p value is inferred across these related records. Barker SpeleoAge remains treated "
+        "as BP1950 although the column reference year has not been independently verified.", "", "References",
         "Laskar et al. (2004), A&A 428, 261–285, doi:10.1051/0004-6361:20041335.",
-        "Event and chronology provenance follows the current main and combined-age "
-        "analyses; exact files and hashes are listed in input_code_sha256.csv."]
+        "Event and chronology provenance follows the main analyses; input_code_sha256.csv records sources."]
     note_dir.mkdir(parents=True, exist_ok=True)
     (note_dir / f"{run_name}_Methods_and_results.txt").write_text("\n".join(lines) + "\n")
     write_caption(result, note_dir, run_name, catalogue_label)
@@ -246,8 +219,9 @@ def write_caption(result, note_dir, run_name, catalogue_label):
               "Orbital-driver sensitivity of the combined North Greenland Ice Core Project "
               "(NGRIP) and Marine Isotope Stage 6 (MIS 6) speleothem warming-event record.")
     baseline = ("BG (background) denotes the full baseline model: an intercept, the warming-event "
-                "count during the preceding 1.5 kyr, the LR04 benthic oxygen-isotope stack, "
-                "and atmospheric CO2.")
+                "weights decaying exponentially with a 1.5-kyr time constant, the LR04 benthic oxygen-isotope stack, "
+                "and atmospheric CO2. It is fitted as a continuous-time conditional point process; "
+                "the history coefficient is constrained to be nonpositive.")
     if not is_barker:
         baseline += " Separate baseline rates are fitted for NGRIP and MIS 6."
     summary = result["comparison_summary"]
@@ -261,17 +235,31 @@ def write_caption(result, note_dir, run_name, catalogue_label):
         "(a) BG + Orb versus BG, (b) BG + Pre + Orb versus BG + Pre, and "
         "(c) BG + Pre + Orb versus BG + Orb. Thus Orb is added in (a,b), whereas "
         "Pre is added in (c). Orb adds one coefficient; Pre adds two.\n\n"
-        "PI (predictive information) is the increase in fitted log likelihood divided "
-        "by the response-event count and ln 2, expressed in bits per event. Filled circles "
+        "G is the log-likelihood gain per response event, expressed in bits/event. Filled circles "
         "show point-age estimates; vertical ticks show Monte Carlo (MC) medians, and "
         "horizontal bars show the 2.5th–97.5th percentile range across "
         f"{used} valid chronologies from {selected} selected realizations. These ranges "
         "describe age sensitivity, not complete confidence intervals. Dashed lines in "
-        "(a,c) show the point-age PI for BG + Pre versus BG; they are references, not "
-        "significance thresholds. All models use identical events, bins and observation "
+        "(a,c) show the point-age G for BG + Pre versus BG; they are references, not "
+        "significance thresholds. All models use identical exact response events and observation "
         "exposure within each realization.\n")
     note_dir.mkdir(parents=True, exist_ok=True)
     (note_dir / f"{run_name}_Caption.txt").write_text(caption)
+
+
+def weighted_correlation(frame, weights):
+    """Exposure-time correlation, not correlation of the irregular node counts."""
+    values = frame.to_numpy(float)
+    weights = np.asarray(weights, dtype=float)
+    if weights.shape != (len(frame),) or np.any(weights <= 0) or not np.isfinite(weights).all():
+        raise ValueError("Correlation requires finite positive integration weights")
+    weights = weights / weights.sum()
+    centered = values - np.sum(values * weights[:, None], axis=0)
+    covariance = centered.T @ (centered * weights[:, None])
+    scale = np.sqrt(np.diag(covariance))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        correlation = covariance / np.outer(scale, scale)
+    return pd.DataFrame(correlation, index=frame.columns, columns=frame.columns)
 
 
 def save_results(result, output_root, run_name, catalogue_label, input_paths):
@@ -284,16 +272,18 @@ def save_results(result, output_root, run_name, catalogue_label, input_paths):
         result["point"][key].to_csv(data_dir / f"point_{key}.csv", index=False)
     rates = result["point"]["fitted_rates"]
     rate_columns = rates.columns.difference(result["response"].columns, sort=False)
-    binned = pd.concat([result["response"].reset_index(drop=True),
-                       rates[rate_columns].reset_index(drop=True)], axis=1)
-    binned.to_csv(data_dir / "binned_inputs_and_fitted_rates.csv", index=False)
+    event_inputs = pd.concat([result["response"].reset_index(drop=True),
+                              rates[rate_columns].reset_index(drop=True)], axis=1)
+    event_inputs.to_csv(data_dir / "event_inputs_and_fitted_rates.csv", index=False)
     for key in ("comparison_summary", "phase_summary", "mc_models", "mc_comparisons",
                 "selected_realizations", "realization_status", "reference_check",
                 "scaling", "provenance", "events", "support"):
         result[key].to_csv(data_dir / f"{key}.csv", index=False)
-    predictors = [*combined_pi.FULL_TERMS, "ecc_scaled", "obl_scaled", "insol65n_scaled"]
-    predictors = [term for term in predictors if term in result["response"]]
-    result["response"][predictors].corr().to_csv(data_dir / "predictor_correlation.csv")
+    quadrature = result["integration"]
+    predictors = [*result["parameters"]["full_terms"].split(";"), "ecc_scaled", "obl_scaled", "insol65n_scaled"]
+    predictors = [term for term in predictors if term in quadrature]
+    weighted_correlation(quadrature[predictors], quadrature.weight.to_numpy(float)).to_csv(
+        data_dir / "predictor_correlation.csv")
     pd.DataFrame([dict(parameter=k, value=v) for k, v in result["parameters"].items()]).to_csv(
         data_dir / "parameters.csv", index=False)
     paths = list(dict.fromkeys([Path(path) for path in input_paths]))

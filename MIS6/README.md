@@ -48,7 +48,7 @@ describing the scientific choices and intermediate results.
 4. `Sofular_chronology_comparison.py` compares the So-4/So-57 dated controls and
    the saved MC age ranges for the five Sofular events. The uncertainty notebook
    calls its plotting functions after saving both schemes; it can also run independently to redraw
-   the comparison without repeating the sampling or PI fits.
+   the comparison without repeating the sampling or pooled likelihood fits.
 
 ## Inputs and outputs
 

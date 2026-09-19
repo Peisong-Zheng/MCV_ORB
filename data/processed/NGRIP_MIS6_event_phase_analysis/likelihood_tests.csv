@@ -1,0 +1,2 @@
+dataset_id,comparison_id,reduced_model_id,full_model_id,df,LR_statistic,LR_p_value,gain_bits_per_event,delta_AIC_full_minus_reduced
+ngrip_warming_plus_mis6,phase_after_climate,reduced,full,2,18.2378800243,0.000109570759476,0.248223576107,-14.2378800243

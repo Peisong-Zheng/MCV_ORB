@@ -10,7 +10,7 @@ FigS04.pdf,MIS6/figures/MIS6_event_age_uncertainty/MIS6_event_age_uncertainty.pd
 FigS05.pdf,Barker2011/figures/Barker2011_event_age_uncertainty/Barker2011_event_age_uncertainty.pdf,SI.tex,fig:S05,ready
 FigS06.pdf,figures/NGRIP_MIS6_event_uncertainty_sensitivity/NGRIP_MIS6_event_uncertainty_sensitivity.pdf,SI.tex,fig:S06,ready
 FigS07.pdf,Barker2011/figures/Barker2011_event_uncertainty_sensitivity/Barker2011_event_uncertainty_sensitivity.pdf,SI.tex,fig:S07,ready
-FigS08.pdf,figures/Figure_PI_bootstrap/Figure_PI_bootstrap.pdf,SI.tex,fig:bootstrap_comparison,ready
-FigS09.pdf,figures/NGRIP_MIS6_PI_design_sensitivity/NGRIP_MIS6_PI_design_sensitivity.pdf,SI.tex,fig:S09,ready
-FigS10.pdf,figures/NGRIP_MIS6_PI_model_sensitivity/NGRIP_MIS6_PI_model_sensitivity.pdf,SI.tex,fig:S10,ready
+FigS08.pdf,figures/Figure_likelihood_bootstrap/Figure_likelihood_bootstrap.pdf,SI.tex,fig:bootstrap_comparison,ready
+FigS09.pdf,figures/NGRIP_MIS6_likelihood_design_sensitivity/NGRIP_MIS6_likelihood_design_sensitivity.pdf,SI.tex,fig:S09,ready
+FigS10.pdf,figures/NGRIP_MIS6_likelihood_model_sensitivity/NGRIP_MIS6_likelihood_model_sensitivity.pdf,SI.tex,fig:S10,ready
 FigS11.pdf,figures/Figure_climate_phase_interaction/Figure_climate_phase_interaction.pdf,SI.tex,fig:climate_phase_comparison,ready

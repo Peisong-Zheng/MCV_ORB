@@ -19,7 +19,7 @@ def build_figure(project_root=PROJECT_ROOT):
     """Stack NGRIP–MIS6 (a, b) above Barker (c, d), then sync the paper copy."""
     project_root = Path(project_root)
     pages = [PdfReader(project_root / source).pages[0] for source in SOURCES]
-    width, gap = 165 / 25.4 * 72, 2  # Preserve readable text at publication width.
+    width, gap = 180 / 25.4 * 72, 2  # Preserve the source figures' publication scale.
     scales = [width / float(page.mediabox.width) for page in pages]
     heights = [float(page.mediabox.height) * scale for page, scale in zip(pages, scales)]
     writer = PdfWriter()

@@ -1,2 +1,2 @@
-beta__intercept,beta__same_type_history_count,beta__lr04_scaled,beta__co2_scaled,beta__mis6_segment,beta__pre_phase_sin,beta__pre_phase_cos
--1.06467077581,-0.445066685208,3.25509338417,1.0414704216,-0.232485877963,-0.399259430613,0.691496139591
+beta__intercept,beta__same_type_exponential_history,beta__lr04_scaled,beta__co2_scaled,beta__mis6_segment,beta__pre_phase_sin,beta__pre_phase_cos
+-0.7449592561152586,-0.9639612854887414,2.232809271569653,0.5280225505591151,-0.20979857974739244,-0.5211988593599853,0.8368096701366614

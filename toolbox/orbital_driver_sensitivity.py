@@ -1,19 +1,16 @@
-"""Shared orbital inputs and nested comparisons for warming-rate sensitivity.
-
-The caller supplies response bins only. Driver scaling is fixed on these bins
-and reused when event ages, counts, and histories change across realizations.
-"""
+"""Orbital inputs and continuous-time nested warming-rate comparisons."""
 
 from __future__ import annotations
 
 import hashlib
+import time
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 from scipy.stats import chi2
 
-from toolbox import poisson, project_config
+from toolbox import combined_likelihood, project_config
 
 
 ECC_TXT = project_config.PROJECT_ROOT / "data/raw/ecc_1000_60_inter100.txt"
@@ -29,7 +26,6 @@ DRIVER_TERMS = {driver: f"{driver}_scaled" for driver in DRIVER_IDS}
 DRIVER_RAW_COLUMNS = {"ecc": "ecc", "obl": "obl_deg", "insol65n": "insol65n_Wm2"}
 PHASE_TERMS = ("pre_phase_sin", "pre_phase_cos")
 NESTING_TOLERANCE = 1e-7
-BOUND_TOLERANCE = 1e-5
 
 
 def _ordered_series(age, values):
@@ -47,20 +43,13 @@ def _ordered_series(age, values):
     return age, values
 
 
-def prepare_drivers(frame: pd.DataFrame):
-    """Interpolate e, obliquity (degrees), and Q65 (W m-2) onto BP1950 bins.
+def load_driver_sources():
+    """Read native e, obliquity (degrees), and Q65 (W m-2) on BP1950 ages.
 
-    Return a new response frame, the fixed mean/range scales, and provenance.
+    Preserve the source knots for exact-age interpolation and integration.
     The La2004 source time is relative to J2000; positive past ages therefore
     decrease by 0.05 kyr when expressed relative to 1950.
     """
-    response = frame.copy()
-    target_age = response["bin_center_ka"].to_numpy(float)
-    if not len(target_age) or not np.isfinite(target_age).all():
-        raise ValueError("Response-bin ages must be nonempty and finite")
-    if "in_response_interval" in response and not response.in_response_interval.all():
-        raise ValueError("prepare_drivers requires response bins only")
-
     # Laskar et al. (2004), doi:10.1051/0004-6361:20041335.
     # TXT time is negative in the past; obliquity source values are radians.
     source_data = {}
@@ -104,26 +93,10 @@ def prepare_drivers(frame: pd.DataFrame):
             "source_history": ds.attrs.get("history", ""),
         }
 
-    scaling_rows, provenance_rows = [], []
+    provenance_rows = []
     for driver in DRIVER_IDS:
         source = source_data[driver]
         age, values = source["age"], source["values"]
-        if target_age.min() < age[0] or target_age.max() > age[-1]:
-            raise ValueError(f"Response ages require extrapolation of {driver}")
-        interpolated = np.interp(target_age, age, values)
-        mean, value_range = float(interpolated.mean()), float(np.ptp(interpolated))
-        if value_range <= 0:
-            raise ValueError(f"No {driver} variation in the response interval")
-        response[DRIVER_RAW_COLUMNS[driver]] = interpolated
-        response[DRIVER_TERMS[driver]] = (interpolated - mean) / value_range
-        scaling_rows.append({
-            "driver_id": driver, "raw_column": DRIVER_RAW_COLUMNS[driver],
-            "scaled_column": DRIVER_TERMS[driver], "units": source["units"],
-            "response_mean": mean, "response_min": float(interpolated.min()),
-            "response_max": float(interpolated.max()), "response_range": value_range,
-            "n_response_bins": len(response),
-            "scaling": "(value - response-bin arithmetic mean) / response-bin range",
-        })
         provenance_rows.append({
             "driver_id": driver, "source_file": str(source["path"]),
             "sha256": hashlib.sha256(source["path"].read_bytes()).hexdigest(),
@@ -141,7 +114,70 @@ def prepare_drivers(frame: pd.DataFrame):
                 "latitude_degN", "solar_longitude_deg", "solar_constant", "source_history"
             )},
         })
-    return response, pd.DataFrame(scaling_rows), pd.DataFrame(provenance_rows)
+    return source_data, pd.DataFrame(provenance_rows)
+
+
+def prepare_drivers(context):
+    """Add native forcing interpolants and fixed nominal time-weighted scales."""
+    sources, provenance = load_driver_sources()
+    rows = []
+    for driver in DRIVER_IDS:
+        source = sources[driver]
+        context = combined_likelihood.add_forcing(context, driver, source["age"], source["values"])
+        scale = context.scaling[driver]
+        rows.append(dict(driver_id=driver, raw_column=driver,
+            scaled_column=DRIVER_TERMS[driver], units=source["units"],
+            response_mean=scale["mean"], response_min=scale["min"],
+            response_max=scale["max"], response_range=scale["range"],
+            scaling="(value - nominal exposure-time mean) / nominal interpolant range"))
+    return context, pd.DataFrame(rows), provenance
+
+
+def fit_named_models(design, specs):
+    """Fit named continuous designs with the common nonpositive history domain.
+
+    Both the event sum and intensity integral use the same forcing interpolants.
+    A numerical design/fit failure remains explicit in the candidate table.
+    """
+    support = dict(n_events=len(design.event_frame), exposure_kyr=float(design.weights.sum()))
+    model_rows, coefficient_rows = [], []
+    event_rates = design.event_frame.loc[:, [name for name in
+        ("event_id", "segment_id", "age_kyr_bp") if name in design.event_frame]].copy()
+    for model_id, terms in specs.items():
+        terms = tuple(terms)
+        beta = np.full(1 + len(terms), np.nan)
+        row = dict(model_id=model_id, terms=";".join(terms), n_parameters=len(beta),
+            converged=False, fit_valid=False, invalid_reason="", log_likelihood=np.nan,
+            AIC=np.nan, pre_phase_preferred_deg=np.nan,
+            pre_phase_rate_ratio_max_vs_min=np.nan, **support)
+        event_rates[model_id] = np.nan
+        try:
+            fitted = combined_likelihood.fit_terms(design, terms)
+            beta = fitted.beta
+            row.update(converged=fitted.converged, log_likelihood=fitted.log_likelihood,
+                       AIC=fitted.aic, fit_valid=bool(fitted.converged and fitted.identifiable),
+                       fit_status=fitted.status)
+            if not fitted.converged or not fitted.identifiable:
+                row["invalid_reason"] = "continuous fit failed convergence/KKT checks"
+            if not np.isfinite(beta).all() or not np.isfinite(fitted.log_likelihood):
+                row.update(fit_valid=False, invalid_reason="non-finite fitted coefficients or likelihood")
+            if row["fit_valid"]:
+                x = design.event_frame.loc[:, list(terms)].to_numpy(float)
+                event_rates[model_id] = np.exp(beta[0] + x @ beta[1:])
+                if all(term in terms for term in PHASE_TERMS):
+                    b_sin, b_cos = [beta[1 + terms.index(term)] for term in PHASE_TERMS]
+                    amplitude = np.hypot(b_sin, b_cos)
+                    row["pre_phase_rate_ratio_max_vs_min"] = float(np.exp(2 * amplitude))
+                    if amplitude > 1e-12:
+                        row["pre_phase_preferred_deg"] = float(np.degrees(np.arctan2(b_sin, b_cos)) % 360)
+        except (ValueError, RuntimeError, FloatingPointError, np.linalg.LinAlgError) as error:
+            row["invalid_reason"] = str(error)
+        model_rows.append(row)
+        coefficient_rows.extend(dict(model_id=model_id, term=term, beta=value,
+            fit_valid=row["fit_valid"], invalid_reason=row["invalid_reason"])
+            for term, value in zip(("intercept",) + terms, beta))
+    return dict(models=pd.DataFrame(model_rows), coefficients=pd.DataFrame(coefficient_rows),
+                fitted_rates=event_rates)
 
 
 def model_specs(baseline_terms):
@@ -188,102 +224,11 @@ def _comparison_specs():
     return comparisons
 
 
-def fit_models(frame: pd.DataFrame, baseline_terms):
-    """Fit eight models on identical bins and return all ten nested comparisons.
-
-    AICc follows the existing project convention n = number of response bins.
-    Chi-square p values are nominal; no event-process bootstrap is performed.
-    Numerical failures remain in the output with a reason and missing PI.
-    """
+def fit_models(design, baseline_terms):
+    """Fit the eight prespecified continuous models and ten nested comparisons."""
     specs = model_specs(baseline_terms)
-    duration_column = "dt_ka" if "dt_ka" in frame else "dt_kyr"
-    dt = frame[duration_column].to_numpy(float)
-    y = frame["event_count"].to_numpy(float)
-    if "dt_ka" in frame and "dt_kyr" in frame:
-        if not np.allclose(frame.dt_ka, frame.dt_kyr, atol=1e-12, rtol=0):
-            raise ValueError("dt_ka and dt_kyr disagree")
-    if not len(frame) or not np.isfinite(dt).all() or np.any(dt <= 0):
-        raise ValueError("Response durations must be nonempty, finite, and positive")
-    if not np.isfinite(y).all() or np.any(y < 0) or not np.allclose(y, np.rint(y)):
-        raise ValueError("Response event counts must be finite nonnegative integers")
-    if y.sum() <= 0:
-        raise ValueError("PI per event is undefined for an empty event catalogue")
-    if "in_response_interval" in frame and not frame.in_response_interval.all():
-        raise ValueError("fit_models requires response bins only")
-    support = {"n_events": int(y.sum()), "n_bins": len(frame), "exposure_kyr": float(dt.sum())}
-    model_rows, coefficient_rows = [], []
-    rates = frame.loc[:, [c for c in ("segment_id", "bin_center_ka") if c in frame]].copy()
-
-    for model_id, terms in specs.items():
-        x = frame.loc[:, list(terms)].to_numpy(float)
-        design = np.column_stack([np.ones(len(frame)), x])
-        n_parameters = design.shape[1]
-        finite = bool(np.isfinite(design).all())
-        rank = int(np.linalg.matrix_rank(design)) if finite else 0
-        condition = float(np.linalg.cond(design)) if finite else np.nan
-        reasons = []
-        if not finite:
-            reasons.append("non-finite predictor values")
-        elif rank != n_parameters:
-            reasons.append("rank-deficient design")
-        row = dict(model_id=model_id, terms=";".join(terms), n_parameters=n_parameters,
-                   rank=rank, condition_number=condition, converged=False,
-                   optimizer_message="not fitted", log_likelihood=np.nan, AIC=np.nan,
-                   AICc=np.nan, eta_min=np.nan, eta_max=np.nan, n_eta_clipped_low=0,
-                   n_eta_clipped_high=0, eta_clipping_used=False, n_bound_hits=0,
-                   bound_hits="", pre_phase_preferred_deg=np.nan,
-                   pre_phase_rate_ratio_max_vs_min=np.nan, **support)
-        beta = np.full(n_parameters, np.nan)
-        rates[model_id] = np.nan
-        if not reasons:
-            try:
-                fit = poisson.fit_binned_poisson_arrays(x, y, dt)
-                beta = fit.beta
-                # These are the bounds in the shared main-analysis optimizer.
-                lower = np.full(n_parameters, -20.0)
-                upper = np.r_[5.0, np.full(n_parameters - 1, 20.0)]
-                at_bound = ((np.abs(beta - lower) <= BOUND_TOLERANCE)
-                            | (np.abs(beta - upper) <= BOUND_TOLERANCE))
-                clipped = fit.n_eta_clipped_low + fit.n_eta_clipped_high > 0
-                if not fit.converged:
-                    reasons.append("optimizer did not converge")
-                if not np.isfinite(beta).all() or not np.isfinite(fit.log_likelihood):
-                    reasons.append("non-finite fitted coefficients or likelihood")
-                if not np.isfinite(fit.fitted_rate_per_kyr).all():
-                    reasons.append("non-finite fitted rates")
-                if clipped:
-                    reasons.append("linear predictor used numerical clipping")
-                if at_bound.any():
-                    reasons.append("coefficient reached optimizer bound")
-                coefficient_names = ("intercept",) + terms
-                row.update(
-                    converged=fit.converged, optimizer_message=fit.optimizer_message,
-                    log_likelihood=fit.log_likelihood, AIC=fit.aic, AICc=fit.aicc,
-                    eta_min=fit.eta_min, eta_max=fit.eta_max,
-                    n_eta_clipped_low=fit.n_eta_clipped_low,
-                    n_eta_clipped_high=fit.n_eta_clipped_high, eta_clipping_used=clipped,
-                    n_bound_hits=int(at_bound.sum()),
-                    bound_hits=";".join(np.asarray(coefficient_names)[at_bound]),
-                )
-                rates[model_id] = fit.fitted_rate_per_kyr
-                if all(term in terms for term in PHASE_TERMS) and not reasons:
-                    beta_sin, beta_cos = [beta[1 + terms.index(term)] for term in PHASE_TERMS]
-                    amplitude = np.hypot(beta_sin, beta_cos)
-                    row["pre_phase_rate_ratio_max_vs_min"] = float(np.exp(2 * amplitude))
-                    if amplitude > 1e-12:
-                        row["pre_phase_preferred_deg"] = float(
-                            np.degrees(np.arctan2(beta_sin, beta_cos)) % 360
-                        )
-            except (ValueError, RuntimeError, FloatingPointError, np.linalg.LinAlgError) as error:
-                reasons.append(f"fit failed: {error}")
-        row.update(fit_valid=not reasons, invalid_reason="; ".join(reasons))
-        model_rows.append(row)
-        for term, value in zip(("intercept",) + terms, beta):
-            coefficient_rows.append({"model_id": model_id, "term": term, "beta": value,
-                                     "fit_valid": row["fit_valid"], "invalid_reason": row["invalid_reason"]})
-
-    models = pd.DataFrame(model_rows)
-    lookup = models.set_index("model_id")
+    result = fit_named_models(design, specs)
+    lookup = result["models"].set_index("model_id")
     comparison_rows = []
     for comparison_id, driver, group, reduced_id, full_id in _comparison_specs():
         reduced, full = lookup.loc[reduced_id], lookup.loc[full_id]
@@ -295,37 +240,88 @@ def fit_models(frame: pd.DataFrame, baseline_terms):
         if not reasons and not nesting_ok:
             reasons.append("full likelihood below reduced likelihood")
         valid = not reasons
-        # Only round-off-sized negative gains are rounded to zero, after validation.
         lr = 2 * max(gain, 0.0) if valid else np.nan
         comparison_rows.append({
             "comparison_id": comparison_id, "driver_id": driver, "comparison_group": group,
             "reduced_model_id": reduced_id, "full_model_id": full_id, "df": df,
             "loglik_reduced": reduced.log_likelihood, "loglik_full": full.log_likelihood,
-            "ll_gain_nats": gain, "info_bits_per_event": lr / (2 * np.log(2) * y.sum()),
+            "ll_gain_nats": gain, "gain_bits_per_event": lr / (2 * np.log(2) * full.n_events),
             "LR_statistic": lr, "nominal_p": float(chi2.sf(lr, df)) if valid else np.nan,
             "delta_AIC": float(full.AIC - reduced.AIC),
-            "delta_AICc": float(full.AICc - reduced.AICc),
             "fit_valid": valid, "invalid_reason": "; ".join(reasons),
-            "likelihood_nesting_ok": nesting_ok, **support,
+            "likelihood_nesting_ok": nesting_ok, "n_events": int(full.n_events),
+            "exposure_kyr": float(full.exposure_kyr),
         })
     comparisons = pd.DataFrame(comparison_rows)
     comparisons["holm_nominal_p"] = np.nan
     family = comparisons.comparison_group.ne("reference")
     comparisons.loc[family, "holm_nominal_p"] = holm_adjust(comparisons.loc[family, "nominal_p"])
-    return {"models": models, "comparisons": comparisons,
-            "coefficients": pd.DataFrame(coefficient_rows), "fitted_rates": rates}
+    result["comparisons"] = comparisons
+    return result
+
+
+def analyze_chronologies(context, selected, age_columns, show_progress=True):
+    """Fit point ages and the existing chronology subset without changing its IDs."""
+    from toolbox import orbital_driver_reporting as reporting
+
+    events = context.events
+    point_design = combined_likelihood.prepare_catalogue(events, context)
+    point = fit_models(point_design, context.reduced_terms)
+    if not point["models"].fit_valid.all() or not point["comparisons"].fit_valid.all():
+        raise RuntimeError(f"Invalid point-age orbital fits:\n{point['models'].to_string(index=False)}")
+    reference = combined_likelihood.fit_catalogue(events, context).summary
+    reference_check = reporting.check_reference(point, pd.Series(reference))
+    mc_models, mc_comparisons, status = [], [], []
+    started = time.perf_counter()
+    for index, row in selected.iterrows():
+        shifted = events.copy()
+        shifted[combined_likelihood.EVENT_AGE_COLUMN] = row[age_columns].to_numpy(float)
+        reason = ""
+        try:
+            design = combined_likelihood.prepare_catalogue(shifted, context)
+        except ValueError as error:
+            reason = str(error)
+            fitted = reporting.invalid_tables(point, reason)
+        else:
+            fitted = fit_models(design, context.reduced_terms)
+        for key, output in (("models", mc_models), ("comparisons", mc_comparisons)):
+            output.append(fitted[key].assign(realization_id=row.realization_id))
+        valid = bool(fitted["comparisons"].fit_valid.all())
+        status.append(dict(realization_id=row.realization_id, within_observation_support=not bool(reason),
+            n_response_events=fitted["models"].iloc[0].n_events,
+            response_exposure_kyr=fitted["models"].iloc[0].exposure_kyr,
+            all_comparisons_valid=valid, invalid_reason=reason or "; ".join(
+                fitted["comparisons"].loc[~fitted["comparisons"].fit_valid, "invalid_reason"].unique())))
+        if show_progress and (index + 1) % 100 == 0:
+            print(f"Orbital drivers: {index + 1}/{len(selected)} chronologies "
+                  f"({time.perf_counter() - started:.0f} s)", flush=True)
+    mc_models = pd.concat(mc_models, ignore_index=True)
+    mc_comparisons = pd.concat(mc_comparisons, ignore_index=True)
+    support = pd.DataFrame([dict(segment_id=segment_id,
+        observation_start_kyr_bp=segment.observation_start_kyr_bp,
+        observation_end_kyr_bp=segment.observation_end_kyr_bp,
+        response_start_kyr_bp=segment.response_start_kyr_bp,
+        response_end_kyr_bp=segment.response_end_kyr_bp,
+        anchor_age_kyr_bp=segment.anchor_age_kyr_bp)
+        for segment_id, segment in point_design.context.segments.items()])
+    return dict(events=point_design.all_events, response=point_design.event_frame,
+        integration=point_design.integration_frame, point=point, support=support,
+        selected_realizations=selected, realization_status=pd.DataFrame(status),
+        mc_models=mc_models, mc_comparisons=mc_comparisons, reference_check=reference_check,
+        comparison_summary=summarize_comparisons(point["comparisons"], mc_comparisons),
+        phase_summary=summarize_phase(point["models"], mc_models))
 
 
 def summarize_comparisons(point_df: pd.DataFrame, mc_df: pd.DataFrame):
     """Point estimates and 95% chronology ranges, retaining invalid fit counts."""
-    metrics = ("info_bits_per_event", "LR_statistic", "nominal_p", "delta_AIC", "delta_AICc")
+    metrics = ("gain_bits_per_event", "LR_statistic", "nominal_p", "delta_AIC")
     rows = []
     for _, point in point_df.iterrows():
         sample = mc_df.loc[mc_df.comparison_id.eq(point.comparison_id)]
         valid = sample.loc[sample.fit_valid]
         row = {key: point[key] for key in (
             "comparison_id", "driver_id", "comparison_group", "reduced_model_id",
-            "full_model_id", "df", "n_events", "n_bins", "exposure_kyr",
+            "full_model_id", "df", "n_events", "exposure_kyr",
         )}
         row.update(point_fit_valid=bool(point.fit_valid), point_invalid_reason=point.invalid_reason,
                    holm_nominal_p_point=point.holm_nominal_p, n_mc_total=len(sample),

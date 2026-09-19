@@ -3,7 +3,7 @@
 
 Run from the project root: python MIS6/Sofular_chronology_comparison.py
 This figure reads the original Held2024 controls and the two saved summaries;
-it does not resample ages or refit PI. The uncertainty notebook also uses its
+it does not resample ages or refit the conditional models. The uncertainty notebook also uses its
 data preparation and plotting functions.
 """
 

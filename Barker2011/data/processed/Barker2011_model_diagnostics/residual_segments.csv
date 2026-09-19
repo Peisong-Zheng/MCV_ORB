@@ -1,0 +1,2 @@
+segment_id,n_intervals,n_adjacent_pairs,adjacent_product_sum,cumulative_at_last_event,tail_integral,cumulative_at_endpoint,residual_at_endpoint,status
+Barker2011,69,68,0.719686418078,67.6212981939,1.37870165544,68.9999998493,1.50695086631e-07,ok

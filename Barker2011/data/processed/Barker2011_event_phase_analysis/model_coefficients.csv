@@ -1,0 +1,11 @@
+model_id,term,beta,rate_ratio_per_unit
+reduced,intercept,-1.61458801771,0.198972626756
+reduced,same_type_exponential_history,-0.820750851921,0.440101079674
+reduced,lr04_scaled,2.66501222377,14.3681251775
+reduced,co2_scaled,2.54818780031,12.7839157702
+full,intercept,-1.61804612758,0.198285745891
+full,same_type_exponential_history,-1.12936845698,0.323237330255
+full,lr04_scaled,3.31772986422,27.5976290272
+full,co2_scaled,2.82108720929,16.7951005389
+full,pre_phase_sin,-0.261033698359,0.770254962849
+full,pre_phase_cos,0.540793159613,1.71736846944

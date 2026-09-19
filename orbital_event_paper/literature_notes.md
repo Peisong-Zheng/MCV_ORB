@@ -39,7 +39,7 @@ For Dokken and Pedro, the local published PDFs confirmed the abstracts, complete
 2. Introduce “conditional association” as an estimand: improvement in the fitted warming-onset rate given selected background/history terms. This supports neither deterministic pacing nor uniqueness of an insolation pathway.
 3. In the discussion, a shared role for seasonal insolation is a compatible physical reading, not an inference that these cited model mechanisms produced our events.
 4. Preserve the distinction between amplitude modulation, event occurrence per total observed time, and cold-state transition hazard. The current results cannot be substituted for the other two measures.
-5. Background adjustment may absorb indirect orbital effects. Weak incremental eccentricity/obliquity information therefore does not exclude those mechanisms. Correlation between precession phase and summer insolation also limits attribution.
+5. Background adjustment may absorb indirect orbital effects. Small incremental log-likelihood gains from eccentricity/obliquity therefore do not exclude those mechanisms. Correlation between precession phase and summer insolation also limits attribution.
 
 ## Greenland model-extension chronology: checked wording
 

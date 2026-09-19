@@ -1,14 +1,16 @@
 parameter,value
 catalogue,Barker 2011 SpeleoAge warming events
-bin_width_kyr,0.2
-history_window_kyr,1.5
-origin_fraction,0.0
-response_mode,maximal_for_history
+model_version,continuous_exponential_inhibition_2026-09-12
+method,continuous conditional point process
+history_tau_kyr,1.5
+initial_history,0
+history_coefficient_domain,beta_H <= 0
+quadrature_order,4
 age_epoch,SpeleoAge is treated as kyr BP1950; its published reference year is unverified
 source_realizations,Barker2011/data/processed/Barker2011_orbital_driver_sensitivity/selected_realizations.csv
-realization_selection,"all 500 saved orbital-experiment rows, unchanged order; no new draw"
+realization_selection,"saved orbital-experiment rows, original order and exact ages; no new draw"
 selection_seed,20260909
-full_terms,same_type_history_count;lr04_scaled;co2_scaled;pre_phase_sin;pre_phase_cos
+n_realizations,500
 interaction_terms,lr04_phase_sin;lr04_phase_cos
 added_parameters,2
 p_method,"nominal chi-square, df=2; no interaction bootstrap"

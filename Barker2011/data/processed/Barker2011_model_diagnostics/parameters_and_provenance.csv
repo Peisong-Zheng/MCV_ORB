@@ -1,0 +1,15 @@
+parameter,value
+catalogue_id,barker_variable_threshold_speleo_0_400
+model_version,continuous_exponential_inhibition_2026-09-12
+history_tau_kyr,1.5
+initial_history,0.0
+history_coefficient_domain,beta_H <= 0
+quadrature_order,4
+conditioning,"original oldest observed event per segment, excluded from response"
+fixed_response_exposure_kyr,396.4642638777152
+history_bootstrap_replicates,4999
+history_seed,20260916
+gof_bootstrap_replicates,1999
+gof_seed,20260917
+gof_source_role,new nominal varying-threshold full-model refits
+deterministic_repaired_history_replicates,4

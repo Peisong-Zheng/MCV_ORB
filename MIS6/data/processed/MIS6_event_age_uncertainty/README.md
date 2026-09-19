@@ -12,8 +12,8 @@ events and the same MF uncertainty method.
 | --- | --- |
 | `mis6_event_age_uncertainty_summary.csv` | Primary event summary: 21 rows, 10 columns. Start here for manual inspection. |
 | `mis6_event_age_uncertainty_summary_so57_overlap.csv` | The same summary for the alternative scheme. |
-| `mis6_event_age_realizations.csv` | Primary ensemble: 10,000 complete, ordered 21-event sequences. Used by the pooled PI analysis. |
-| `mis6_event_age_realizations_so57_overlap.csv` | Alternative ensemble, used by the So-57 PI sensitivity analysis. |
+| `mis6_event_age_realizations.csv` | Primary ensemble: 10,000 complete, ordered 21-event sequences. Used by the pooled G analysis. |
+| `mis6_event_age_realizations_so57_overlap.csv` | Alternative ensemble, used by the So-57 G sensitivity analysis. |
 | `parameters_and_provenance.csv` | Primary settings, seed, sources, error assumptions and rejection counts. |
 | `parameters_and_provenance_so57_overlap.csv` | The corresponding metadata for the alternative. |
 

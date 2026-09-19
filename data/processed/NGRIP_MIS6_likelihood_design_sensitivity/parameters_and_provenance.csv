@@ -1,0 +1,13 @@
+parameter,value
+model_version,continuous_exponential_inhibition_2026-09-12
+history_taus_kyr,1.0;1.5;2.0;3.0;5.0
+initial_history_values,0.0;0.5;1.0
+history_coefficient_domain,nonpositive
+quadrature_order,4
+nominal_initial_history,0
+primary_history_tau_kyr,1.5
+response_support,fixed exact nominal anchors; young observation boundaries retained
+climate_scaling,fixed nominal exposure-time means and interpolant ranges
+statistical_comparison,"continuous LR and AIC; nominal chi-square p, no bootstrap calibration"
+phase_convention,index minimum 0 degrees; maximum 180; increases toward older BP ages
+sampling,deterministic point-age scenarios; no Monte Carlo

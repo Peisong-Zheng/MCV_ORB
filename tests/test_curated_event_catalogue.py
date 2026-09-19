@@ -130,48 +130,10 @@ def test_mis6_rows_match_the_composite_event_table(events):
 
 
 def test_observation_segments_keep_the_record_gap_out_of_exposure():
-    segments = pd.read_csv(CURATED_DIR / "observation_segments.csv")
-    assert segments.columns[:6].tolist() == [
-        "segment_id",
-        "observation_start_kyr_bp",
-        "observation_end_kyr_bp",
-        "common_response_start_kyr_bp",
-        "common_response_end_kyr_bp",
-        "support_basis",
-    ]
-    segments = segments.set_index("segment_id")
-
+    segments = pd.read_csv(CURATED_DIR / "observation_segments.csv").set_index("segment_id")
     assert segments.index.tolist() == ["NGRIP", "MIS6"]
-    columns = [
-        "observation_start_kyr_bp",
-        "observation_end_kyr_bp",
-        "common_response_start_kyr_bp",
-        "common_response_end_kyr_bp",
-    ]
-    np.testing.assert_allclose(
-        segments.loc["NGRIP", columns].to_numpy(float),
-        [12.0, 123.0, 12.0, 118.0],
-    )
-    np.testing.assert_allclose(
-        segments.loc["MIS6", columns].to_numpy(float),
-        [132.5, 204.5, 132.5, 199.5],
-    )
-
-    assert (
-        segments["observation_start_kyr_bp"]
-        <= segments["common_response_start_kyr_bp"]
-    ).all()
-    assert (
-        segments["common_response_end_kyr_bp"]
-        <= segments["observation_end_kyr_bp"]
-    ).all()
-    assert segments.loc["NGRIP", "common_response_end_kyr_bp"] < segments.loc[
-        "MIS6", "common_response_start_kyr_bp"
-    ]
-    assert segments["support_basis"].str.contains(
-        "gap is excluded", regex=False
-    ).all()
-    assert (
-        segments["common_response_end_kyr_bp"]
-        - segments["common_response_start_kyr_bp"]
-    ).sum() == pytest.approx(173.0)
+    assert not any(c.startswith("common_response_") for c in segments)
+    columns = ["observation_start_kyr_bp", "observation_end_kyr_bp"]
+    np.testing.assert_allclose(segments.loc["NGRIP", columns].to_numpy(float), [12., 123.])
+    np.testing.assert_allclose(segments.loc["MIS6", columns].to_numpy(float), [132.5, 204.5])
+    assert segments.loc["NGRIP", columns[1]] < segments.loc["MIS6", columns[0]]

@@ -1,0 +1,3 @@
+statistic,observed,n_bootstrap,n_valid,n_invalid,n_exceeding,bootstrap_p,bootstrap_p_lower_bound,bootstrap_p_upper_bound,bootstrap_p_mc_se,exceedance_probability_ci95_low,exceedance_probability_ci95_high,status,bootstrap_p_holm,catalogue_id,n_response_events,response_exposure_kyr,calibration
+ks_uniform,0.0752792076139,1999,1999,0,958,0.4795,0.4795,0.4795,0.0111709388594,0.457133946173,0.501406271982,ok,0.623,barker_variable_threshold_speleo_0_400,69,396.464263878,"simulate nominal full model, refit full, recompute statistics"
+adjacent_dependence,0.0872747976194,1999,1999,0,622,0.3115,0.3115,0.3115,0.010355379037,0.290899574372,0.331966911093,ok,0.623,barker_variable_threshold_speleo_0_400,69,396.464263878,"simulate nominal full model, refit full, recompute statistics"

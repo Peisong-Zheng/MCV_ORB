@@ -1,0 +1,13 @@
+parameter,value
+catalogue_id,ngrip_warming_plus_mis6
+model_version,continuous_exponential_inhibition_2026-09-12
+history_tau_kyr,1.5
+initial_history,0.0
+history_coefficient_domain,beta_H <= 0
+quadrature_order,4
+conditioning,"original oldest observed event per segment, excluded from response"
+fixed_response_exposure_kyr,165.058
+history_bootstrap_replicates,4999
+history_seed,20260914
+gof_source,tests/diagnostics/continuous_time_migration/stage/data/processed/NGRIP_MIS6_effect_uncertainty/gof_replicates.csv
+gof_source_role,nominal B_sampling full-model refits only

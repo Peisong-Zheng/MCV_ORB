@@ -1,2 +1,2 @@
-comparison_id,df,LR_statistic,info_bits_per_event,nominal_p,delta_AIC,delta_AICc,loglik_full,loglik_interaction,fit_valid,invalid_reason,likelihood_nesting_ok,n_events,n_bins,exposure_kyr
-lr04_phase_interaction,2,1.9708854806796126,0.02584897008305944,0.3732739269216226,2.0291145193203874,2.1057147885298377,-198.99902076355,-198.0135780232102,True,,True,55,901,180.0
+comparison_id,df,LR_statistic,gain_bits_per_event,nominal_p,delta_AIC,loglik_full,loglik_interaction,fit_valid,invalid_reason,likelihood_nesting_ok,n_events,exposure_kyr
+lr04_phase_interaction,2,3.355532388455458,0.04566990506006593,0.18679076464197028,0.6444676115445418,-102.12285757375503,-100.4450913795273,True,,True,53,165.05800000000002

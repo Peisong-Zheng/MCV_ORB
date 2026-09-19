@@ -1,14 +1,17 @@
 parameter,value
 catalogue,Barker 2011 SpeleoAge warming events
+method,continuous conditional point process
 n_realizations,500
-seed,20260909
-bin_width_kyr,0.2
-history_window_kyr,1.5
-origin_fraction,0.0
-response_mode,maximal_for_history
-response_exposure_kyr,398.5
+selection_seed,20260909
+history_tau_kyr,1.5
+initial_history,0.0
+history_coefficient_domain,beta_H <= 0
+quadrature_order,4
+response_exposure_kyr,396.46426387771527
+full_terms,same_type_exponential_history;lr04_scaled;co2_scaled;pre_phase_sin;pre_phase_cos
 age_epoch,SpeleoAge treated as BP1950; reference year unverified
-source_realizations,Barker2011/data/processed/Barker2011_event_age_uncertainty/event_age_realizations.csv
+source_realizations,Barker2011/data/processed/Barker2011_orbital_driver_sensitivity/selected_realizations.csv
+selection,"saved orbital-experiment rows, original order and exact ages; no new draw"
 n_new_comparisons,9
 p_method,nominal chi-square; within-catalogue Holm family of 9
-interval,2.5–97.5% age sensitivity; not sampling confidence interval
+interval,2.5–97.5% chronology sensitivity; not full sampling confidence

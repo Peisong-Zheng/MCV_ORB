@@ -4,15 +4,14 @@ LATEXMK ?= latexmk
 .PHONY: all pdf assets compose sync check clean
 all: pdf
 
-# These quick exports read saved results; they never refit scientific models.
+# Update figures only. Manuscript tables are maintained manually in SI.tex.
 assets:
 	$(PYTHON) ../paper_summary_figures.py
-	$(PYTHON) ../paper_tables.py
 	$(MAKE) compose
 	$(PYTHON) ../paper_figure_export.py
 
 compose:
-	$(PYTHON) ../Figure_PI_bootstrap.py
+	$(PYTHON) ../Figure_likelihood_bootstrap.py
 	$(PYTHON) ../Figure_climate_phase_interaction.py
 
 sync: compose

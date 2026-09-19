@@ -187,7 +187,7 @@ joint_00185,True,
 joint_00186,True,
 joint_00187,True,
 joint_00188,True,
-joint_00189,False,"NGRIP observation support [12, 123] kyr BP: NGRIP:GI-25=123.311"
+joint_00189,False,outside_NGRIP_observation_support
 joint_00190,True,
 joint_00191,True,
 joint_00192,True,
@@ -403,7 +403,7 @@ joint_00401,True,
 joint_00402,True,
 joint_00403,True,
 joint_00404,True,
-joint_00405,False,"NGRIP observation support [12, 123] kyr BP: NGRIP:GI-25=123.299"
+joint_00405,False,outside_NGRIP_observation_support
 joint_00406,True,
 joint_00407,True,
 joint_00408,True,
@@ -975,7 +975,7 @@ joint_00973,True,
 joint_00974,True,
 joint_00975,True,
 joint_00976,True,
-joint_00977,False,"NGRIP observation support [12, 123] kyr BP: NGRIP:GI-25=123.107"
+joint_00977,False,outside_NGRIP_observation_support
 joint_00978,True,
 joint_00979,True,
 joint_00980,True,
@@ -1229,7 +1229,7 @@ joint_01227,True,
 joint_01228,True,
 joint_01229,True,
 joint_01230,True,
-joint_01231,False,"NGRIP observation support [12, 123] kyr BP: NGRIP:GI-25=123.598"
+joint_01231,False,outside_NGRIP_observation_support
 joint_01232,True,
 joint_01233,True,
 joint_01234,True,
@@ -2034,7 +2034,7 @@ joint_02032,True,
 joint_02033,True,
 joint_02034,True,
 joint_02035,True,
-joint_02036,False,"NGRIP observation support [12, 123] kyr BP: NGRIP:GI-25=123.061"
+joint_02036,False,outside_NGRIP_observation_support
 joint_02037,True,
 joint_02038,True,
 joint_02039,True,
@@ -2558,7 +2558,7 @@ joint_02556,True,
 joint_02557,True,
 joint_02558,True,
 joint_02559,True,
-joint_02560,False,"NGRIP observation support [12, 123] kyr BP: NGRIP:GI-25=124.642"
+joint_02560,False,outside_NGRIP_observation_support
 joint_02561,True,
 joint_02562,True,
 joint_02563,True,
@@ -2892,7 +2892,7 @@ joint_02890,True,
 joint_02891,True,
 joint_02892,True,
 joint_02893,True,
-joint_02894,False,"NGRIP observation support [12, 123] kyr BP: NGRIP:GI-25=125.774"
+joint_02894,False,outside_NGRIP_observation_support
 joint_02895,True,
 joint_02896,True,
 joint_02897,True,
@@ -3057,7 +3057,7 @@ joint_03055,True,
 joint_03056,True,
 joint_03057,True,
 joint_03058,True,
-joint_03059,False,"NGRIP observation support [12, 123] kyr BP: NGRIP:GI-25=123.622"
+joint_03059,False,outside_NGRIP_observation_support
 joint_03060,True,
 joint_03061,True,
 joint_03062,True,
@@ -4140,7 +4140,7 @@ joint_04138,True,
 joint_04139,True,
 joint_04140,True,
 joint_04141,True,
-joint_04142,False,"NGRIP observation support [12, 123] kyr BP: NGRIP:GI-25=123.076"
+joint_04142,False,outside_NGRIP_observation_support
 joint_04143,True,
 joint_04144,True,
 joint_04145,True,
@@ -4712,7 +4712,7 @@ joint_04710,True,
 joint_04711,True,
 joint_04712,True,
 joint_04713,True,
-joint_04714,False,"NGRIP observation support [12, 123] kyr BP: NGRIP:GI-25=123.011"
+joint_04714,False,outside_NGRIP_observation_support
 joint_04715,True,
 joint_04716,True,
 joint_04717,True,
@@ -4830,7 +4830,7 @@ joint_04828,True,
 joint_04829,True,
 joint_04830,True,
 joint_04831,True,
-joint_04832,False,"NGRIP observation support [12, 123] kyr BP: NGRIP:GI-25=123.556"
+joint_04832,False,outside_NGRIP_observation_support
 joint_04833,True,
 joint_04834,True,
 joint_04835,True,
@@ -6525,7 +6525,7 @@ joint_06523,True,
 joint_06524,True,
 joint_06525,True,
 joint_06526,True,
-joint_06527,False,"NGRIP observation support [12, 123] kyr BP: NGRIP:GI-25=123.983"
+joint_06527,False,outside_NGRIP_observation_support
 joint_06528,True,
 joint_06529,True,
 joint_06530,True,
@@ -7313,7 +7313,7 @@ joint_07311,True,
 joint_07312,True,
 joint_07313,True,
 joint_07314,True,
-joint_07315,False,"NGRIP observation support [12, 123] kyr BP: NGRIP:GI-25=124.979"
+joint_07315,False,outside_NGRIP_observation_support
 joint_07316,True,
 joint_07317,True,
 joint_07318,True,
@@ -7663,7 +7663,7 @@ joint_07661,True,
 joint_07662,True,
 joint_07663,True,
 joint_07664,True,
-joint_07665,False,"NGRIP observation support [12, 123] kyr BP: NGRIP:GI-25=123.452"
+joint_07665,False,outside_NGRIP_observation_support
 joint_07666,True,
 joint_07667,True,
 joint_07668,True,
@@ -7768,7 +7768,7 @@ joint_07766,True,
 joint_07767,True,
 joint_07768,True,
 joint_07769,True,
-joint_07770,False,"NGRIP observation support [12, 123] kyr BP: NGRIP:GI-25=123.277"
+joint_07770,False,outside_NGRIP_observation_support
 joint_07771,True,
 joint_07772,True,
 joint_07773,True,
@@ -8661,7 +8661,7 @@ joint_08659,True,
 joint_08660,True,
 joint_08661,True,
 joint_08662,True,
-joint_08663,False,"NGRIP observation support [12, 123] kyr BP: NGRIP:GI-25=124.617"
+joint_08663,False,outside_NGRIP_observation_support
 joint_08664,True,
 joint_08665,True,
 joint_08666,True,
@@ -8714,7 +8714,7 @@ joint_08712,True,
 joint_08713,True,
 joint_08714,True,
 joint_08715,True,
-joint_08716,False,"NGRIP observation support [12, 123] kyr BP: NGRIP:GI-25=124.139"
+joint_08716,False,outside_NGRIP_observation_support
 joint_08717,True,
 joint_08718,True,
 joint_08719,True,
@@ -9220,7 +9220,7 @@ joint_09218,True,
 joint_09219,True,
 joint_09220,True,
 joint_09221,True,
-joint_09222,False,"NGRIP observation support [12, 123] kyr BP: NGRIP:GI-25=123.02"
+joint_09222,False,outside_NGRIP_observation_support
 joint_09223,True,
 joint_09224,True,
 joint_09225,True,

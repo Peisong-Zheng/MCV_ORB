@@ -43,7 +43,6 @@ class RecordSpec:
 class RegularSegment:
     raw: pd.DataFrame
     grid_age: np.ndarray
-    interpolated: np.ndarray
     smoothed: dict[float, np.ndarray]
     gradients: dict[float, np.ndarray]
 
@@ -217,7 +216,6 @@ def regularize_record(frame: pd.DataFrame, spec: RecordSpec) -> list[RegularSegm
             RegularSegment(
                 raw=raw_segment,
                 grid_age=grid_age,
-                interpolated=interpolated,
                 smoothed=smoothed,
                 gradients=gradients,
             )

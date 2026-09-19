@@ -4,6 +4,7 @@ The explicit mapping is in orbital_event_paper/figure_manifest.csv. Analysis
 exporters call copy_pdf_to_paper after saving their canonical PDF; running
 this script refreshes all available mapped figures without rerunning fits.
 Planned figures remain pending until their new source PDFs are produced.
+This exporter never modifies manuscript TeX or tables.
 """
 
 from pathlib import Path

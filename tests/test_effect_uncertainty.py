@@ -1,5 +1,6 @@
 """Process, interval geometry and integration checks for full-model effects."""
 
+from dataclasses import replace
 from pathlib import Path
 import sys
 
@@ -12,74 +13,26 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import NGRIP_MIS6_effect_uncertainty as analysis
-import NGRIP_MIS6_PI_bootstrap as null_bootstrap
-from toolbox import combined_pi
+from toolbox import combined_likelihood
 from toolbox import effect_uncertainty as effect
 
 
-class RecordingRNG:
-    def __init__(self, counts):
-        self.counts = iter(counts)
-        self.means = []
-
-    def poisson(self, mean):
-        self.means.append(mean)
-        return next(self.counts)
+def test_zero_phase_full_simulator_matches_reduced_continuous_process(setup):
+    _, context, fit, _, _ = setup
+    model = replace(fit.full, beta=np.r_[fit.reduced.beta, 0., 0.])
+    first = combined_likelihood.simulate_reduced_model_events(context, fit.reduced, np.random.default_rng(15))
+    second = effect.simulate_full_model_events(context, model, np.random.default_rng(15))
+    pd.testing.assert_frame_equal(first, second)
 
 
-def toy_context():
-    frames, segments = [], {}
-    for segment_id, start in (("NGRIP", 0.0), ("MIS6", 100.0)):
-        edges = np.arange(start, start + 4)
-        segments[segment_id] = combined_pi.SegmentContext(
-            segment_id, start, start + 3, start, start + 3, edges,
-            np.ones(3, dtype=bool), np.array([1, 2, 3]), np.array([3, 3, 3]))
-        frames.append(pd.DataFrame({
-            "segment_id": segment_id, "dt_kyr": np.ones(3),
-            "lr04_scaled": np.zeros(3), "co2_scaled": np.zeros(3),
-            "mis6_segment": float(segment_id == "MIS6"),
-            "pre_phase_sin": [1, 0, 0], "pre_phase_cos": [0, 0, 1],
-        }))
-    return combined_pi.PIContext(pd.concat(frames, ignore_index=True), segments,
-                                 np.ones(6), 2.0, 1.0, 0.0, "common_core")
-
-
-def test_full_phase_terms_dynamic_history_and_segment_reset():
-    rng = RecordingRNG([1, 2, 0, 1, 0, 0])
-    beta = np.array([0, np.log(2), 0, 0, 0, np.log(3), np.log(5)])
-    counts = effect.simulate_full_model_counts(toy_context(), beta, rng)
-    # Oldest bin cosine multiplies by 5; youngest sine by 3. History is
-    # 0, 1, 3 in first segment and resets to 0 at the second segment start.
-    np.testing.assert_allclose(rng.means, [5, 2, 24, 5, 2, 6])
-    np.testing.assert_array_equal(counts["NGRIP"], [0, 2, 1])
-
-
-def test_true_bin_exposure_enters_poisson_mean():
-    context = toy_context()
-    for segment in context.segments.values():
-        segment.bin_edges[:] = segment.bin_edges[0] + np.array([0, 0.5, 1, 1.5])
-    context.bins["dt_kyr"] = 0.5
-    rng = RecordingRNG([0] * 6)
-    effect.simulate_full_model_counts(context, np.zeros(7), rng)
-    np.testing.assert_allclose(rng.means, 0.5)
-
-
-def test_zero_phase_special_case_matches_original_null_without_modifying_it():
-    context = toy_context()
-    reduced = np.array([-0.3, -0.5, 0.1, -0.1, 0.4])
-    first = null_bootstrap.simulate_catalogue_counts(context, reduced, np.random.default_rng(15))
-    second = effect.simulate_full_model_counts(context, np.r_[reduced, 0, 0], np.random.default_rng(15))
-    for segment in combined_pi.SEGMENT_IDS:
-        np.testing.assert_array_equal(first[segment], second[segment])
-
-
-def test_full_beta_length_and_numerical_limits_are_checked():
-    with pytest.raises(ValueError, match="full_beta"):
-        effect.simulate_full_model_counts(toy_context(), np.zeros(5), np.random.default_rng(1))
-    beta = np.zeros(7)
-    beta[0] = 21
-    with pytest.raises(effect.InvalidEffectSimulation):
-        effect.simulate_full_model_counts(toy_context(), beta, np.random.default_rng(1))
+def test_full_generator_checks_terms_and_nonpositive_history(setup):
+    _, context, fit, _, _ = setup
+    with pytest.raises(ValueError, match="full model"):
+        effect.prepare_full_simulation(context, fit.reduced)
+    beta = fit.full.beta.copy()
+    beta[fit.full.terms.index(combined_likelihood.HISTORY_TERM)] = 0.1
+    with pytest.raises(ValueError, match="Positive feedback"):
+        effect.prepare_full_simulation(context, replace(fit.full, beta=beta))
 
 
 def circle_region(center, radius):
@@ -131,11 +84,29 @@ def test_bootstrap_region_uses_errors_about_generator_and_retains_bias():
 
 @pytest.fixture(scope="module")
 def setup():
-    events = combined_pi.load_event_catalogue()
-    context = combined_pi.build_context()
-    fit = combined_pi.fit_catalogue(events, context)
-    draws, results = analysis.load_age_inputs(events)
-    return events, context, fit, draws, results
+    events = combined_likelihood.load_event_catalogue()
+    context = combined_likelihood.build_context()
+    fit = combined_likelihood.fit_catalogue(events, context)
+    # Refit a small saved chronology sample, independent of stale output tables.
+    saved = pd.read_csv(analysis.AGE_DRAWS)
+    columns = [f"age_kyr_bp__{event_id}" for event_id in events.event_id]
+    rows, results = [], []
+    for _, row in saved.iterrows():
+        local_events = events.copy()
+        local_events[combined_likelihood.EVENT_AGE_COLUMN] = row[columns].to_numpy(float)
+        try:
+            local_fit = combined_likelihood.fit_catalogue(local_events, context)
+        except ValueError:
+            continue
+        rows.append(row)
+        results.append({"fit_valid": True, "invalid_reason": "", **local_fit.summary})
+        if len(rows) == 6:
+            break
+    return events, context, fit, pd.DataFrame(rows).reset_index(drop=True), pd.DataFrame(results)
+
+
+def generator(model, context):
+    return {"model": model, "events": context.events.copy()}
 
 
 def test_outer_selection_is_reproducible_uniform_rule_and_preserves_source_ids(setup):
@@ -148,13 +119,13 @@ def test_outer_selection_is_reproducible_uniform_rule_and_preserves_source_ids(s
     np.testing.assert_array_equal(table.source_row_index, expected)
     assert table.age_realization_id.is_unique
     assert set(generators) == {0, 1, 2, 3}
-    np.testing.assert_array_equal(generators[0], fit.full.beta)
+    np.testing.assert_array_equal(generators[0]["model"].beta, fit.full.beta)
     assert table.age_realization_id.tolist() == draws.iloc[expected].realization_id.tolist()
 
 
 def test_parallel_replicates_are_reproducible_and_do_not_freeze_event_count(setup):
     _, context, fit, _, _ = setup
-    generators = {0: fit.full.beta, 1: fit.full.beta}
+    generators = {0: generator(fit.full, context), 1: generator(fit.full, context)}
     first = analysis.run_simulations(context, generators, 20, 3, 9, workers=1, show_progress=False)
     second = analysis.run_simulations(context, generators, 20, 3, 9, workers=2, show_progress=False)
     pd.testing.assert_frame_equal(first, second)
@@ -163,19 +134,23 @@ def test_parallel_replicates_are_reproducible_and_do_not_freeze_event_count(setu
     assert first.groupby("scenario").size().to_dict() == {"B_sampling": 20, "C_joint": 3}
 
 
-def test_failed_simulations_are_retained_without_retries(setup):
+def test_failed_simulations_are_retained_without_retries(setup, monkeypatch):
     _, context, fit, _, _ = setup
-    bad = fit.full.beta.copy()
-    bad[0] = 100
-    table = analysis.run_simulations(context, {0: bad, 1: bad}, 2, 2, 1, show_progress=False)
+    def fail(*args, **kwargs):
+        raise effect.InvalidEffectSimulation("diagnosed numerical failure")
+    monkeypatch.setattr(effect, "simulate_prepared_full_events", fail)
+    generators = {i: generator(fit.full, context) for i in (0, 1)}
+    table = analysis.run_simulations(context, generators, 2, 2, 1, show_progress=False)
     assert len(table) == 4
     assert not table.fit_valid.any()
     assert table.invalid_reason.str.len().gt(0).all()
+    with pytest.raises(RuntimeError, match="failures"):
+        analysis.summarize_effects(fit, setup[-1], table)
 
 
 def test_small_analysis_summaries_keep_interval_meanings_and_equal_weights(setup):
     _, context, fit, _, age_results = setup
-    generators = {0: fit.full.beta, 1: fit.full.beta, 2: fit.full.beta}
+    generators = {i: generator(fit.full, context) for i in range(3)}
     table = analysis.run_simulations(context, generators, 30, 5, 10, show_progress=False)
     summary, region = analysis.summarize_effects(fit, age_results, table)
     assert len(summary) == 6
@@ -187,3 +162,62 @@ def test_small_analysis_summaries_keep_interval_meanings_and_equal_weights(setup
     assert (curves.B_simultaneous_low <= curves.point_multiplier).all()
     assert (curves.B_simultaneous_high >= curves.point_multiplier).all()
     assert (curves.C_pointwise_q025 <= curves.C_pointwise_q975).all()
+
+
+def test_age_generators_simulate_with_their_own_exact_anchors_and_support(setup):
+    _, context, _, _, _ = setup
+    generators, selected = analysis.build_generators(*setup, n_outer=3, seed=7)
+    analysis._initialize_worker(context, generators)
+    for outer_id in range(1, 4):
+        row = analysis._simulate_one((2, outer_id, 1, 77))
+        local_context, prepared = analysis._PREPARED[outer_id]
+        expected = combined_likelihood.condition_context(context, generators[outer_id]["events"])
+        assert row["fit_valid"]
+        assert row["response_exposure_kyr"] == pytest.approx(expected.response_exposure_kyr)
+        assert selected.loc[selected.outer_id.eq(outer_id), "response_exposure_kyr"].iloc[0] == pytest.approx(expected.response_exposure_kyr)
+        simulated = effect.simulate_prepared_full_events(prepared, np.random.default_rng(77))
+        for name, segment in local_context.segments.items():
+            assert segment == expected.segments[name]
+            ages = simulated.loc[simulated.segment_id.eq(name), combined_likelihood.EVENT_AGE_COLUMN]
+            assert ages.max() == segment.anchor_age_kyr_bp
+            assert ages.min() >= segment.response_start_kyr_bp
+        assert local_context.scaling == context.scaling
+
+
+def test_zero_response_draws_keep_gof_sample_but_withhold_effect_region(setup, monkeypatch):
+    _, context, fit, _, age_results = setup
+    anchors = context.events.sort_values(combined_likelihood.EVENT_AGE_COLUMN).groupby('segment_id').tail(1)
+    monkeypatch.setattr(effect, 'simulate_prepared_full_events', lambda *args: anchors.copy())
+    generators = {i: generator(fit.full, context) for i in (0, 1)}
+    table = analysis.run_simulations(context, generators, 2, 2, 1, show_progress=False)
+    assert table.fit_valid.all() and table.n_response_events.eq(0).all()
+    assert not table.effect_identified.any()
+    assert table[analysis.PHASE_COLUMNS].isna().all().all()
+    nominal = table.loc[table.scenario.eq('B_sampling')]
+    assert nominal.ks_uniform.eq(0).all() and nominal.adjacent_dependence.eq(0).all()
+    assert nominal.residual_status.eq('no_response_events').all()
+    with pytest.raises(RuntimeError, match='Unidentified effect'):
+        analysis.summarize_effects(fit, age_results, table)
+
+
+@pytest.mark.parametrize("change", ["generator", "source"])
+def test_redraw_rejects_stale_generator_or_changed_input(setup, tmp_path, change):
+    import hashlib
+    _, context, fit, _, _ = setup
+    source = tmp_path / "ages.csv"
+    source.write_text("original chronological input")
+    saved = pd.DataFrame([dict(zip(analysis.BETA_COLUMNS, fit.full.beta))])
+    saved.to_csv(tmp_path / "point_generator.csv", index=False)
+    pd.DataFrame([dict(parameter="model_version", value=combined_likelihood.MODEL_VERSION),
+                  dict(parameter="history_tau_ka", value=context.history_tau_ka)]).to_csv(
+        tmp_path / "parameters_and_provenance.csv", index=False)
+    pd.DataFrame([dict(path=str(source), sha256=hashlib.sha256(source.read_bytes()).hexdigest())]).to_csv(
+        tmp_path / "input_code_sha256.csv", index=False)
+    analysis.validate_saved_inputs(fit, tmp_path, [source])
+    if change == "generator":
+        saved.iloc[0, 0] += 0.25
+        saved.to_csv(tmp_path / "point_generator.csv", index=False)
+    else:
+        source.write_text("a different chronology")
+    with pytest.raises(ValueError, match="rerun simulations"):
+        analysis.validate_saved_inputs(fit, tmp_path, [source])

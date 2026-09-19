@@ -1,120 +1,62 @@
 #!/usr/bin/env python3
-"""Compare scalar orbital drivers with phase in the pooled warming catalogue.
+"""Continuous-time orbital-driver sensitivity on the primary NGRIP_MIS6 catalogue.
 
-Run after the main and combined-age analyses. The eight models share the
-current response support and baseline; only the added orbital terms differ.
-Saved combined chronologies supply age sensitivity, not a null bootstrap.
+Reuse the frozen 500 chronology IDs and exact ages. Each chronology supplies
+its own conditioning anchor; all candidate models share that exact support.
 """
 
+import argparse
 from pathlib import Path
-import time
 
-import numpy as np
-import pandas as pd
-
-from toolbox import combined_pi, orbital_driver_sensitivity as orbital
+from toolbox import combined_likelihood, orbital_driver_sensitivity as orbital
 from toolbox import orbital_driver_reporting as reporting
 from toolbox.project_config import PROJECT_ROOT, LR04_XLSX, CO2_XLSX, PRE_TXT, OBL_TXT
 
+ROOT = PROJECT_ROOT
 RUN_NAME = "NGRIP_MIS6_orbital_driver_sensitivity"
 CATALOGUE_LABEL = "NGRIP–MIS6 warming events"
 N_REALIZATIONS = 500
-SEED = 20260909
-AGE_INPUT = PROJECT_ROOT / "data/processed/NGRIP_MIS6_event_uncertainty_sensitivity/combined_event_age_realizations.csv"
-MAIN_SUMMARY = PROJECT_ROOT / "data/processed/NGRIP_MIS6_event_phase_analysis/analysis_summary.csv"
+AGE_INPUT = ROOT / "data/processed" / RUN_NAME / "selected_realizations.csv"
 
 
-def frame_for_ages(ages, events, context, response):
-    """Recount each segment independently, retaining the fixed response predictors."""
-    values = np.asarray(ages, dtype=float)
-    if values.shape != (len(events),) or not np.isfinite(values).all() or np.any(np.diff(values) <= 0):
-        raise ValueError("Event ages must match the finite, ordered catalogue")
-    shifted = events.copy()
-    shifted[combined_pi.EVENT_AGE_COLUMN] = values
-    binned = combined_pi.bin_catalogue(shifted, context)
-    current = binned.loc[binned.in_response_interval]
-    frame = response.copy()
-    for column in ("event_count", "same_type_history_count"):
-        frame[column] = current[column].to_numpy()
-    return frame
-
-
-def outside_support(ages, events, context):
-    for segment_id, segment in context.segments.items():
-        values = ages[events.segment_id.eq(segment_id).to_numpy()]
-        if np.any(values < segment.bin_edges[0]) or np.any(values > segment.bin_edges[-1]):
-            return f"outside {segment_id} observation support"
-    return ""
-
-
-def run_analysis(n_realizations=N_REALIZATIONS, seed=SEED, show_progress=True):
-    events = combined_pi.load_event_catalogue()
-    context = combined_pi.build_context()
-    binned = combined_pi.bin_catalogue(events, context)
-    response = binned.loc[binned.in_response_interval].reset_index(drop=True).rename(
-        columns={"bin_center_kyr_bp": "bin_center_ka", "dt_kyr": "dt_ka"})
-    response, scaling, provenance = orbital.prepare_drivers(response)
-    point = orbital.fit_models(response, combined_pi.REDUCED_TERMS)
-    if not point["models"].fit_valid.all() or not point["comparisons"].fit_valid.all():
-        raise RuntimeError(f"Inspect invalid point-age fits:\n{point['models'].to_string(index=False)}")
-    reference_check = reporting.check_reference(point, pd.read_csv(MAIN_SUMMARY).iloc[0])
-
-    # Keep the original NGRIP/MIS6 pairing; sample existing combined rows once.
-    age_columns = [f"age_kyr_bp__{event_id}" for event_id in events.event_id]
-    selected = reporting.select_realizations(pd.read_csv(AGE_INPUT), age_columns, n_realizations, seed)
-    mc_models, mc_comparisons, status = [], [], []
-    started = time.perf_counter()
-    for index, row in selected.iterrows():
-        ages = row[age_columns].to_numpy(float)
-        reason = outside_support(ages, events, context)
-        if reason:
-            fitted = reporting.invalid_tables(point, reason)
-        else:
-            frame = frame_for_ages(ages, events, context, response)
-            fitted = orbital.fit_models(frame, combined_pi.REDUCED_TERMS)
-        for key, output in (("models", mc_models), ("comparisons", mc_comparisons)):
-            output.append(fitted[key].assign(realization_id=row.realization_id))
-        valid = bool(fitted["comparisons"].fit_valid.all())
-        status.append(dict(realization_id=row.realization_id, within_observation_support=not bool(reason),
-                           n_response_events=fitted["models"].iloc[0].n_events,
-                           all_comparisons_valid=valid, invalid_reason=reason or "; ".join(
-                               fitted["comparisons"].loc[~fitted["comparisons"].fit_valid, "invalid_reason"].unique())))
-        if show_progress and (index + 1) % 100 == 0:
-            print(f"NGRIP–MIS6: {index + 1}/{n_realizations} chronologies "
-                  f"({time.perf_counter() - started:.0f} s)", flush=True)
-    mc_models = pd.concat(mc_models, ignore_index=True)
-    mc_comparisons = pd.concat(mc_comparisons, ignore_index=True)
-    support = combined_pi.load_observation_segments()
-    for segment_id, segment in context.segments.items():
-        mask = support.segment_id.eq(segment_id)
-        support.loc[mask, "response_start_kyr_bp"] = segment.response_start_kyr_bp
-        support.loc[mask, "response_end_kyr_bp"] = segment.response_end_kyr_bp
-    return dict(events=events, response=response, point=point, scaling=scaling, provenance=provenance,
-        support=support, selected_realizations=selected, realization_status=pd.DataFrame(status),
-        mc_models=mc_models, mc_comparisons=mc_comparisons, reference_check=reference_check,
-        comparison_summary=orbital.summarize_comparisons(point["comparisons"], mc_comparisons),
-        phase_summary=orbital.summarize_phase(point["models"], mc_models),
-        parameters=dict(catalogue=CATALOGUE_LABEL, n_realizations=n_realizations, seed=seed,
-            bin_width_kyr=context.bin_width_ka, history_window_kyr=context.history_window_ka,
-            origin_fraction=context.origin_fraction, response_mode=context.response_mode,
-            response_exposure_kyr=context.response_exposure_kyr, age_epoch="BP1950",
-            source_realizations=str(AGE_INPUT.relative_to(PROJECT_ROOT)),
-            n_new_comparisons=9, p_method="nominal chi-square; within-catalogue Holm family of 9",
-            interval="2.5–97.5% age sensitivity; not sampling confidence interval"))
+def run_analysis(n_realizations=N_REALIZATIONS, show_progress=True, quadrature_order=4):
+    context = combined_likelihood.build_context(quadrature_order=quadrature_order)
+    context, scaling, provenance = orbital.prepare_drivers(context)
+    age_columns = [f"age_kyr_bp__{event_id}" for event_id in context.events.event_id]
+    selected = reporting.read_selected_realizations(AGE_INPUT, age_columns, n_realizations)
+    result = orbital.analyze_chronologies(context, selected, age_columns, show_progress=show_progress)
+    result.update(scaling=scaling, provenance=provenance, parameters=dict(
+        catalogue=CATALOGUE_LABEL, method="continuous conditional point process",
+        n_realizations=len(selected), selection_seed=20260909,
+        history_tau_kyr=context.history_tau_ka, initial_history=context.initial_history,
+        history_coefficient_domain="beta_H <= 0", quadrature_order=context.quadrature_order,
+        response_exposure_kyr=result["point"]["models"].iloc[0].exposure_kyr,
+        full_terms=";".join(context.full_terms), age_epoch="BP1950",
+        source_realizations=str(AGE_INPUT.relative_to(PROJECT_ROOT)),
+        selection="saved orbital-experiment rows, original order and exact ages; no new draw",
+        n_new_comparisons=9, p_method="nominal chi-square; within-catalogue Holm family of 9",
+        interval="2.5–97.5% chronology sensitivity; not full sampling confidence"))
+    return result
 
 
 def main():
-    result = run_analysis()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-root", type=Path, default=ROOT)
+    parser.add_argument("--n-realizations", type=int, default=N_REALIZATIONS)
+    parser.add_argument("--quadrature-order", type=int, default=4)
+    parser.add_argument("--no-paper-export", action="store_true",
+                        help="This driver script only writes its own research artifacts.")
+    args = parser.parse_args()
+    result = run_analysis(args.n_realizations, quadrature_order=args.quadrature_order)
     inputs = [Path(__file__).resolve(), Path(orbital.__file__), Path(reporting.__file__),
-        Path(combined_pi.__file__), PROJECT_ROOT / "toolbox/project_config.py",
-        PROJECT_ROOT / "toolbox/poisson.py", PROJECT_ROOT / "toolbox/model_stats.py",
-        PROJECT_ROOT / "toolbox/event_inputs.py", PROJECT_ROOT / "toolbox/orbital_phase.py",
-        combined_pi.EVENT_CATALOGUE_CSV, combined_pi.OBSERVATION_SEGMENTS_CSV, AGE_INPUT,
-        MAIN_SUMMARY, LR04_XLSX, CO2_XLSX, PRE_TXT, OBL_TXT,
+        Path(combined_likelihood.__file__), PROJECT_ROOT / "toolbox/point_process.py",
+        PROJECT_ROOT / "toolbox/project_config.py", PROJECT_ROOT / "toolbox/event_inputs.py",
+        PROJECT_ROOT / "toolbox/orbital_phase.py", PROJECT_ROOT / "toolbox/event_process.py",
+        combined_likelihood.EVENT_CATALOGUE_CSV, combined_likelihood.OBSERVATION_SEGMENTS_CSV,
+        AGE_INPUT, LR04_XLSX, CO2_XLSX, PRE_TXT, OBL_TXT,
         PROJECT_ROOT / "data/raw/ecc_1000_60_inter100.txt",
-        PROJECT_ROOT / "data/raw/solstice_insolation_NH.nc",
-        PROJECT_ROOT / "data/curated/orbital_driver_input_audit.csv"]
-    data_dir, _ = reporting.save_results(result, PROJECT_ROOT, RUN_NAME, CATALOGUE_LABEL, inputs)
+        PROJECT_ROOT / "data/raw/solstice_insolation_NH.nc"]
+    data_dir, _ = reporting.save_results(result, args.output_root, RUN_NAME, CATALOGUE_LABEL, inputs)
     print(result["comparison_summary"].to_string(index=False))
     print(f"Saved {data_dir}")
 
