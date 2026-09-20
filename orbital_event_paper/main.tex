@@ -65,14 +65,14 @@ For a complementary test over a longer interval, we use the Antarctic-derived sy
 
 We represent background climate using LR04 benthic $\delta^{18}$O and the Antarctic atmospheric CO$_2$ composite \citep{lisiecki2005pliocene,bereiter2015revision}. LR04 reflects both ice volume and deep-water temperature. Orbital inputs follow La2004 \citep{laskar2004long}. Forcing ages remain fixed during event-age perturbations for sensitivity analyses of chronology uncertainty (Text S2). Phase is interpolated between alternating precession-index extrema: minima define $0^\circ$, maxima $180^\circ$, and phase increases toward older ages.
 
-We fit a continuous point process whose conditional intensity combines climate and event history \citep{truccolo2005point}. Let $u$ denote time in kyr advancing from a segment's conditioning event toward the present. The instantaneous warming rate is
+We fit a continuous point process whose conditional intensity combines climate and event history \citep{truccolo2005point,kass2014analysis}. Let $a$ denote age in kyr BP and $a_{r0}$ the age of the conditioning event in segment $r$. We use elapsed time $u=a_{r0}-a$, which starts at zero and increases toward the present. The instantaneous warming rate is
 \begin{equation}
 \log\lambda_r(u)=\beta_0+\beta_H H_r(u)+\beta_L L_r(u)+\beta_C C_r(u)+\beta_S S_r
 +\beta_s\sin\phi_r(u)+\beta_c\cos\phi_r(u),\label{eq:rate}
 \end{equation}
-where $H_r(u)=\sum_{j:0\leq u_{rj}<u}\exp[-(u-u_{rj})/\tau]$ includes strictly earlier events of the same segment, including its conditioning event at $u=0$. The fixed decay time is $\tau=1.5$ kyr. We constrain $\beta_H\leq0$, allowing recent events to suppress the rate, and set unobserved pre-anchor history to zero. $L_r$ and $C_r$ denote LR04 and CO$_2$, and $S_r$ distinguishes the primary segments; Barker omits $S_r$. Continuous interpolants give external covariates at event and integration times. Climate scaling uses nominal exposure-time means and ranges.
+where $H_r(u)=\sum_{j:0\leq u_{rj}<u}\exp[-(u-u_{rj})/\tau]$ includes strictly earlier events of the same segment, including its conditioning event at $u=0$. The fixed decay time is $\tau=1.5$ kyr. We constrain $\beta_H\leq0$, allowing recent events to suppress the rate, and set unobserved pre-anchor history to zero. $L_r$ and $C_r$ denote LR04 and CO$_2$, and $S_r$ distinguishes the primary segments; data of Barker et al. omits $S_r$. Continuous interpolants give external covariates at event and integration times. Climate scaling uses nominal exposure-time means and ranges.
 
-We estimate coefficients by maximizing the conditional event likelihood,
+We estimate coefficients by maximizing the conditional log likelihood \citep{daley2003introduction},
 \begin{equation}
 \ell=\sum_r\left[\sum_{i=1}^{N_r}\log\lambda_r(u_{ri})-\int_0^{T_r}\lambda_r(u)\,du\right],\label{eq:likelihood}
 \end{equation}

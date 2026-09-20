@@ -1,7 +1,8 @@
 """Continuous conditional event likelihood and inhibitory event simulation.
 
-Rates are events per kyr. Ages use kyr BP (AD 1950); older events have larger
-ages. Integration weights are durations, not event counts or sample sizes.
+Rates are events per kyr. Public ages use kyr BP (AD 1950). Internally,
+elapsed time u = anchor_age - age increases toward the present within each
+segment. Integration weights are positive durations.
 """
 
 from dataclasses import dataclass
@@ -50,7 +51,7 @@ def gauss_legendre_intervals(breakpoints, order=8):
 
 def exponential_history(query_ages, event_ages, tau=1.5, anchor_age=None,
                         initial_history=0.0):
-    """Evaluate strictly older events, preserving arbitrary query-age order.
+    """Evaluate earlier-event history from BP ages, preserving query order.
 
     ``event_ages`` includes the observed conditioning event. ``initial_history``
     is the unknown pre-anchor weighted history, fixed to zero in the main model.
@@ -64,31 +65,39 @@ def exponential_history(query_ages, event_ages, tau=1.5, anchor_age=None,
         raise ValueError("History decay time must be positive")
     if not np.isfinite(initial_history) or initial_history < 0:
         raise ValueError("Pre-anchor history must be finite and nonnegative")
-    events = np.sort(events)
+    events = np.sort(events)[::-1]  # Chronological order: oldest to youngest.
     if np.any(np.diff(events) == 0):
         raise ValueError("Coincident events require review of source-age precision")
     if anchor_age is None and len(events):
-        anchor_age = events[-1]
+        anchor_age = events[0]
     if anchor_age is not None:
         if not np.isfinite(anchor_age):
             raise ValueError("Anchor age must be finite")
-        if (len(events) and events[-1] > anchor_age) or np.any(query > anchor_age):
+        if (len(events) and events[0] > anchor_age) or np.any(query > anchor_age):
             raise ValueError("Events and queries cannot precede the conditioning anchor")
     elif initial_history:
         raise ValueError("Nonzero initial history requires an anchor age")
 
     history = np.zeros(query.size)
     if len(events):
-        # A single recurrence avoids exponentiating every event/query pair.
+        elapsed_kyr = anchor_age - query.ravel()
+        event_elapsed_kyr = anchor_age - events
+        # History immediately before each event, advancing in elapsed time.
         at_event = np.zeros(len(events))
-        for i in range(len(events) - 2, -1, -1):
-            at_event[i] = (1 + at_event[i + 1]) * np.exp((events[i] - events[i + 1]) / tau)
-        older = np.searchsorted(events, query.ravel(), side="right")
-        present = older < len(events)
-        j = older[present]
-        history[present] = (1 + at_event[j]) * np.exp((query.ravel()[present] - events[j]) / tau)
+        for i in range(1, len(events)):
+            gap_kyr = event_elapsed_kyr[i] - event_elapsed_kyr[i - 1]
+            at_event[i] = (1 + at_event[i - 1]) * np.exp(-gap_kyr / tau)
+        # -age also runs forward, without origin subtraction. Use it for the
+        # strict u_j < u comparison: subtracting a distant anchor can otherwise
+        # round an event and its nextafter() neighbor to the same elapsed time.
+        previous_count = np.searchsorted(-events, -query.ravel(), side="left")
+        present = previous_count > 0
+        j = previous_count[present] - 1
+        since_previous_kyr = elapsed_kyr[present] - event_elapsed_kyr[j]
+        history[present] = (1 + at_event[j]) * np.exp(-since_previous_kyr / tau)
     if initial_history:
-        history += initial_history * np.exp((query.ravel() - anchor_age) / tau)
+        elapsed_kyr = anchor_age - query.ravel()
+        history += initial_history * np.exp(-elapsed_kyr / tau)
     return history.reshape(query.shape)
 
 
@@ -244,7 +253,8 @@ def simulate_segment_events(anchor_age, young_age, breakpoints, log_background,
     ``breakpoints`` increase in BP age. Each bound is for the corresponding
     ascending interval and must bound the *background*, before inhibition.
     Bounds may cover a wider interval than the requested segment. Candidate
-    times are continuous; accepted events update history immediately.
+    times advance in elapsed kyr; callback inputs and returned ages remain BP.
+    Accepted events update history immediately.
     """
     breaks = np.asarray(breakpoints, dtype=float)
     upper = np.asarray(log_upper_bounds, dtype=float)
@@ -261,40 +271,50 @@ def simulate_segment_events(anchor_age, young_age, breakpoints, log_background,
     if not np.isfinite(tau) or tau <= 0 or not np.isfinite(initial_history) or initial_history < 0:
         raise ValueError("Positive decay time and nonnegative initial history are required")
 
+    # Clip the BP support before conversion. Reverse the paired interval bounds
+    # together with their edges so that simulation advances from u=0 to T.
+    elapsed_edges = anchor_age - np.clip(breaks, young_age, anchor_age)[::-1]
+    forward_upper = upper[::-1]
     ages = [float(anchor_age)]
-    current = float(anchor_age)
+    current_elapsed = 0.0
     history = 1.0 + initial_history  # The fixed conditioning event has occurred.
     candidates = 0
-    for j in range(len(upper) - 1, -1, -1):
-        low, high = max(breaks[j], young_age), min(breaks[j + 1], anchor_age)
-        if high <= low:
+    for start, end, log_upper in zip(elapsed_edges[:-1], elapsed_edges[1:], forward_upper):
+        if end <= start:
             continue
-        while current > low:
+        while current_elapsed < end:
+            remaining_kyr = end - current_elapsed
             # Log waiting times remain safe for extremely small envelopes.
             unit_wait = rng.exponential()
-            log_wait = np.log(unit_wait) - upper[j] if unit_wait > 0 else -np.inf
-            if log_wait >= np.log(current - low):
-                history *= np.exp(-(current - low) / tau)
-                current = low
+            log_wait = np.log(unit_wait) - log_upper if unit_wait > 0 else -np.inf
+            if log_wait >= np.log(remaining_kyr):
+                history *= np.exp(-remaining_kyr / tau)
+                current_elapsed = end
                 break
             wait = np.exp(log_wait)
-            candidate_age = current - wait
-            if candidate_age >= current:
+            candidate_elapsed = current_elapsed + wait
+            candidate_age = anchor_age - candidate_elapsed
+            current_age = anchor_age - current_elapsed
+            if candidate_elapsed <= current_elapsed or candidate_age >= current_age:
                 raise RuntimeError("Simulation waiting time is below floating-point age resolution")
+            if candidate_elapsed >= end:
+                history *= np.exp(-remaining_kyr / tau)
+                current_elapsed = end
+                break
             history *= np.exp(-wait / tau)
-            current = candidate_age
+            current_elapsed = candidate_elapsed
             candidates += 1
             if candidates > max_candidates:
                 raise RuntimeError("Thinning candidate limit reached; inspect the background envelope")
-            log_bg = float(log_background(current))
+            log_bg = float(log_background(candidate_age))
             if np.isnan(log_bg) or np.isposinf(log_bg):
                 raise ValueError("Background log intensity is invalid at a candidate event")
-            if log_bg > upper[j] + 1e-12:
+            if log_bg > log_upper + 1e-12:
                 raise ValueError("Simulation envelope does not bound the background intensity")
-            log_accept = log_bg + history_beta * history - upper[j]
+            log_accept = log_bg + history_beta * history - log_upper
             uniform = rng.uniform()
             log_uniform = np.log(uniform) if uniform > 0 else -np.inf
             if log_uniform < log_accept:
-                ages.append(current)
+                ages.append(candidate_age)
                 history += 1
     return np.asarray(ages)

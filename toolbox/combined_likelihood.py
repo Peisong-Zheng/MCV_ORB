@@ -2,6 +2,8 @@
 
 BP ages increase into the past. Each record conditions on its exact oldest
 observed event; there is no exposure or event history across record gaps.
+Within a segment, elapsed_kyr = anchor_age_kyr_bp - age_kyr_bp runs forward.
+Public data and forcing interpolants retain BP1950 coordinates.
 """
 from __future__ import annotations
 
@@ -266,8 +268,13 @@ def integration_breakpoints(context,segment,event_ages=()):
 
 
 def evaluate_features(context,ages,segment_id,event_ages):
+    """Evaluate BP forcing samples and forward-time history within one segment."""
     ages=np.asarray(ages,float)
-    frame={"age_kyr_bp":ages,"segment_id":np.repeat(segment_id,len(ages)),"intercept":np.ones(len(ages))}
+    segment=context.segments[segment_id]
+    elapsed_kyr=segment.anchor_age_kyr_bp-ages
+    frame={"age_kyr_bp":ages,"elapsed_kyr":elapsed_kyr,
+           "segment_id":np.repeat(segment_id,len(ages)),"intercept":np.ones(len(ages))}
+    # Interpolate on the original BP axis, including the published phase convention.
     for name,(source_age,source_value) in context.forcings.items():
         values=event_inputs.interpolate_checked(ages,source_age,source_value,context=name) if len(ages) else np.array([])
         frame[name]=values
@@ -278,17 +285,23 @@ def evaluate_features(context,ages,segment_id,event_ages):
     frame.update(pre_phase_unwrapped_rad=phase,pre_phase_rad=np.mod(phase,2*np.pi),
                  pre_phase_deg=np.mod(np.degrees(phase),360),pre_phase_sin=np.sin(phase),
                  pre_phase_cos=np.cos(phase),pre_phase_extrapolated=extra)
-    segment=context.segments[segment_id]
-    older=np.sort(np.asarray(event_ages,float))
-    frame[HISTORY_TERM]=point_process.exponential_history(ages,older,context.history_tau_ka,
+    event_ages=np.sort(np.asarray(event_ages,float))[::-1]
+    event_elapsed_kyr=segment.anchor_age_kyr_bp-event_ages
+    frame[HISTORY_TERM]=point_process.exponential_history(ages,event_ages,context.history_tau_ka,
                            anchor_age=segment.anchor_age_kyr_bp,initial_history=context.initial_history)
-    next_index=np.searchsorted(older,ages,side="right")
-    elapsed=np.zeros(len(ages))
-    present=next_index<len(older)
-    elapsed[present]=older[next_index[present]]-ages[present]
-    frame["time_since_last_event_kyr"]=elapsed
-    frame["log_time_since_last_event"]=np.log1p(elapsed)
-    frame["rectangular_history_count"]=(np.searchsorted(older,ages+context.history_tau_ka,side="left")-next_index).astype(float)
+    # Compare on the unshifted forward axis (-BP) to preserve exact event and
+    # window endpoints; origin subtraction can merge adjacent floating values.
+    comparison_time=-ages
+    event_comparison_time=-event_ages
+    previous_count=np.searchsorted(event_comparison_time,comparison_time,side="left")
+    since_last_kyr=np.zeros(len(ages))
+    present=previous_count>0
+    since_last_kyr[present]=elapsed_kyr[present]-event_elapsed_kyr[previous_count[present]-1]
+    frame["time_since_last_event_kyr"]=since_last_kyr
+    frame["log_time_since_last_event"]=np.log1p(since_last_kyr)
+    window_start=comparison_time-context.history_tau_ka
+    first_recent=np.searchsorted(event_comparison_time,window_start,side="right")
+    frame["rectangular_history_count"]=(previous_count-first_recent).astype(float)
     frame[SEGMENT_TERM]=np.full(len(ages),float(segment_id=="MIS6"))
     for name,factors in (context.derived_terms or {}).items():
         frame[name]=np.prod([frame[f] for f in factors],axis=0)
@@ -319,6 +332,8 @@ def prepare_catalogue(events,context,*,fixed_support=False):
             event_frame["event_id"]=part.loc[response,"event_id"].to_numpy()
         event_frames.append(event_frame)
         knots=integration_breakpoints(active,s,age)
+        # BP-ordered nodes retain their original interpolation samples. The
+        # positive kyr weights also integrate du, since u=anchor-age and |du/da|=1.
         nodes,weights=point_process.gauss_legendre_intervals(knots,order=active.quadrature_order)
         integration=evaluate_features(active,nodes,name,age)
         integration["weight"]=weights
@@ -388,7 +403,8 @@ def fitted_rate_table(fit,step_kyr=0.1):
     frames=[]
     for name,s in fit.context.segments.items():
         ages=fit.design.all_events.loc[fit.design.all_events.segment_id.eq(name),EVENT_AGE_COLUMN].to_numpy(float)
-        # Paired left/right limits show the history jump at every event.
+        # Paired BP neighbors show the event jump. History membership compares
+        # their unshifted coordinates, even if anchor-age rounds them to one u.
         after=np.nextafter(ages,-np.inf)
         after=after[after>=s.response_start_kyr_bp]
         query=np.unique(np.r_[np.arange(s.response_start_kyr_bp,s.response_end_kyr_bp,step_kyr),ages,after,s.response_end_kyr_bp])
@@ -534,16 +550,23 @@ def rescaled_event_intervals(fit, model=None):
     if fit.full.status=="zero_events":
         rate=np.zeros(len(frame))
     for name,s in fit.context.segments.items():
-        responses=np.sort(fit.design.event_frame.loc[fit.design.event_frame.segment_id.eq(name),"age_kyr_bp"].to_numpy(float))[::-1]
+        response_ages=fit.design.event_frame.loc[fit.design.event_frame.segment_id.eq(name),"age_kyr_bp"].to_numpy(float)
+        response_ages=np.sort(response_ages)[::-1]
+        response_elapsed=s.anchor_age_kyr_bp-response_ages
         mask=frame.segment_id.eq(name).to_numpy()
-        node=frame.loc[mask,"age_kyr_bp"].to_numpy(float)
+        node_ages=frame.loc[mask,"age_kyr_bp"].to_numpy(float)
+        # Accumulate intensity from the anchor toward the present. Sort nodes
+        # and their masses together; incoming table row order has no time meaning.
+        order=np.argsort(-node_ages)
+        node_ages=node_ages[order]
         mass=rate[mask]*frame.loc[mask,"weight"].to_numpy(float)
-        reverse_sum=np.cumsum(mass[::-1])[::-1]
-        indices=np.searchsorted(node,responses,side="right")
-        values=np.array([reverse_sum[i] if i<len(node) else 0. for i in indices])
-        events[name]=s.anchor_age_kyr_bp-responses  # Forward kyr from the fixed anchor.
-        cumulative[name]=values
-        tails[name]=float(mass[:indices[-1]].sum() if len(indices) else mass.sum())
+        mass=mass[order]
+        cumulative_mass=np.r_[0.0,np.cumsum(mass)]
+        # u_node < u_event, compared before subtracting the origin for precision.
+        indices=np.searchsorted(-node_ages,-response_ages,side="left")
+        events[name]=response_elapsed
+        cumulative[name]=cumulative_mass[indices]
+        tails[name]=float(mass[indices[-1]:].sum() if len(indices) else mass.sum())
     return events,cumulative,tails
 
 

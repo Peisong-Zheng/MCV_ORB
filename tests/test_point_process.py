@@ -55,6 +55,19 @@ def test_event_jump_and_segment_reset():
                     [1, np.exp(-1 / 1.5)])
 
 
+def test_history_preserves_event_limits_when_elapsed_times_round_together():
+    anchor, event = 396.464, 11.402
+    before, after = np.nextafter(event, np.inf), np.nextafter(event, -np.inf)
+    # Subtracting the distant anchor collapses these distinct BP coordinates.
+    assert anchor - before == anchor - event == anchor - after
+    catalogue = np.array([anchor, event + 1, event])
+    prior_history = np.exp(-(catalogue[catalogue > event] - event) / 1.5).sum()
+    query = np.array([after, before, event])
+    actual = exponential_history(query, catalogue, anchor_age=anchor)
+    assert_allclose(actual, [prior_history + 1, prior_history, prior_history], atol=1e-14)
+    assert exponential_history(event, catalogue, anchor_age=anchor) == pytest.approx(prior_history)
+
+
 def test_homogeneous_likelihood_and_mle_include_event_free_tail():
     nodes, weights = gauss_legendre_intervals([0, 0.4, 1.5, 2.0, 4.0])
     events = np.ones((3, 1))
@@ -173,6 +186,9 @@ def test_poisson_thinning_counts_waiting_times_and_seed():
                   log_background=lambda a: 0, log_upper_bounds=[0], history_beta=-0.8, tau=1.5)
     assert_allclose(simulate_segment_events(**kwargs, rng=np.random.default_rng(42)),
                     simulate_segment_events(**kwargs, rng=np.random.default_rng(42)))
+    translated = dict(kwargs, anchor_age=270, young_age=250, breakpoints=[250, 270])
+    assert_allclose(simulate_segment_events(**translated, rng=np.random.default_rng(42)) - 250,
+                    simulate_segment_events(**kwargs, rng=np.random.default_rng(42)), atol=1e-12)
 
 
 def test_thinning_matches_inhibitory_first_waiting_distribution():
@@ -215,6 +231,30 @@ def test_background_interval_bounds_follow_bp_age_order():
         older.append(np.sum(ages[1:] >= 5))
     assert abs(np.mean(younger) - 10) < 0.4
     assert abs(np.mean(older) - 1) < 0.13
+
+
+def test_thinning_clips_bounds_and_passes_bp_ages_to_background():
+    class CandidateStream:
+        def __init__(self):
+            self.waits = iter([0.5, 100, 0.5, 100, 0.5, 100])
+
+        def exponential(self):
+            return next(self.waits)
+
+        def uniform(self):
+            return 0.1
+
+    calls = []
+
+    def log_background(age):
+        calls.append(age)
+        return np.log(2 if age < 4 else 0.5 if age < 6 else 1)
+
+    # Envelopes extend past both ends, with different rates on each interval.
+    ages = simulate_segment_events(8, 2, [-10, 0, 4, 6, 10, 20], log_background,
+                                   np.log([9, 2, 0.5, 1, 9]), 0, 1.5, CandidateStream())
+    assert_allclose(ages, [8, 7.5, 5, 3.75])
+    assert_allclose(calls, ages[1:])
 
 
 def test_envelope_errors_and_zero_rate_are_not_hidden():

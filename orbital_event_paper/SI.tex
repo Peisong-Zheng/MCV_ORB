@@ -74,15 +74,17 @@ These combined control uncertainties describe chronological alignment and dating
 
 \section*{Text S3. Continuous conditional likelihood and null calibration}
 
-For each segment $r$, let $u=0$ be its oldest observed event, with time advancing toward the younger observation boundary $T_r$. We condition on that event and write
+For each segment $r$, let $a$ denote age in kyr BP and $a_{r0}$ the age of its oldest observed event, on which we condition. Elapsed time $u=a_{r0}-a$ advances from zero at that event to $T_r$ at the younger observation boundary. Thus, an earlier event has $a_{rj}>a$, equivalently $u_{rj}<u$. We write
 \begin{align}
  H_r(u)&=\sum_{j:0\leq u_{rj}<u}\exp[-(u-u_{rj})/\tau],\qquad \tau=1.5\ {\rm kyr},\\
  \eta_r^{\rm BG}(u)&=\beta_0+\beta_H H_r(u)+\beta_L L_r(u)+\beta_C C_r(u)+\beta_S S_r,\\
  \eta_r^{\rm full}(u)&=\eta_r^{\rm BG}(u)+\beta_s\sin\phi_r(u)+\beta_c\cos\phi_r(u),\qquad \lambda_r(u)=\exp[\eta_r(u)].
 \end{align}
-Barker omits the segment contrast $S_r$. This conditional-intensity construction allows history and external covariates to enter the same event model \citep{truccolo2005point}. History includes the conditioning event, excludes the event occurring at the evaluation time, and remains separate across the record gap. The kernel has no finite cutoff. Unobserved pre-anchor history is zero in the main analysis; Text~S6 varies that boundary assumption. The constraint $\beta_H\leq0$ represents inhibition after recent events. On finite response intervals it also bounds the intensity by its exogenous background, avoiding positive-feedback escalation.
+Barker omits the segment contrast $S_r$. This conditional-intensity construction allows history and external covariates to enter the same event model \citep{truccolo2005point,kass2014analysis}. Event-history kernels also appear in the self-exciting models of \citet{hawkes1971spectra}; here the kernel enters the log intensity and represents inhibition.
 
-The conditional log likelihood is
+History includes the conditioning event, excludes the event occurring at the evaluation time, and remains separate across the record gap. The kernel has no finite cutoff. Unobserved pre-anchor history is zero in the main analysis. The constraint $\beta_H\leq0$ represents inhibition after recent events. On finite response intervals it also bounds the intensity by its exogenous background, avoiding positive-feedback escalation. The decay time, sign constraint and initialization are working assumptions; Text~S6 varies decay and initialization.
+
+The conditional log likelihood \citep[Chapter~7]{daley2003introduction} is
 \begin{equation}
  \ell=\sum_r\left\{\sum_{i=1}^{N_r}\eta_r(u_{ri})-\int_0^{T_r}\exp[\eta_r(u)]\,du\right\}.
 \end{equation}
@@ -96,7 +98,7 @@ For $A=(\beta_s^2+\beta_c^2)^{1/2}$,
 \end{equation}
 The phase multiplier is $\exp(\beta_s\sin\phi+\beta_c\cos\phi)$ at fixed background and history; phase is unidentified at $A=0$. Rayleigh statistics describe unconditional inventory-phase concentration separately \citep{mardia2000directional}. With $N=\sum_rN_r$, $G=(\ell_{\rm full}-\ell_{\rm BG})/(N\ln2)$ measures in-sample gain in bits/event. $LR=2(\ell_{\rm full}-\ell_{\rm BG})$ uses a nominal $\chi^2_2$ reference for the added phase block. Positive $G$ alone is insufficient evidence. AIC is $-2\ell+2k$ for $k$ fitted coefficients, giving full-minus-BG AIC $4-LR$ on identical support. Its penalty is approximate when a parameter lies at the history constraint.
 
-For each main point-age comparison, 9,999 catalogues are simulated from the fitted BG model \citep{davison1997bootstrap}. Continuous thinning proceeds from old to young under piecewise upper bounds on the exogenous rate; accepted events update inhibitory history immediately. Exact conditioning events, response boundaries and forcing interpolants are fixed. Both models, including nuisance coefficients, are refitted; response totals vary. With $B$ replicates,
+For each main point-age comparison, 9,999 catalogues are simulated from the fitted BG model \citep{davison1997bootstrap}. We simulate continuous event times by thinning \citep{ogata1981simulation}, proceeding from old to young under piecewise upper bounds on the exogenous rate; accepted events update inhibitory history immediately. Exact conditioning events, response boundaries and forcing interpolants are fixed. Both models, including nuisance coefficients, are refitted; response totals vary. With $B$ replicates,
 \begin{equation}
  p_{\rm boot}=\frac{1+\sum_{b=1}^{B}\mathbf1(LR_b^*\geq LR_{\rm obs})}{B+1}.
 \end{equation}
@@ -122,7 +124,7 @@ The approximate joint 95\% coefficient region is
 \begin{equation}
  \{\theta:(\widehat\theta-\theta)'C^{-1}(\widehat\theta-\theta)\leq q_{0.95}\}.
 \end{equation}
-Calibration is centered on the generator, retaining finite-sample bias in $Q_b$. Projecting this region gives phase and rate-ratio ranges and a simultaneous curve envelope. The region excludes the zero-effect pair; a region containing zero would leave phase unidentified. Coverage remains a plug-in bootstrap approximation under the fitted process.
+Calibration is centered on the generator, retaining finite-sample bias in $Q_b$. Projecting this region gives phase and rate-ratio ranges and a simultaneous curve envelope. The region excludes the zero-effect pair; a region containing zero would leave phase unidentified. Coverage remains a plug-in bootstrap approximation under the fitted process \citep{davison1997bootstrap}.
 
 C reports central 95\% raw-refit ranges and pointwise curve percentiles. These include estimator bias and are neither calibrated combined confidence intervals nor posterior intervals. B and C need not nest because their constructions differ. Angles are unwrapped around the nominal $328.1^\circ$ peak; values above $360^\circ$ continue into the next cycle. Main Figure~3 and the main Results report the effect ranges. No corresponding full-model precision analysis was performed for Barker.
 
@@ -152,7 +154,7 @@ The LR04-modulation test adds $L(u)\sin\phi(u)$ and $L(u)\cos\phi(u)$, retaining
 
 \section*{Text S8. History contribution, model fit and additional event loss}
 
-The history test removes $H$ from the full model while retaining background climate and phase. Its null is $\beta_H=0$, with alternative $\beta_H\leq0$ at fixed $\tau=1.5$ kyr. Because zero is a parameter boundary, we calibrate the likelihood ratio with 4,999 no-history simulations and refits per catalogue, rather than a usual $\chi^2_1$ reference. The observed history likelihood ratios are 8.107 (primary) and 7.722 (Barker); plus-one p values are 0.026 and 0.012, respectively. This comparison supports a history contribution within the chosen inhibitory family; it does not identify a particular physical recovery mechanism.
+The history test removes $H$ from the full model while retaining background climate and phase. Its null is $\beta_H=0$, with alternative $\beta_H\leq0$ at fixed $\tau=1.5$ kyr. Because the null lies on a parameter boundary, the usual $\chi^2_1$ reference need not apply \citep{self1987asymptotic}. We therefore calibrate the likelihood ratio with 4,999 no-history simulations and refits per catalogue. The observed history likelihood ratios are 8.107 (primary) and 7.722 (Barker); plus-one p values are 0.026 and 0.012, respectively. This comparison supports a history contribution within the chosen inhibitory family; it does not identify a particular physical recovery mechanism.
 
 For full-model fit, we rescale completed inter-event intervals within each segment \citep{brown2002rescaling}:
 \begin{equation}

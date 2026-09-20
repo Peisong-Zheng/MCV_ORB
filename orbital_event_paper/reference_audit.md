@@ -121,3 +121,17 @@
 最早保留的处理说明见 `archive/MIS6_three_record_composite_2026-09-05/docs/plans/2026-09-04-mis6-event-age-uncertainty.md`，原实现已包括对上下限排序、必要时扩至包含标称年代、相同年代保留最外界限。当前 notebook 和 provenance 继承这一处理。原数据实际上没有上下限颠倒的行；端点排序是防御性处理。共有 110 个重复年代坐标、277 行，对应去重后 4,077 个年代。
 
 **对研究事件的影响。** 16 个 MF 事件在全部九组设置下的 144 个定时点，其 `source_bound_repair_applied` 都是 False。独立插值核对确认，是否扩展原始界限、以及重复年代取外界限还是均值，都不改变这些定时点的插值界限。因此 S2 删去这段预处理细节，只描述实际用于事件的界限插值、标准差转换和共享扰动。数据处理代码、误差集合及分析结果均未改变。
+
+## 10. 数学方法引用分工（2026-09-19）
+
+在保留 `truccolo2005point` 的基础上新增五个条目。AMiner 用于检索，书籍版本以出版社信息为准，避免误引同名书评。
+
+| Citation key | 使用位置与支持范围 | 核验来源 |
+|---|---|---|
+| `hawkes1971spectra` | S3：历史核的经典先例。原文为自激模型；本文核进入对数强度并表示抑制，不将本文完整模型或一般似然归于该文。 | [Biometrika，58(1)，83–90](https://doi.org/10.1093/biomet/58.1.83) |
+| `daley2003introduction` | 正文及 S3：连续时间条件强度似然。采用 2003 年第二版第一卷，第 7 章，211–287 页。 | [Springer 图书](https://link.springer.com/book/10.1007/b97277)、[第 7 章](https://link.springer.com/chapter/10.1007/0-387-21564-6_7) |
+| `kass2014analysis` | 正文及 S3：历史与外部协变量的条件强度模型。2014 年图书，第 19 章 Point Processes，563–603 页。 | [Springer](https://link.springer.com/book/10.1007/978-1-4614-9602-1) |
+| `ogata1981simulation` | S3：历史依赖点过程的 thinning 原理，不声称逐步复现特定的自适应算法。 | [原文](https://bemlar.ism.ac.jp/zhuang/Refs/Refs/ogata1981ieee.pdf)，DOI 10.1109/TIT.1981.1056305 |
+| `self1987asymptotic` | S8：参数边界下常规似然比参考分布可能失效。本文仍使用模拟校准，不套用特定混合卡方分布。 | [JASA，82(398)，605–610](https://doi.org/10.1080/01621459.1987.10478472) |
+
+S5 补引已有的 `davison1997bootstrap`，保留自定义系数区域的近似覆盖表述。Brown、Kling、Mardia–Jupp 和 Holm 分别继续支持时间重标度、模拟—重新拟合诊断、圆统计和多重比较。Kling 的 Poisson 理论保证不外推为本研究抑制模型的保证。历史衰减时间、符号约束和初始化仍是本研究设定；S6 检查的是衰减和初始化。此次没有改变模型、公式、数值结果或人工维护的 Table S1。

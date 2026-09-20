@@ -38,6 +38,10 @@ def test_exact_anchors_define_exposure_without_bins_or_gap(fitted):
         nodes = design.integration_frame.loc[design.integration_frame.segment_id.eq(name)]
         assert nodes.age_kyr_bp.between(segment.response_start_kyr_bp, segment.anchor_age_kyr_bp).all()
         assert nodes.weight.sum() == pytest.approx(segment.anchor_age_kyr_bp - segment.response_start_kyr_bp)
+        for frame in (design.event_frame, design.integration_frame):
+            part = frame.loc[frame.segment_id.eq(name)]
+            np.testing.assert_allclose(part.elapsed_kyr, segment.anchor_age_kyr_bp - part.age_kyr_bp)
+            assert (part.elapsed_kyr > 0).all()
     assert design.weights.sum() == pytest.approx(context.response_exposure_kyr)
     assert (design.weights > 0).all()
 
@@ -57,6 +61,7 @@ def test_strictly_older_exact_history_and_pre_anchor_initialization(context):
         expected = [np.exp(-(ages[ages > age] - age) / context.history_tau_ka).sum() for age in ages]
         np.testing.assert_allclose(frame[c.HISTORY_TERM], expected, atol=1e-14)
         assert frame[c.HISTORY_TERM].iloc[-1] == 0
+        assert frame.elapsed_kyr.iloc[-1] == 0
         initialized = c.evaluate_features(replace(context, initial_history=0.5), ages, name, ages)
         np.testing.assert_allclose(initialized[c.HISTORY_TERM] - frame[c.HISTORY_TERM],
                                    0.5 * np.exp((ages - segment.anchor_age_kyr_bp) / 1.5), atol=1e-15)
@@ -74,6 +79,23 @@ def test_small_age_changes_are_not_coalesced_into_count_patterns(context):
     assert new.loc[event_id, "pre_phase_unwrapped_rad"] != old.loc[event_id, "pre_phase_unwrapped_rad"]
 
 
+def test_alternative_history_terms_keep_event_and_window_boundaries(context):
+    for name, segment in context.segments.items():
+        ages = context.events.loc[context.events.segment_id.eq(name), c.EVENT_AGE_COLUMN].to_numpy()
+        exits = ages - context.history_tau_ka
+        query = np.r_[ages, exits, np.nextafter(exits, -np.inf), np.nextafter(exits, np.inf)]
+        query = query[(query >= segment.response_start_kyr_bp) & (query <= segment.anchor_age_kyr_bp)]
+        frame = c.evaluate_features(context, query, name, ages)
+        gaps, counts = [], []
+        for age in query:
+            earlier = ages[ages > age]
+            gaps.append(earlier.min() - age if len(earlier) else 0)
+            counts.append(np.sum(earlier < age + context.history_tau_ka))
+        np.testing.assert_allclose(frame.time_since_last_event_kyr, gaps, atol=3e-14)
+        np.testing.assert_allclose(frame.log_time_since_last_event, np.log1p(gaps), atol=3e-14)
+        np.testing.assert_array_equal(frame.rectangular_history_count, counts)
+
+
 def test_age_draw_reconditions_anchor_but_preserves_nominal_climate_scales(context):
     events = context.events.copy()
     index = events.loc[events.segment_id.eq("NGRIP"), c.EVENT_AGE_COLUMN].idxmax()
@@ -86,6 +108,12 @@ def test_age_draw_reconditions_anchor_but_preserves_nominal_climate_scales(conte
     result = c.fit_catalogue(events, local, fixed_support=True)
     assert result.summary["n_response_events"] == 53
     assert result.summary["response_exposure_kyr"] == pytest.approx(local.response_exposure_kyr)
+    new = result.design.event_frame.set_index("event_id")
+    old = c.prepare_catalogue(context.events, context).event_frame.set_index("event_id")
+    for name, shift in (("NGRIP", 0.1), ("MIS6", 0)):
+        mask = new.segment_id.eq(name)
+        np.testing.assert_allclose(new.loc[mask, "elapsed_kyr"] - old.loc[mask, "elapsed_kyr"],
+                                   shift, atol=3e-14)
 
 
 def test_likelihood_event_sum_integral_and_no_bin_sample_size(fitted):
@@ -110,6 +138,34 @@ def test_rescaling_keeps_terminal_censoring_and_separate_segments(fitted):
         assert np.all(np.diff(cumulative[name]) > 0)
         assert tails[name] >= 0
         assert cumulative[name][-1] + tails[name] == pytest.approx(rate[mask] @ frame.loc[mask, "weight"])
+        response_ages = fitted.context.segments[name].anchor_age_kyr_bp - events[name]
+        node_ages = frame.loc[mask, "age_kyr_bp"].to_numpy()
+        mass = rate[mask] * frame.loc[mask, "weight"].to_numpy()
+        # Independent BP selections check every cumulative interval and the tail.
+        expected = [mass[node_ages > age].sum() for age in response_ages]
+        np.testing.assert_allclose(cumulative[name], expected, rtol=2e-13)
+        assert tails[name] == pytest.approx(mass[node_ages < response_ages[-1]].sum())
+
+    shuffled_design = replace(fitted.design,
+        integration_frame=frame.sample(frac=1, random_state=246).reset_index(drop=True),
+        event_frame=fitted.design.event_frame.sample(frac=1, random_state=975).reset_index(drop=True))
+    shuffled = c.rescaled_event_intervals(replace(fitted, design=shuffled_design))
+    for expected_group, actual_group in zip((events, cumulative, tails), shuffled):
+        for name in fitted.context.segments:
+            np.testing.assert_allclose(actual_group[name], expected_group[name], rtol=2e-13)
+
+
+def test_fitted_rate_curves_retain_history_jump_at_every_event(fitted):
+    rates = c.fitted_rate_table(fitted).set_index(["segment_id", "age_kyr_bp"])
+    for name, part in fitted.design.all_events.groupby("segment_id"):
+        for age in part[c.EVENT_AGE_COLUMN]:
+            after = np.nextafter(age, -np.inf)
+            if after < fitted.context.segments[name].response_start_kyr_bp:
+                continue
+            for model_id, model in (("reduced", fitted.reduced), ("full", fitted.full)):
+                history_beta = model.beta[model.terms.index(c.HISTORY_TERM)]
+                ratio = rates.loc[(name, after), model_id + "_rate"] / rates.loc[(name, age), model_id + "_rate"]
+                assert ratio == pytest.approx(np.exp(history_beta), rel=2e-11)
 
 
 def test_simulation_envelopes_bound_background_inside_intervals(fitted):
