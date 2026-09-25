@@ -46,17 +46,28 @@ conditions at 392.245695897 kyr BP and uses 58 response events. Unknown
 pre-anchor history is fixed to zero; each anchor contributes immediately to
 its younger history. The two definitions have different exposure, so their G
 values are descriptive comparisons rather than a same-support likelihood test.
-Both appear in the main figures; fixed threshold receives no extra bootstrap
-or chronology ensemble.
+Both appear in the main figures. Each definition has a separate phase-test
+bootstrap at nominal ages; only varying threshold has a chronology ensemble.
 
-The varying-threshold phase test uses 9,999 continuous reduced-model simulations
-with fixed anchor and endpoint, dynamic history and refitting of both models.
+Unless stated otherwise, LR comparisons report nominal chi-square p values.
+Each definition also uses 9,999 continuous BG-model simulations to check the
+phase-test calibration, with its own fixed anchor and endpoint, dynamic history
+and refitting of both models. The resulting bootstrap p is `(k + 1) / 10,000`,
+where `k` counts simulations with LR at least as large as observed. The fixed
+threshold run uses seed `20260920`; it does not reuse the varying-threshold null
+distribution. Main paper results report both p values, and paper Figure 2
+displays bootstrap p for both definitions. The separate Barker research figure
+continues to show explicitly labeled nominal p values. These are alternative
+definitions of the same reconstruction, not independent replications.
+
 The age experiment refits all saved combined-age draws with their own exact
 anchors and exposure. History utility, full-model residual checks and extra
 10%/20% response-event deletion are separate experiments. Residual tests use
 simulation/refitting calibration; deletion scenarios do not estimate missing
-source events. The new diagnostics save tables and notes without adding default
-manuscript figures.
+source events. History and residual checks retain their dedicated bootstrap
+tests; Rayleigh p remains a descriptive phase-concentration statistic. Orbital
+comparisons use their specified Holm adjustment of nominal LR p values. These
+diagnostics save tables and notes without adding default manuscript figures.
 
 ## Run and outputs
 
@@ -66,23 +77,40 @@ Run from the workspace root using the project Python environment:
 python Barker2011/Barker2011_event_phase_analysis.py
 python Barker2011/Barker2011_event_age_uncertainty.py
 python Barker2011/Barker2011_event_uncertainty_sensitivity.py
+python Barker2011/Barker2011_effect_uncertainty.py
 python Barker2011/Barker2011_likelihood_bootstrap.py
+python Barker2011/Barker2011_likelihood_bootstrap.py --event-definition fixed_threshold --n-bootstrap 9999 --seed 20260920
 python Barker2011/Barker2011_model_diagnostics.py
 python Barker2011/Barker2011_event_detection_sensitivity.py
 python Barker2011/Barker2011_orbital_driver_sensitivity.py
-python Barker2011/Barker2011_climate_phase_interaction.py
 ```
 
 Existing combined-age realizations can be reused without rerunning the sampler.
+`Barker2011_effect_uncertainty.py` reuses all 10,000 age fits, runs 5,000
+full-model simulations at nominal chronology, and simulates 50 sequences
+from each of 200 distinct age-specific full models. All three use the same
+95% coefficient-ellipse construction and projection as NGRIP–MIS6. Sampling
+gives an approximate conditional confidence region; chronology and combined
+regions describe sensitivity to the assumed age errors. The figure labels
+name these sources directly. Its PDF supplies manuscript Figure S7. Use `--redraw` to regenerate
+the figure from saved replicates; it does not rerun the BG-model significance
+bootstrap or change the existing model-fit diagnostics.
+
 `event_phase_analysis` writes nominal main and `fixed_threshold/` results,
 including source IDs/roles, event phases, fitted rate samples, coefficients,
 likelihood statistics, scaling and support. Other experiments save their own
 replicate and summary tables under `data/processed/<script>/`, figures under
 `figures/<script>/` and explanatory text under `experiment_note/`.
 
-Bootstrap and LR04-interaction exporters can rebuild the paired research PDF
-and synchronize it with the manuscript. Review runs use `--output-root` and,
-where provided, `--no-paper-export` to defer this chain. The shared figure
+The bootstrap script defaults to varying threshold and keeps its existing
+outputs. `--event-definition fixed_threshold` writes into the bootstrap
+experiment's `fixed_threshold/` data and figure subdirectories; the note names
+also distinguish the definition. This separation prevents a fixed-threshold
+run from replacing the varying-threshold calibration.
+
+Bootstrap exporters can rebuild the paired research PDF. Manuscript figure
+synchronization follows the active figure manifest. Review runs use
+`--output-root` and, where provided, `--no-paper-export` to defer this chain. The shared figure
 palette assigns rose to varying threshold and green to fixed threshold;
 absolute-age axes put younger ages on the right.
 

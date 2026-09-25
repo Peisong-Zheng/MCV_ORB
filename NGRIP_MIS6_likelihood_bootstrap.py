@@ -222,7 +222,7 @@ Observed: N={s.n_response_events}, G={s.gain_bits_per_event:.9f} bits/event, LR=
 def empirical_p_value(
     bootstrap_statistics: np.ndarray, observed_statistic: float
 ) -> tuple[float, int]:
-    """Return the conservative plus-one bootstrap p value and exceedance count."""
+    """Return the plus-one bootstrap p value and exceedance count."""
 
     values = np.asarray(bootstrap_statistics, dtype=float)
     if values.ndim != 1 or len(values) == 0 or not np.isfinite(values).all():
@@ -329,8 +329,8 @@ def plot_null_distribution(
     )
     statistics_text = (
         f"Observed LR = {observed:.2f}\n"
-        f"Empirical p = {row['empirical_p_plus_one']:.4g}\n"
-        "Binomial 95% CI\n"
+        f"Bootstrap p = {row['empirical_p_plus_one']:.4g}\n"
+        "95% MC interval\n"
         f"{row['empirical_p_ci95_low']:.4g}–"
         f"{row['empirical_p_ci95_high']:.4g}"
     )

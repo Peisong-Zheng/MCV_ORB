@@ -1,0 +1,7 @@
+scenario,quantity,point_estimate,center,low,high,n,interval_type,phase_identified
+A_chronology,max_min_rate_ratio,3.32341425551,3.32341425551,2.50974189273,4.41494409852,10000,95_joint_working_region_projection,True
+B_sampling,max_min_rate_ratio,3.32341425551,3.32341425551,1.25121511814,8.8360029976,5000,approximate_95_joint_confidence_region_projection,True
+C_joint,max_min_rate_ratio,3.32341425551,3.32341425551,1.23569158473,8.95293600035,10000,95_joint_working_region_projection,True
+A_chronology,preferred_phase_deg,334.234011557,334.234011557,322.029298214,347.836733431,10000,95_joint_working_region_projection,True
+B_sampling,preferred_phase_deg,334.234011557,334.234011557,282.152112448,389.082466655,5000,approximate_95_joint_confidence_region_projection,True
+C_joint,preferred_phase_deg,334.234011557,334.234011557,281.86501745,390.299571088,10000,95_joint_working_region_projection,True

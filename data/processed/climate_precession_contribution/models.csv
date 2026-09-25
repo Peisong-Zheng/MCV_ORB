@@ -1,0 +1,10 @@
+catalogue,model,terms,log_likelihood,AIC,n_parameters,n_response_events,converged,fit_status
+primary,without_precession,intercept;same_type_exponential_history;lr04_scaled;co2_scaled;mis6_segment,-111.241797586,232.483595172,5,53,True,finite_mle
+primary,without_climate,intercept;same_type_exponential_history;mis6_segment;pre_phase_sin;pre_phase_cos,-106.27778359,222.555567179,5,53,True,finite_mle
+primary,full,intercept;same_type_exponential_history;lr04_scaled;co2_scaled;mis6_segment;pre_phase_sin;pre_phase_cos,-102.122857574,218.245715148,7,53,True,finite_mle
+variable,without_precession,intercept;same_type_exponential_history;lr04_scaled;co2_scaled,-183.466463372,374.932926744,4,69,True,finite_mle
+variable,without_climate,intercept;same_type_exponential_history;pre_phase_sin;pre_phase_cos,-183.887487627,375.774975254,4,69,True,finite_mle
+variable,full,intercept;same_type_exponential_history;lr04_scaled;co2_scaled;pre_phase_sin;pre_phase_cos,-178.175223075,368.35044615,6,69,True,finite_mle
+fixed,without_precession,intercept;same_type_exponential_history;lr04_scaled;co2_scaled,-164.98821251,337.97642502,4,58,True,finite_mle
+fixed,without_climate,intercept;same_type_exponential_history;pre_phase_sin;pre_phase_cos,-163.437260584,334.874521168,4,58,True,finite_mle
+fixed,full,intercept;same_type_exponential_history;lr04_scaled;co2_scaled;pre_phase_sin;pre_phase_cos,-160.699850634,333.399701268,6,58,True,finite_mle

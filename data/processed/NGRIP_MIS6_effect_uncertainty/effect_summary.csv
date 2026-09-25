@@ -1,7 +1,7 @@
 scenario,quantity,point_estimate,center,low,high,n,interval_type,phase_identified
-A_chronology,max_min_rate_ratio,7.18286573107,6.43721184534,3.72398883493,9.19786385841,9982,central_95_working_range,
-B_sampling,max_min_rate_ratio,7.18286573107,7.18286573107,1.72826337419,29.8757392877,5000,approximate_95_joint_confidence_region_projection,True
-C_joint,max_min_rate_ratio,7.18286573107,7.86486470853,2.79961866981,27.3740320246,10000,central_95_working_range,
-A_chronology,preferred_phase_deg,328.083682348,328.385042577,311.643034577,342.84053162,9982,central_95_working_range,
+A_chronology,max_min_rate_ratio,7.18286573107,7.18286573107,3.74022120848,14.1360509604,9982,95_joint_working_region_projection,True
+B_sampling,max_min_rate_ratio,7.18286573107,7.18286573107,1.7282633742,29.8757392876,5000,approximate_95_joint_confidence_region_projection,True
+C_joint,max_min_rate_ratio,7.18286573107,7.18286573107,1.69073037401,30.7676127627,10000,95_joint_working_region_projection,True
+A_chronology,preferred_phase_deg,328.083682348,328.083682348,309.149844426,351.276208538,9982,95_joint_working_region_projection,True
 B_sampling,preferred_phase_deg,328.083682348,328.083682348,287.831018373,370.226356369,5000,approximate_95_joint_confidence_region_projection,True
-C_joint,preferred_phase_deg,328.083682348,326.529538911,297.012168734,355.830726045,10000,central_95_working_range,
+C_joint,preferred_phase_deg,328.083682348,328.083682348,287.051685636,375.17101802,10000,95_joint_working_region_projection,True

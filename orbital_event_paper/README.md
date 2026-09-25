@@ -51,9 +51,9 @@ make -C orbital_event_paper pdf
 make -C orbital_event_paper check
 ```
 
-The build draws main Figures 1, 2 and 4 with `paper_summary_figures.py`,
-composes the
-paired bootstrap and LR04-interaction PDFs, copies the manifest-listed figures,
+The build draws main Figures 1 and 2 and supplementary Figure S10 with
+`paper_summary_figures.py`, draws Figure 4 with `Figure_orbital_mechanism.py`,
+copies the manifest-listed figures,
 and compiles both TeX files. It does not refit models, generate new event-age
 ensembles or rewrite prose. After a result changes, numerical statements and
 captions must be checked against the saved CSVs before building.
@@ -75,12 +75,24 @@ also be checked with `python paper_figure_export.py --check` from the root.
 
 `figure_manifest.csv` is authoritative for manuscript numbering. Source names
 remain descriptive. Main Figure 1 displays orbital drivers, events on
-precession, LR04 and CO2. Figure 2 groups fitted full-minus-reduced rates,
-descriptive phase counts and conditional phase multipliers for each catalogue.
-Its rates are evaluated from saved continuous-model coefficients and observed
-histories. Their difference is not local G or an isolated phase contribution.
-Figure 3 distinguishes the three effect-uncertainty constructions; Figure 4
-compares precession with other orbital predictors.
+precession, LR04 and CO2. Figure 2 shows descriptive phase counts, fitted
+expected counts, and conditional phase multipliers for each catalogue.
+Figure 3 distinguishes the three effect-uncertainty constructions. Figure 4
+combines an orthographic Atlantic globe and a sea-ice/ocean section to show
+proposed low-precession pathways through freshwater transport and seasonal heat
+exchange. Cyan ice sheets and white sea ice depict a schematic stadial background.
+The caption distinguishes this backdrop from the possible orbital responses
+and credits the visual inspiration separately from the mechanism sources.
+Its independent script reads a local public-domain Natural Earth coastline
+and saves PDF, editable SVG and PNG; it performs no statistical calculation.
+Figure S6 compares conditional climate and precession contributions;
+S7 applies the Figure 3 effect-precision analysis to Barker varying-threshold
+events. Text S2 reports chronology-sensitive G ranges and nominal significance
+proportions for both catalogues; the former age histograms remain in research
+outputs. Figure S8 tests history decay and initialization, S9 tests climate
+and history response forms, and S10 compares orbital predictors.
+The bootstrap distribution figure remains available in the research outputs;
+the manuscript reports its results in text and Figure 2.
 
 All current absolute-age axes put younger ages on the right; LR04's vertical
 axis is reversed in Figure 1. The catalogue palette is shared through
@@ -89,14 +101,10 @@ fixed green. Phase multipliers mark orbital-index minima/maxima separately
 from fitted event-rate peaks. Captions must name what bands and reference
 lines represent.
 
-Selected source exporters automatically follow this chain:
-
-```text
-analysis script -> source PDF -> Figure_<description>.py -> paper_figure_export.py
-```
-
-Both source PDFs must exist before composition. Staged review runs defer paper
-export. `make sync` composes and copies existing source PDFs without fitting.
+Selected source exporters copy their PDFs through `paper_figure_export.py`
+when the source is listed in the figure manifest. Staged review runs defer
+paper export. `make sync` redraws the mechanism schematic and copies mapped
+source PDFs without fitting.
 Main summary compositions require `paper_summary_figures.py` or `make pdf`
 after their saved inputs change. Table S1 combines the 21 MIS6 ages assigned
 in this study with their minimum and maximum timing offsets across the nine

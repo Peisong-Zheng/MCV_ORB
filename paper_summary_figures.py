@@ -1,4 +1,4 @@
-"""Compose manuscript Figs. 1, 2 and 4 from saved analysis tables.
+"""Compose manuscript Figs. 1, 2 and S10 from saved analysis tables.
 
 Run from the project root. This script only draws figures: event ages, phase
 coefficients, bootstrap results and age-MC summaries are never refitted.
@@ -28,6 +28,8 @@ RESULT_ROOT = PROJECT
 FIGURES = PROJECT / "figures/paper_summary"
 PRIMARY = Path("data/processed/NGRIP_MIS6_event_phase_analysis")
 BARKER = Path("Barker2011/data/processed/Barker2011_event_phase_analysis")
+PRIMARY_BOOTSTRAP = Path("data/processed/NGRIP_MIS6_likelihood_bootstrap")
+BARKER_BOOTSTRAP = Path("Barker2011/data/processed/Barker2011_likelihood_bootstrap")
 PRIMARY_ORBITAL = Path("data/processed/NGRIP_MIS6_orbital_driver_sensitivity")
 BARKER_ORBITAL = Path("Barker2011/data/processed/Barker2011_orbital_driver_sensitivity")
 DRIVERS = {"ecc": ("Eccentricity", "#CC79A7"),
@@ -173,12 +175,37 @@ def phase_inputs(folder, phase_column, color, label, fixed=False):
                 color=color, label=label, fixed=fixed, coefficients=saved_coefficients)
 
 
+def bootstrap_p_for_fit(folder, fitted_summary):
+    """Use only a completed bootstrap for the same catalogue and observed fit."""
+    summary = read_table(folder / "summary.csv").iloc[0]
+    if summary.n_failed_replicates or summary.n_valid_replicates != summary.n_bootstrap:
+        raise ValueError(f"Incomplete bootstrap: {folder}")
+    for name in ("model_version", "n_source_events", "n_response_events"):
+        if summary[name] != fitted_summary[name]:
+            raise ValueError(f"Bootstrap and phase fit disagree on {name}: {folder}")
+    if "event_definition" in fitted_summary.index:
+        if summary.event_definition != fitted_summary.event_definition:
+            raise ValueError(f"Bootstrap uses a different event definition: {folder}")
+    for name in ("LR_statistic", "response_exposure_kyr"):
+        if not np.isclose(summary[name], fitted_summary[name], rtol=1e-8, atol=1e-8):
+            raise ValueError(f"Bootstrap and phase fit disagree on {name}: {folder}")
+    probability = float(summary.empirical_p_plus_one)
+    expected = (1 + summary.n_bootstrap_exceeding_or_equal_observed) / (1 + summary.n_bootstrap)
+    if not np.isfinite(probability) or not 0 < probability <= 1 or not np.isclose(probability, expected):
+        raise ValueError(f"Invalid plus-one bootstrap p: {folder}")
+    return probability
+
+
 def plot_phase_comparison():
     """Compare raw phase counts overlaid with fitted full/reduced expected counts."""
     primary = phase_inputs(PRIMARY, "pre_phase_rad", CATALOGUE_COLORS["primary"], "NGRIP–MIS6")
     variable = phase_inputs(BARKER, "phase_rad", CATALOGUE_COLORS["variable"], "Varying threshold")
     fixed = phase_inputs(BARKER / "fixed_threshold", "phase_rad", CATALOGUE_COLORS["fixed"],
                          "Fixed threshold", fixed=True)
+    # All three annotations use their own BG-null calibration at nominal ages.
+    for record, folder in ((primary, PRIMARY_BOOTSTRAP), (variable, BARKER_BOOTSTRAP),
+                           (fixed, BARKER_BOOTSTRAP / "fixed_threshold")):
+        record["bootstrap_p"] = bootstrap_p_for_fit(folder, record["summary"])
     assert [len(d["phases"]) for d in (primary, variable, fixed)] == [55, 70, 59]
     primary["sectors"] = read_table(PRIMARY / "phase_sector_fit.csv")
     variable["sectors"] = read_table(BARKER / "phase_sector_fit.csv")
@@ -187,7 +214,7 @@ def plot_phase_comparison():
     fig = plt.figure(figsize=(180 / 25.4, 132 / 25.4))
     grid = fig.add_gridspec(2, 2, width_ratios=(1, 1.35), height_ratios=(1, 1),
                            hspace=0.55, wspace=0.43,
-                           left=0.11, right=0.98, bottom=0.18, top=0.96)
+                           left=0.11, right=0.98, bottom=0.18, top=0.90)
     edges = np.linspace(0, 2 * np.pi, 19)  # 20-degree sectors, as in the earlier paper.
     histograms = [np.histogram(r["phases"], edges)[0] for r in (primary, variable, fixed)]
     radial_max = 2 * np.ceil(max(h.max() for h in histograms) / 2)
@@ -257,7 +284,7 @@ def plot_phase_comparison():
         for index, record in enumerate(records):
             stats = record["summary"]
             response.text(0.035, 0.97 - 0.18 * index,
-                          f"G = {stats.gain_bits_per_event:.3f}; LR p = {stats.nominal_LR_p:.4f}\n"
+                          f"G = {stats.gain_bits_per_event:.3f}; Bootstrap p = {record['bootstrap_p']:.4f}\n"
                           f"Peak {stats.pre_phase_preferred_deg:.1f}°; max/min {stats.pre_phase_rate_ratio_max_vs_min:.2f}",
                           transform=response.transAxes, va="top", fontsize=7, color=record["color"],
                           linespacing=1.25, bbox=dict(facecolor="white", edgecolor="none", alpha=0.9, pad=1))

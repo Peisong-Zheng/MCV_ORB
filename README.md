@@ -12,7 +12,8 @@ The primary catalogue combines 34 NGRIP Greenland Interstadial starts
 16 from Melchsee–Frutt (Fohlmeister et al., 2023) and five from Sofular
 (Held et al., 2024). Barker et al. (2011) SpeleoAge events provide a separate
 longer-record comparison. The fixed-threshold Barker catalogue is a nominal-age
-definition sensitivity and has no separate chronology ensemble or bootstrap.
+definition sensitivity with its own phase-test bootstrap, but no separate
+chronology ensemble.
 
 | Segment/catalogue | Inventory events | Observation support, kyr BP | Conditional response support, kyr BP | Response events |
 |---|---:|---:|---:|---:|
@@ -51,25 +52,34 @@ and forcing breakpoints. Integration precision is a numerical check.
 
 The reported log-likelihood gain is
 `G = (loglik_Pre - loglik_BG) / (N_response * log(2))`, in bits/event.
-It describes sample fit improvement; significance is assessed with the LR
-bootstrap. AIC compares fitted specifications. No integration-node count is
+It describes sample fit improvement. Unless stated otherwise, LR comparisons
+report nominal p values from the asymptotic chi-square distribution. BG-model
+bootstrap simulations check the main phase results against this approximation;
+the paper reports both calibrations and Figure 2 displays bootstrap p values.
+AIC compares fitted specifications. No integration-node count is
 treated as a statistical sample size. Phase zero denotes a precession-index
 minimum and 180° a maximum. The fitted phase curve is a conditional rate
 multiplier at fixed background and history, not the orbital waveform.
 
 ## Uncertainty and model checks
 
-- **Phase test:** 9,999 reduced-model simulations for each main catalogue.
+- **Phase test:** 9,999 BG-model simulations for NGRIP–MIS6 and for each
+  Barker event definition at nominal ages.
   Exact anchors, forcing and endpoints remain fixed; response events are
   simulated continuously with dynamic history. Both models are refitted.
+  Bootstrap p is `(k + 1) / 10,000`, where `k` is the number of simulated LR
+  statistics at least as large as the observed LR. These are finite-sample
+  calibration sensitivities, not extra chronology realizations. The two Barker
+  definitions share source events and are not independent replications.
 - **Chronology:** the existing 10,000-member source-age ensembles are reused.
   Each realization updates actual event ages, its anchor, response exposure and
   history, retaining nominal climate scaling. Unsupported draws are recorded
   without clipping or replacement. Their ranges describe chronology sensitivity.
 - **Effect precision:** primary age-only ranges are compared with 5,000 nominal
   full-model simulations and 200 chronology generators with 50 simulations
-  each. Sampling confidence-region projections and joint working ranges have
-  distinct interpretations.
+  each. All three use matching 95% coefficient-ellipse projections. Only
+  nominal-age sampling gives an approximate conditional confidence region;
+  chronology and combined regions describe sensitivity to assumed age errors.
 - **History and fit:** the history contribution is tested conditional on phase
   using a separate null bootstrap. Full-model rescaled intervals and adjacent
   residual dependence are calibrated by simulation and refitting, retaining
@@ -80,8 +90,11 @@ multiplier at fixed background and history, not the orbital waveform.
   catalogue. These are extra-deletion stress tests, separate from age errors;
   they do not infer undetected events or a detection probability.
 - **Specifications:** fixed history decay times, pre-anchor history, background
-  shape, history alternatives, orbital drivers and LR04–phase interaction are
-  checked separately. Additional tests do not inherit the main bootstrap p.
+  shape, history alternatives and orbital drivers are checked separately.
+  Additional tests do not inherit the main bootstrap p.
+  Orbital comparisons retain their specified Holm adjustment of nominal LR
+  p values. Rayleigh p describes unadjusted phase concentration and is separate
+  from the conditional-model tests.
 
 Barker and the primary records share some chronology dependencies. Conditional
 associations and chronology perturbations cannot identify a unique physical
@@ -94,6 +107,8 @@ trigger or remove source-age tuning assumptions.
 | `NGRIP/`, `MIS6/` | Source preparation, event chronology, data and source figures |
 | `Barker2011/` | Separate SpeleoAge analysis and sensitivities |
 | `NGRIP_MIS6_*.py` | Combined nominal, uncertainty and sensitivity analyses |
+| `climate_precession_contribution.py` | Conditional climate versus precession gains for all three catalogues; figure synchronized to the manuscript, with separate research notes |
+| `Figure_orbital_mechanism.py` | Geographic mechanism schematic for Figure 4; no model fitting |
 | `toolbox/point_process.py` | Continuous likelihood, strict event history and thinning |
 | `toolbox/combined_likelihood.py` | Shared forcing, exact supports and catalogue fits |
 | `data/processed/`, `experiment_note/` | Saved research results and explanatory notes |
@@ -110,7 +125,10 @@ python NGRIP_MIS6_event_uncertainty_sensitivity.py
 python Barker2011/Barker2011_event_uncertainty_sensitivity.py
 python NGRIP_MIS6_likelihood_bootstrap.py
 python Barker2011/Barker2011_likelihood_bootstrap.py
+python Barker2011/Barker2011_likelihood_bootstrap.py --event-definition fixed_threshold --n-bootstrap 9999 --seed 20260920
+python NGRIP/ngrip_transition_phase_sensitivity.py --workers 3
 python NGRIP_MIS6_effect_uncertainty.py
+python Barker2011/Barker2011_effect_uncertainty.py
 python NGRIP_MIS6_model_diagnostics.py
 python Barker2011/Barker2011_model_diagnostics.py
 python NGRIP_MIS6_event_detection_sensitivity.py
@@ -119,8 +137,7 @@ python NGRIP_MIS6_likelihood_design_sensitivity.py
 python NGRIP_MIS6_likelihood_model_sensitivity.py
 python NGRIP_MIS6_orbital_driver_sensitivity.py
 python Barker2011/Barker2011_orbital_driver_sensitivity.py
-python NGRIP_MIS6_climate_phase_interaction.py
-python Barker2011/Barker2011_climate_phase_interaction.py
+python climate_precession_contribution.py
 make -C orbital_event_paper pdf
 make -C orbital_event_paper check
 ```
@@ -143,6 +160,9 @@ reference year remains an explicit BP1950 working assumption.
 
 The complete pre-migration project is frozen in
 [archive/pre_continuous_time_2026-09-12](archive/pre_continuous_time_2026-09-12/README.md).
+The retired LR04–phase modulation experiment, including its code, results and
+figures, is preserved in
+[its archive](archive/LR04_phase_interaction_2026-09-23/README.md).
 Current validation and result status are recorded in the
 [continuous-time migration audit](docs/reviews/continuous-time-migration-2026-09-12.md).
 Earlier review reports retain their historical numbers. Author declarations and

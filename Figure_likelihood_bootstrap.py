@@ -40,7 +40,7 @@ def build_figure(project_root=PROJECT_ROOT):
                          "pdf.fonttype": 42}):
         overlay = plt.figure(figsize=(width / 72, height / 72))
         overlay.patch.set_alpha(0)
-        for index, heading in enumerate(("NGRIP–MIS6", "Barker 2011")):
+        for index, heading in enumerate(("NGRIP–MIS6", "Barker varying threshold")):
             overlay.text((index * (panel_width + gap) + 3) / width,
                          (height - 10) / height, f"({'ab'[index]})",
                          fontsize=PANEL_FONT_SIZE, fontfamily=PANEL_FONT_FAMILY, weight="bold")

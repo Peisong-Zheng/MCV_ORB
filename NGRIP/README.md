@@ -2,7 +2,7 @@
 
 这里准备 Rasmussen et al. (2014) 的 69 个事件边界：34 个 GI 增暖起点、
 35 个 GS 降温起点。联合研究只使用 34 个 GI；GS 保留在年代抽样中，
-用于约束整个事件序列的地层顺序。
+用于约束整个事件序列的地层顺序，并用于下述冷暖转换方向比较。
 
 ## 两步运行
 
@@ -136,6 +136,39 @@ Moseley et al. (2020) §5.2 的原文结论是外推到 120 ka 时约达 4.5%。
 限制仍适用，详见项目方法说明。
 
 迁移及一致性核验见 [2026-09-07 核验记录](../docs/reviews/ngrip-simplification-2026-09-07.md)。
+
+## 暖转冷与冷转暖的岁差相位比较
+
+从项目根目录运行：
+
+```bash
+python NGRIP/ngrip_transition_phase_sensitivity.py --workers 3
+```
+
+也可在 `NGRIP/` 目录运行 `python ngrip_transition_phase_sensitivity.py`。
+一个脚本分别分析 GS 降温和 GI 增暖，复用正文的连续时间拟合、BG 零模型
+bootstrap 及年代敏感性函数。每类使用 9,999 个 bootstrap 序列和已有的
+10,000 条 combined 年代样本，不再生成年代扰动。
+
+两类都使用 12–123 kyr BP 观察范围，各自最老事件作条件起点，因此分别拟合
+34 个降温事件和 33 个增暖事件。历史只包含同方向先前事件；衰减时间为
+1.5 kyr，系数限制为非正。每类名义目录的气候缩放在后续模拟和年代分析中
+保持固定。年龄越界样本保留记录但不参与拟合，不截断或补抽。
+
+`data/processed/ngrip_transition_phase_sensitivity/` 保存：
+
+- `summary.csv`：名义 G、峰值、LR p、bootstrap p 及模拟计数。
+- `age_summary.csv`：有效样本数、越界数、名义 p<0.05 的比例和年代敏感性范围。
+- `bootstrap_replicates.csv`、`age_realizations.csv`：各次拟合结果；后者的
+  `realization_id` 对应原始年代样本，没有复制事件年代矩阵。
+- `nominal_events.csv`、`nominal_coefficients.csv`：事件角色和拟合系数。
+- `parameters_and_provenance.csv`：窗口、缩放、参数、随机种子和输入哈希。
+
+方法和结果见
+[`experiment_note/ngrip_transition_phase_sensitivity_Methods_and_results.txt`](experiment_note/ngrip_transition_phase_sensitivity_Methods_and_results.txt)。
+年代敏感性比例使用有效样本作分母，所比较的是**名义 LR p**，不是对每条
+年代样本再做 bootstrap。冷暖事件来自同一记录并交替发生，相似相位不能当作
+两份独立验证。旧分箱分析继续保留在 `archive/standalone_and_proxy_pi_2026-09-05/`。
 
 ## 主要来源
 

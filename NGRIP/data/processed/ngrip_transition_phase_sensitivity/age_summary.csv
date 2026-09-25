@@ -1,0 +1,3 @@
+event_type,n_realizations,n_valid,n_outside_support,n_numerical_failures,n_nominal_p_below_0p05,fraction_nominal_p_below_0p05,gain_bits_per_event_q025,gain_bits_per_event_median,gain_bits_per_event_q975,pre_phase_preferred_deg_q025,pre_phase_preferred_deg_median,pre_phase_preferred_deg_q975
+cooling,10000,9263,737,0,5433,0.586527043075,0.044539081949,0.139749897549,0.235402077273,308.044960346,332.461087079,350.942905044
+warming,10000,9982,18,0,8035,0.804948908034,0.0630160219696,0.1805967485,0.267823132283,302.887457036,328.108720065,355.125992428

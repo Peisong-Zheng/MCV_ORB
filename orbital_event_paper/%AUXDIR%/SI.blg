@@ -4,44 +4,44 @@ The top-level auxiliary file: SI.aux
 The style file: agu.bst
 Database file #1: reference.bib
 Reallocated wiz_functions (elt_size=4) to 6000 items from 3000.
-You've used 20 entries,
+You've used 22 entries,
             3075 wiz_defined-function locations,
-            1204 strings with 14669 characters,
-and the built_in function-call counts, 19358 in all, are:
-= -- 2075
-> -- 852
-< -- 8
-+ -- 446
-- -- 204
-* -- 1275
-:= -- 1813
-add.period$ -- 20
-call.type$ -- 20
-change.case$ -- 122
-chr.to.int$ -- 19
-cite$ -- 60
-duplicate$ -- 1947
-empty$ -- 1039
-format.name$ -- 264
-if$ -- 3899
+            1221 strings with 14911 characters,
+and the built_in function-call counts, 20619 in all, are:
+= -- 2230
+> -- 835
+< -- 11
++ -- 442
+- -- 201
+* -- 1342
+:= -- 1921
+add.period$ -- 22
+call.type$ -- 22
+change.case$ -- 127
+chr.to.int$ -- 21
+cite$ -- 66
+duplicate$ -- 2117
+empty$ -- 1137
+format.name$ -- 265
+if$ -- 4146
 int.to.chr$ -- 2
 int.to.str$ -- 1
-missing$ -- 215
-newline$ -- 67
-num.names$ -- 80
-pop$ -- 865
+missing$ -- 230
+newline$ -- 73
+num.names$ -- 88
+pop$ -- 888
 preamble$ -- 1
-purify$ -- 104
+purify$ -- 107
 quote$ -- 0
-skip$ -- 1145
+skip$ -- 1240
 stack$ -- 0
-substring$ -- 691
-swap$ -- 1607
+substring$ -- 759
+swap$ -- 1754
 text.length$ -- 0
 text.prefix$ -- 0
 top$ -- 0
-type$ -- 174
+type$ -- 192
 warning$ -- 0
-while$ -- 103
+while$ -- 115
 width$ -- 0
-write$ -- 240
+write$ -- 264

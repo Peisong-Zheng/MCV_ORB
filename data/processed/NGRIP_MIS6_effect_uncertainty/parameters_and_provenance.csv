@@ -22,10 +22,11 @@ elapsed_seconds,143.73211875010747
 generator,fitted continuous full model; event-driven exponential history
 initialization,exact oldest event fixed; earlier history zero; independent segments
 C_support,selected chronology determines its own anchor; younger endpoints remain fixed
-B_interval,bootstrap-error-calibrated 2D ellipse; approximate joint confidence projection
-C_interval,central raw-refit range; neither posterior nor calibrated confidence interval
+B_interval,approximate_95_joint_confidence_region_projection
+C_interval,95_joint_working_region_projection
 C_outer,uniform valid chronologies without replacement; equal inner weights
 failures,retain each original replicate; withhold intervals if failures remain
 python,3.13.5
 numpy,2.1.3
 scipy,1.15.3
+A_interval,95_joint_working_region_projection

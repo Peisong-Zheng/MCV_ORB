@@ -1,0 +1,74 @@
+event_type,parameter,value
+cooling,model_version,continuous_exponential_inhibition_2026-09-12
+cooling,age_epoch,BP1950
+cooling,history_tau_kyr,1.5
+cooling,history_domain,beta_H <= 0
+cooling,history_events,same transition type only
+cooling,initial_unobserved_history,0.0
+cooling,quadrature_order,4
+cooling,seed,20260921
+cooling,n_bootstrap,9999
+cooling,n_workers,3
+cooling,n_age_realizations,10000
+cooling,reduced_terms,same_type_exponential_history + lr04_scaled + co2_scaled
+cooling,full_terms,same_type_exponential_history + lr04_scaled + co2_scaled + pre_phase_sin + pre_phase_cos
+cooling,age_rejections,outside observation support; no truncation or replacement
+cooling,p_rule,bootstrap: (1+exceedances)/(B+1); age fraction: nominal LR p<0.05 among valid fits
+cooling,segment_id,NGRIP
+cooling,observation_start_kyr_bp,12.0
+cooling,observation_end_kyr_bp,123.0
+cooling,response_start_kyr_bp,12.0
+cooling,response_end_kyr_bp,119.09
+cooling,anchor_age_kyr_bp,119.09
+cooling,lr04_mean,4.26190007003455
+cooling,lr04_min,3.2973
+cooling,lr04_max,5.02
+cooling,lr04_range,1.7226999999999997
+cooling,co2_mean,222.04484225522737
+cooling,co2_min,180.565516782075
+cooling,co2_max,277.72
+cooling,co2_range,97.15448321792502
+warming,model_version,continuous_exponential_inhibition_2026-09-12
+warming,age_epoch,BP1950
+warming,history_tau_kyr,1.5
+warming,history_domain,beta_H <= 0
+warming,history_events,same transition type only
+warming,initial_unobserved_history,0.0
+warming,quadrature_order,4
+warming,seed,20260922
+warming,n_bootstrap,9999
+warming,n_workers,3
+warming,n_age_realizations,10000
+warming,reduced_terms,same_type_exponential_history + lr04_scaled + co2_scaled
+warming,full_terms,same_type_exponential_history + lr04_scaled + co2_scaled + pre_phase_sin + pre_phase_cos
+warming,age_rejections,outside observation support; no truncation or replacement
+warming,p_rule,bootstrap: (1+exceedances)/(B+1); age fraction: nominal LR p<0.05 among valid fits
+warming,segment_id,NGRIP
+warming,observation_start_kyr_bp,12.0
+warming,observation_end_kyr_bp,123.0
+warming,response_start_kyr_bp,12.0
+warming,response_end_kyr_bp,115.32
+warming,anchor_age_kyr_bp,115.32
+warming,lr04_mean,4.289832984901278
+warming,lr04_min,3.668400000000001
+warming,lr04_max,5.02
+warming,lr04_range,1.3515999999999986
+warming,co2_mean,220.11953884797975
+warming,co2_min,180.565516782075
+warming,co2_max,276.58075162488836
+warming,co2_range,96.01523484281336
+both,sha256:NGRIP/data/processed/ngrip_warming_cooling_starts.csv,fbc910e83506bf5b0f53c09940aa6dd2ef44b2594b21f3154b30d2e16c1ef2ae
+both,sha256:NGRIP/data/processed/ngrip_event_age_uncertainty/ngrip_event_age_realizations.csv,d252b191da46832a5bb41f0d336bdf153935415dc7f1812ab564837ac606b170
+both,sha256:data/curated/observation_segments.csv,9a7604971abf0b0b36579e6142cb60c53318e2a3b0ca1eab83321bd73775e798
+both,sha256:NGRIP/ngrip_transition_phase_sensitivity.py,62416d69aa9af616114636094a6b044a8f82cb2b5eb30ff0d2ed13eebcd163f5
+both,sha256:NGRIP_MIS6_likelihood_bootstrap.py,7c7c11573b43bee741e40236da7ad31ca761b24c198209e84cdc86e65e7ac780
+both,sha256:toolbox/combined_likelihood.py,bcf2a29ff9b193c17af692e25038471221563d34980fa671c9e12d73e3826dfc
+both,sha256:toolbox/age_sensitivity.py,2f43278264c812adf216b849ce3bf5655b2b7a3bbeab8334c0e2b1dce2fa0530
+both,sha256:toolbox/point_process.py,ace63275f66363d05ee4d1cc3eddfb32552c31a787ae89a0d89f00c55a4a3f0a
+both,sha256:toolbox/model_stats.py,9b889d3cdad9ebd18e0e18b6b93c603910539dca3cf04e32a873ad07d0b62150
+both,sha256:toolbox/orbital_phase.py,ba6c331c2d460fbd37767722b6e6a4d42c7ddf0f00e5a3836aa6138680f9b04e
+both,sha256:toolbox/event_inputs.py,a31a9dff581e4ff144a4638e14ea13727c27db232662b08c858e55a2754b5a49
+both,sha256:toolbox/project_config.py,179107e55fd5cb07a173c1dece47f262431119f729aee702a8f8ce366676a1d7
+both,sha256:data/raw/lr04.xlsx,85f7de1f50879268bac33d217f34665062fb99b07553a69f1d976b20a9058e1f
+both,sha256:data/raw/composite_co2.xlsx,06186a4bbaf68e98a4ca2a36da97bdce40d6f80a0106043a07a20d707f4cf2fe
+both,sha256:data/raw/pre_1000_60_inter100.txt,e0d10be76c4aaa543006e472dd07b769a2b836dc0bd09c591dcbc5c8729aeae2

@@ -1,3 +1,0 @@
-model_id,terms,n_parameters,converged,fit_valid,invalid_reason,log_likelihood,AIC,pre_phase_preferred_deg,pre_phase_rate_ratio_max_vs_min,n_events,exposure_kyr,fit_status
-full,same_type_exponential_history;lr04_scaled;co2_scaled;pre_phase_sin;pre_phase_cos,6,True,True,,-178.17522307502304,368.3504461500461,334.2340088073576,3.323414215810836,69,396.46426387771527,finite_mle
-interaction,same_type_exponential_history;lr04_scaled;co2_scaled;pre_phase_sin;pre_phase_cos;lr04_phase_sin;lr04_phase_cos,8,True,True,,-175.6178324611359,367.2356649222718,341.9642240662443,2.9480326866980318,69,396.46426387771527,finite_mle

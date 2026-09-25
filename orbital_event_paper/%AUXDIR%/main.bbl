@@ -1,4 +1,4 @@
-\begin{thebibliography}{29}
+\begin{thebibliography}{34}
 \providecommand{\natexlab}[1]{#1}
 \expandafter\ifx\csname urlstyle\endcsname\relax
   \providecommand{\doi}[1]{doi:\discretionary{}{}{}#1}\else
@@ -28,6 +28,11 @@ Corrick, E.~C., R.~N. Drysdale, J.~C. Hellstrom, E.~Capron, S.~O. Rasmussen,
   X.~Zhang, D.~Fleitmann, I.~Couchoud, and E.~Wolff, Synchronous timing of
   abrupt climate changes during the last glacial period, \textit{Science},
   \textit{369}(6506), 963--969, \doi{10.1126/science.aay5538}, 2020.
+
+\bibitem[{\textit{Daley and Vere-Jones}(2003)}]{daley2003introduction}
+Daley, D.~J., and D.~Vere-Jones, \textit{An Introduction to the Theory of Point
+  Processes: Volume {I}: Elementary Theory and Methods}, Probability and Its
+  Applications, 2nd ed., Springer, New York, \doi{10.1007/b97277}, 2003.
 
 \bibitem[{\textit{Dansgaard et~al.}(1993)}]{dansgaard1993evidence}
 Dansgaard, W., et~al., Evidence for general instability of past climate from a
@@ -80,9 +85,20 @@ Held, F., H.~Cheng, R.~L. Edwards, O.~T{\"u}ys{\"u}z, K.~Ko{\c{c}}, and
   Communications}, \textit{15}(1), 1183, \doi{10.1038/s41467-024-45507-5},
   2024.
 
+\bibitem[{\textit{Hodell et~al.}(2023)}]{hodell20231}
+Hodell, D.~A., et~al., A 1.5-million-year record of orbital and millennial
+  climate variability in the {North Atlantic}, \textit{Climate of the Past},
+  \textit{19}(3), 607--636, \doi{10.5194/cp-19-607-2023}, 2023.
+
 \bibitem[{\textit{Holm}(1979)}]{holm1979simple}
 Holm, S., A simple sequentially rejective multiple test procedure,
   \textit{Scandinavian Journal of Statistics}, \textit{6}(2), 65--70, 1979.
+
+\bibitem[{\textit{Kass et~al.}(2014)\textit{Kass, Eden, and
+  Brown}}]{kass2014analysis}
+Kass, R.~E., U.~T. Eden, and E.~N. Brown, \textit{Analysis of Neural Data},
+  Springer Series in Statistics, Springer, New York,
+  \doi{10.1007/978-1-4614-9602-1}, 2014.
 
 \bibitem[{\textit{Kleppin et~al.}(2015)\textit{Kleppin, Jochum, Otto-Bliesner,
   Shields, and Yeager}}]{kleppin2015stochastic}
@@ -90,6 +106,13 @@ Kleppin, H., M.~Jochum, B.~Otto-Bliesner, C.~A. Shields, and S.~Yeager,
   Stochastic atmospheric forcing as a cause of {Greenland} climate transitions,
   \textit{Journal of Climate}, \textit{28}(19), 7741--7763,
   \doi{10.1175/JCLI-D-14-00728.1}, 2015.
+
+\bibitem[{\textit{Kuniyoshi et~al.}(2022)\textit{Kuniyoshi, Abe-Ouchi,
+  Sherriff-Tadano, Chan, and Saito}}]{kuniyoshi2022effect}
+Kuniyoshi, Y., A.~Abe-Ouchi, S.~Sherriff-Tadano, W.-L. Chan, and F.~Saito,
+  Effect of climatic precession on {Dansgaard--Oeschger}-like oscillations,
+  \textit{Geophysical Research Letters}, \textit{49}(6), e2021GL095,695,
+  \doi{10.1029/2021GL095695}, 2022.
 
 \bibitem[{\textit{Laskar et~al.}(2004)\textit{Laskar, Robutel, Joutel,
   Gastineau, Correia, and Levrard}}]{laskar2004long}
@@ -114,19 +137,24 @@ Malmierca-Vallet, I., and L.~C. Sime, Dansgaard--oeschger events in climate
   \textit{Climate of the Past}, \textit{19}(5), 915--942,
   \doi{10.5194/cp-19-915-2023}, 2023.
 
-\bibitem[{\textit{Moseley et~al.}(2020)\textit{Moseley, Sp{\"o}tl,
-  Brandst{\"a}tter, Erhardt, Luetscher, and Edwards}}]{moseley2020nalps19}
-Moseley, G.~E., C.~Sp{\"o}tl, S.~Brandst{\"a}tter, T.~Erhardt, M.~Luetscher,
-  and R.~L. Edwards, {NALPS19}: sub-orbital-scale climate variability recorded
-  in northern {Alpine} speleothems during the last glacial period,
-  \textit{Climate of the Past}, \textit{16}(1), 29--50,
-  \doi{10.5194/cp-16-29-2020}, 2020.
+\bibitem[{\textit{Malmierca-Vallet et~al.}(2024)\textit{Malmierca-Vallet, Sime,
+  Valdes, Klockmann, Vettoretti, and Slattery}}]{malmierca2024impact}
+Malmierca-Vallet, I., L.~C. Sime, P.~J. Valdes, M.~Klockmann, G.~Vettoretti,
+  and J.~Slattery, The impact of {CO$_2$} and climate state on whether
+  {Dansgaard--Oeschger} type oscillations occur in climate models,
+  \textit{Geophysical Research Letters}, \textit{51}(13), e2024GL110,068,
+  \doi{10.1029/2024GL110068}, 2024.
 
-\bibitem[{\textit{Pedro et~al.}(2022)}]{pedro2022dansgaard}
-Pedro, J.~B., et~al., {Dansgaard-Oeschger} and {Heinrich} event temperature
-  anomalies in the {North Atlantic} set by sea ice, frontal position and
-  thermocline structure, \textit{Quaternary Science Reviews}, \textit{289},
-  107,599, \doi{10.1016/j.quascirev.2022.107599}, 2022.
+\bibitem[{\textit{Members: et~al.}(2017)}]{dome2017state}
+Members:, D. F. I. C.~P., et~al., State dependence of climatic instability over
+  the past 720,000 years from antarctic ice cores and climate modeling,
+  \textit{Science advances}, \textit{3}(2), e1600,446, 2017.
+
+\bibitem[{\textit{Mitsui and Crucifix}(2017)}]{mitsui2017influence}
+Mitsui, T., and M.~Crucifix, Influence of external forcings on abrupt
+  millennial-scale climate changes: a statistical modelling study,
+  \textit{Climate Dynamics}, \textit{48}, 2729--2749,
+  \doi{10.1007/s00382-016-3235-z}, 2017.
 
 \bibitem[{\textit{Rasmussen et~al.}(2022)\textit{Rasmussen, Svensson, and
   Vinther}}]{rasmussen2022gicc05}
@@ -141,20 +169,17 @@ Rasmussen, S.~O., et~al., A stratigraphic framework for abrupt climatic changes
   \textit{Quaternary Science Reviews}, \textit{106}, 14--28,
   \doi{10.1016/j.quascirev.2014.09.007}, 2014.
 
-\bibitem[{\textit{Southon}(2004)}]{southon2004radiocarbon}
-Southon, J., A radiocarbon perspective on {Greenland} ice-core chronologies:
-  Can we use ice cores for {$^{14}$C} calibration?, \textit{Radiocarbon},
-  \textit{46}(3), 1239--1259, \doi{10.1017/S0033822200033129}, 2004.
+\bibitem[{\textit{Snoll et~al.}(2025)\textit{Snoll, Ivanovic, Gregoire,
+  Sherriff-Tadano, and Rom{\'e}}}]{snoll2025competing}
+Snoll, B., R.~Ivanovic, L.~J. Gregoire, S.~Sherriff-Tadano, and Y.~Rom{\'e},
+  Competing effects of sea ice change control the pace and amplitude of
+  millennial-scale climate oscillations, \textit{Critical Insights in Climate
+  Change}, \textit{1}(1), 2557,072, \doi{10.1080/29931495.2025.2557072}, 2025.
 
 \bibitem[{\textit{Sun et~al.}(2021)}]{sun2021persistent}
 Sun, Y., et~al., Persistent orbital influence on millennial climate variability
   through the {Pleistocene}, \textit{Nature Geoscience}, \textit{14}(11),
   812--818, \doi{10.1038/s41561-021-00794-1}, 2021.
-
-\bibitem[{\textit{Svensson et~al.}(2008)}]{svensson2008sixty}
-Svensson, A., et~al., A 60 000 year {Greenland} stratigraphic ice core
-  chronology, \textit{Climate of the Past}, \textit{4}(1), 47--57,
-  \doi{10.5194/cp-4-47-2008}, 2008.
 
 \bibitem[{\textit{Thirumalai et~al.}(2020)\textit{Thirumalai, Clemens, and
   Partin}}]{thirumalai2020methane}
@@ -177,12 +202,18 @@ Vettoretti, G., P.~Ditlevsen, M.~Jochum, and S.~O. Rasmussen, Atmospheric
   oscillations, \textit{Nature Geoscience}, \textit{15}(4), 300--306,
   \doi{10.1038/s41561-022-00920-7}, 2022.
 
-\bibitem[{\textit{Wolff et~al.}(2010)\textit{Wolff, Chappellaz, Blunier,
-  Rasmussen, and Svensson}}]{wolff2010millennial}
-Wolff, E., J.~Chappellaz, T.~Blunier, S.~Rasmussen, and A.~Svensson,
-  Millennial-scale variability during the last glacial: The ice core record,
-  \textit{Quaternary Science Reviews}, \textit{29}(21-22), 2828--2838,
-  \doi{10.1016/j.quascirev.2009.10.013}, 2010.
+\bibitem[{\textit{Zhang et~al.}(2014)\textit{Zhang, Lohmann, Knorr, and
+  Purcell}}]{zhang2014abrupt}
+Zhang, X., G.~Lohmann, G.~Knorr, and C.~Purcell, Abrupt glacial climate shifts
+  controlled by ice sheet changes, \textit{Nature}, \textit{512}(7514),
+  290--294, \doi{10.1038/nature13592}, 2014.
+
+\bibitem[{\textit{Zhang et~al.}(2017)\textit{Zhang, Knorr, Lohmann, and
+  Barker}}]{zhang2017abrupt}
+Zhang, X., G.~Knorr, G.~Lohmann, and S.~Barker, Abrupt north atlantic
+  circulation changes in response to gradual co2 forcing in a glacial climate
+  state, \textit{Nature Geoscience}, \textit{10}(7), 518--523,
+  \doi{10.1038/ngeo2974}, 2017.
 
 \bibitem[{\textit{Zhang et~al.}(2021)\textit{Zhang, Barker, Knorr, Lohmann,
   Drysdale, Sun, Hodell, and Chen}}]{zhang2021direct}

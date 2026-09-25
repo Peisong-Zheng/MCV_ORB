@@ -1,0 +1,19 @@
+parameter,value
+model_version,continuous_exponential_inhibition_2026-09-12
+event_definition,variable_threshold
+n_point,5000
+n_outer,200
+n_inner,50
+seed,20260925
+workers,3
+n_age_total,10000
+n_age_valid,10000
+history_tau_kyr,1.5
+history_coefficient_domain,beta_H <= 0
+age_reference,BP1950
+response_exposure_kyr,396.4642638777152
+elapsed_seconds,163.30165733397007
+n_failed,0
+A_interval,95_joint_working_region_projection
+B_interval,approximate_95_joint_confidence_region_projection
+C_interval,95_joint_working_region_projection

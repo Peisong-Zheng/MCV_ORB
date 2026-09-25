@@ -11,8 +11,7 @@ assets:
 	$(PYTHON) ../paper_figure_export.py
 
 compose:
-	$(PYTHON) ../Figure_likelihood_bootstrap.py
-	$(PYTHON) ../Figure_climate_phase_interaction.py
+	$(PYTHON) ../Figure_orbital_mechanism.py
 
 sync: compose
 	$(PYTHON) ../paper_figure_export.py

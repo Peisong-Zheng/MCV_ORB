@@ -1,0 +1,14 @@
+{
+  "interval_kyr_BP1950": [
+    0,
+    200
+  ],
+  "spacing_kyr": 0.1,
+  "n_time_points": 2001,
+  "insolation": "65N summer-solstice daily mean",
+  "precession": "raw index",
+  "pearson_r": -0.8899116155647885,
+  "r_squared": 0.7919426835171319,
+  "shared_linear_variance_percent": 79.19426835171319,
+  "interpretation": "Unadjusted bivariate linear association; not mutual information or independent sample inference."
+}

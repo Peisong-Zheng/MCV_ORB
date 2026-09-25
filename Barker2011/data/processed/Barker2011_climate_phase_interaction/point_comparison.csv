@@ -1,2 +1,0 @@
-comparison_id,df,LR_statistic,gain_bits_per_event,nominal_p,delta_AIC,loglik_full,loglik_interaction,fit_valid,invalid_reason,likelihood_nesting_ok,n_events,exposure_kyr
-lr04_phase_interaction,2,5.114781227774301,0.05347151820682571,0.0775067217684966,-1.1147812277743014,-178.17522307502304,-175.6178324611359,True,,True,69,396.46426387771527

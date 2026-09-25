@@ -17,6 +17,73 @@ from toolbox import combined_likelihood
 from toolbox import effect_uncertainty as effect
 
 
+def test_barker_uses_named_phase_coefficients_and_its_own_age_support():
+    from Barker2011 import Barker2011_effect_uncertainty as barker
+
+    context = combined_likelihood.build_barker_context()
+    fit = combined_likelihood.fit_catalogue(context.events, context)
+    assert "mis6_segment" not in fit.full.terms
+    expected = [fit.full.beta[fit.full.terms.index(term)] for term in effect.PHASE_TERMS]
+    np.testing.assert_array_equal(effect.phase_coefficients(fit.full), expected)
+    reordered = replace(fit.full, terms=fit.full.terms[::-1], beta=fit.full.beta[::-1])
+    np.testing.assert_array_equal(effect.phase_coefficients(reordered), expected)
+
+    draws, age_results, columns = barker.load_age_inputs(context.events)
+    generators, selected = analysis.build_generators(
+        context.events, context, fit, draws, age_results, 2, 25,
+        age_columns=columns, source_id_columns=())
+    assert selected.age_realization_id.is_unique
+    assert "beta__mis6_segment" not in selected
+    first = analysis.run_simulations(context, generators, 24, 10, 25, 1, False)
+    parallel = analysis.run_simulations(context, generators, 24, 10, 25, 2, False)
+    pd.testing.assert_frame_equal(first, parallel)
+    assert first.fit_valid.all()
+    assert "beta__mis6_segment" not in first
+    assert first.n_response_events.nunique() > 1
+    for outer_id in (1, 2):
+        local = combined_likelihood.condition_context(context, generators[outer_id]["events"])
+        assert local.scaling == context.scaling
+        segment = local.segments["Barker2011"]
+        assert segment.response_start_kyr_bp == 0
+        assert segment.anchor_age_kyr_bp == generators[outer_id]["events"][combined_likelihood.EVENT_AGE_COLUMN].max()
+        np.testing.assert_allclose(first.loc[first.outer_id.eq(outer_id), "response_exposure_kyr"],
+                                   local.response_exposure_kyr)
+    summary, regions = analysis.summarize_effects(fit, age_results, first)
+    assert set(summary.loc[summary.scenario.eq("A_chronology"), "n"]) == {10000}
+    for region in regions.values():
+        np.testing.assert_allclose(region["center"], expected)
+
+
+def test_saved_primary_summaries_reproduce_and_sampling_confidence_is_unchanged():
+    context = combined_likelihood.build_context()
+    fit = combined_likelihood.fit_catalogue(context.events, context)
+    ages = pd.read_csv(analysis.AGE_RESULTS)
+    replicates = pd.read_csv(analysis.OUTPUT_DIR / "effect_replicates.csv")
+    summary, regions = analysis.summarize_effects(fit, ages, replicates)
+    saved = pd.read_csv(analysis.OUTPUT_DIR / "effect_summary.csv")
+    # Cached CSVs and fresh optimizer fits differ slightly in numerical precision.
+    pd.testing.assert_frame_equal(summary, saved, check_dtype=False, rtol=1e-7, atol=1e-7)
+    curves = analysis.build_curve_table(fit, regions)
+    pd.testing.assert_frame_equal(curves, pd.read_csv(analysis.OUTPUT_DIR / "phase_response_bands.csv"),
+                                  check_dtype=False, rtol=1e-7, atol=1e-7)
+    sampling = summary.loc[summary.scenario.eq("B_sampling")].set_index("quantity")
+    np.testing.assert_allclose(sampling.loc["preferred_phase_deg", ["low", "high"]].to_numpy(float),
+                               [287.83101837, 370.22635637], rtol=1e-7)
+    np.testing.assert_allclose(sampling.loc["max_min_rate_ratio", ["low", "high"]].to_numpy(float),
+                               [1.72826337, 29.87573929], rtol=1e-7)
+    age_coefficients = ages.loc[ages.fit_valid, ["beta_pre_phase_sin", "beta_pre_phase_cos"]]
+    assert regions["A_chronology"]["n"] == 9982
+    np.testing.assert_allclose(regions["A_chronology"]["covariance"], np.cov(age_coefficients, rowvar=False))
+    # All curve envelopes must enclose every curve from the corresponding ellipse.
+    radians = np.deg2rad(curves.phase_deg)
+    directions = np.column_stack((np.sin(radians), np.cos(radians)))
+    for scenario, name in analysis.SCENARIOS.items():
+        boundary = effect.ellipse_boundary(regions[scenario], np.linspace(0, 2*np.pi, 1000))
+        response = np.exp(boundary @ directions.T)
+        assert np.all(response >= curves[f"{name}_low"].to_numpy() - 1e-12)
+        assert np.all(response <= curves[f"{name}_high"].to_numpy() + 1e-12)
+
+
 def test_zero_phase_full_simulator_matches_reduced_continuous_process(setup):
     _, context, fit, _, _ = setup
     model = replace(fit.full, beta=np.r_[fit.reduced.beta, 0., 0.])
@@ -99,8 +166,10 @@ def setup():
         except ValueError:
             continue
         rows.append(row)
-        results.append({"fit_valid": True, "invalid_reason": "", **local_fit.summary})
-        if len(rows) == 6:
+        sine, cosine = effect.phase_coefficients(local_fit.full)
+        results.append({"fit_valid": True, "invalid_reason": "", **local_fit.summary,
+                        "beta_pre_phase_sin": sine, "beta_pre_phase_cos": cosine})
+        if len(rows) == 20:
             break
     return events, context, fit, pd.DataFrame(rows).reset_index(drop=True), pd.DataFrame(results)
 
@@ -151,17 +220,17 @@ def test_failed_simulations_are_retained_without_retries(setup, monkeypatch):
 def test_small_analysis_summaries_keep_interval_meanings_and_equal_weights(setup):
     _, context, fit, _, age_results = setup
     generators = {i: generator(fit.full, context) for i in range(3)}
-    table = analysis.run_simulations(context, generators, 30, 5, 10, show_progress=False)
-    summary, region = analysis.summarize_effects(fit, age_results, table)
+    table = analysis.run_simulations(context, generators, 30, 15, 10, show_progress=False)
+    summary, regions = analysis.summarize_effects(fit, age_results, table)
     assert len(summary) == 6
     assert summary.loc[summary.scenario.eq("B_sampling"), "interval_type"].str.contains("confidence").all()
     assert summary.loc[summary.scenario.eq("C_joint"), "interval_type"].str.contains("working").all()
     with pytest.raises(ValueError, match="equal weight"):
         analysis.summarize_effects(fit, age_results, table.iloc[:-1])
-    curves = analysis.build_curve_table(fit, table, region)
-    assert (curves.B_simultaneous_low <= curves.point_multiplier).all()
-    assert (curves.B_simultaneous_high >= curves.point_multiplier).all()
-    assert (curves.C_pointwise_q025 <= curves.C_pointwise_q975).all()
+    curves = analysis.build_curve_table(fit, regions)
+    for name in analysis.SCENARIOS.values():
+        assert (curves[f"{name}_low"] <= curves.point_multiplier).all()
+        assert (curves[f"{name}_high"] >= curves.point_multiplier).all()
 
 
 def test_age_generators_simulate_with_their_own_exact_anchors_and_support(setup):

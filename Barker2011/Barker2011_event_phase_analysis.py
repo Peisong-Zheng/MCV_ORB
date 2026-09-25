@@ -2,8 +2,9 @@
 """Barker 2011 SpeleoAge events: continuous-time fit and definition sensitivity.
 
 Variable-threshold events are primary; fixed-threshold events are a nominal-age
-sensitivity. Both use inhibitory exponential history with tau = 1.5 kyr and
-condition on their exact oldest event. SpeleoAge is retained numerically under
+sensitivity. Both report nominal LR p here; their BG-model bootstrap calibrations
+are separate experiments. Both use inhibitory exponential history with tau =
+1.5 kyr and condition on their exact oldest event. SpeleoAge is retained numerically under
 the BP1950 working assumption; its precise source epoch remains unverified.
 """
 
@@ -336,7 +337,7 @@ def write_notes(result, fixed_result, notes_dir=ROOT / "experiment_note"):
 
 (a) Variable-threshold events (rose dots, n=70) and fixed-threshold events (green open squares, n=59) on the La2004 precession index. Older ages are on the left. Gray shading precedes the primary exact conditioning event at {variable.response_support_end_ka:.3f} kyr BP. Each definition conditions on its own oldest event, retaining {variable.n_response_events} and {fixed.n_response_events} response events over {variable.response_exposure_kyr:.3f} and {fixed.response_exposure_kyr:.3f} kyr. Both inventory counts include their conditioning event.
 (b) Descriptive event counts in twelve 30-degree sectors: rose fill and green dashed outlines. Arrows denote mean phase; arrow lengths are the mean resultant length times the common largest sector count. Radial ticks give event counts. Phase zero is a precession-index minimum and 180 degrees a maximum. Text gives each definition's Rayleigh statistics.
-(c) Conditional phase multipliers exp(beta_sin sin(phi)+beta_cos cos(phi)), at fixed background and event history. Unity means zero phase contribution, not the separately fitted reduced rate. The continuous conditional model contains LR04, CO2 and exponential event history (tau=1.5 kyr, beta_history <= 0); full adds precession sine and cosine. G is the in-sample log-likelihood gain per response event and p is the nominal two-degree-of-freedom LR reference. Both models are refitted for each definition. Bootstrap calibration and chronology sensitivity are separate analyses of the variable-threshold catalogue only.
+(c) Conditional phase multipliers exp(beta_sin sin(phi)+beta_cos cos(phi)), at fixed background and event history. Unity means zero phase contribution, not the separately fitted reduced rate. The continuous conditional model contains LR04, CO2 and exponential event history (tau=1.5 kyr, beta_history <= 0); full adds precession sine and cosine. G is the in-sample log-likelihood gain per response event and p is the nominal two-degree-of-freedom LR reference. Both models are refitted for each definition. Separate BG-model bootstrap simulations check the phase-test calibration for both definitions; chronology sensitivity is evaluated only for the variable-threshold catalogue.
 
 SpeleoAge numerical values are retained under a BP1950 working assumption; the precise epoch of the published column remains unverified. The two catalogues are correlated definitions of the same reconstruction, not independent samples. The chronology uses speleothem tuning.
 """
@@ -355,7 +356,7 @@ For each catalogue, condition on the exact oldest event and retain all younger e
 RESULTS
 {numbers}
 
-G is log-likelihood gain per response event, in bits/event. Raw likelihood/AIC values cannot rank the two definitions because their event sets and exact response supports differ. Fixed threshold remains a nominal-age definition sensitivity, with no duplicate bootstrap or chronology pipeline. Main tables contain variable-threshold results; fixed_threshold stores the alternative, and event_definition_sensitivity.csv contains both summary rows.
+G is log-likelihood gain per response event, in bits/event. Raw likelihood/AIC values cannot rank the two definitions because their event sets and exact response supports differ. Fixed threshold remains a nominal-age definition sensitivity. A separate BG-model bootstrap checks the phase test for each definition; only variable threshold has a chronology ensemble. Main tables contain variable-threshold results; fixed_threshold stores the alternative, and event_definition_sensitivity.csv contains both summary rows.
 
 Source: Barker et al. (2011), Science 334, 347--351, doi:10.1126/science.1203580, Supplementary Table S3. SpeleoAge is treated as BP1950 while its precise source epoch remains unverified. Chronology tuning limits independence from speleothem records.
 """

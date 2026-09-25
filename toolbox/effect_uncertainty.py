@@ -10,6 +10,11 @@ from toolbox import combined_likelihood
 PHASE_TERMS = ("pre_phase_sin", "pre_phase_cos")
 PHASE_INDICES = [1 + combined_likelihood.FULL_TERMS.index(term) for term in PHASE_TERMS]
 
+
+def phase_coefficients(model):
+    """Read sine/cosine by name; Barker has no MIS6 segment coefficient."""
+    return np.asarray([model.beta[model.terms.index(term)] for term in PHASE_TERMS])
+
 class InvalidEffectSimulation(RuntimeError):
     """A numerical failure retained under its original replicate identity."""
 

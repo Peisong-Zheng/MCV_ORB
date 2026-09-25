@@ -1,4 +1,5 @@
 {
+  "latexVisualEditor.fontSize": 17,
   "[latex]": {
     "editor.wordWrap": "on"
   },

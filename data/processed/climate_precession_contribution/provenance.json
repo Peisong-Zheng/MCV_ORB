@@ -1,0 +1,115 @@
+{
+  "model_version": "continuous_exponential_inhibition_2026-09-12",
+  "age_units": "kyr BP1950",
+  "inputs": [
+    "data/curated/ngrip_mis6_warming_events.csv",
+    "data/curated/observation_segments.csv",
+    "Barker2011/data/raw/Barker et al-2011-SOM.xls",
+    "data/raw/lr04.xlsx",
+    "data/raw/composite_co2.xlsx",
+    "data/raw/pre_1000_60_inter100.txt"
+  ],
+  "catalogues": {
+    "primary": {
+      "catalogue_id": "ngrip_warming_plus_mis6",
+      "n_source_events": 55,
+      "history_tau_kyr": 1.5,
+      "initial_history": 0.0,
+      "quadrature_order": 4,
+      "scaling": {
+        "lr04": {
+          "mean": 4.390548755831284,
+          "min": 3.668400000000001,
+          "max": 5.02,
+          "range": 1.3515999999999986
+        },
+        "co2": {
+          "mean": 212.91460115111764,
+          "min": 180.565516782075,
+          "max": 276.58075162488836,
+          "range": 96.01523484281336
+        }
+      },
+      "support": [
+        {
+          "segment_id": "NGRIP",
+          "observation_start_kyr_bp": 12.0,
+          "observation_end_kyr_bp": 123.0,
+          "response_start_kyr_bp": 12.0,
+          "response_end_kyr_bp": 115.32,
+          "anchor_age_kyr_bp": 115.32
+        },
+        {
+          "segment_id": "MIS6",
+          "observation_start_kyr_bp": 132.5,
+          "observation_end_kyr_bp": 204.5,
+          "response_start_kyr_bp": 132.5,
+          "response_end_kyr_bp": 194.238,
+          "anchor_age_kyr_bp": 194.238
+        }
+      ]
+    },
+    "variable": {
+      "catalogue_id": "barker_variable_threshold_speleo_0_400",
+      "n_source_events": 70,
+      "history_tau_kyr": 1.5,
+      "initial_history": 0.0,
+      "quadrature_order": 4,
+      "scaling": {
+        "lr04": {
+          "mean": 4.160110429310471,
+          "min": 3.1,
+          "max": 5.02,
+          "range": 1.9199999999999995
+        },
+        "co2": {
+          "mean": 225.1132294649163,
+          "min": 180.565516782075,
+          "max": 313.6602846482332,
+          "range": 133.09476786615818
+        }
+      },
+      "support": [
+        {
+          "segment_id": "Barker2011",
+          "observation_start_kyr_bp": 0.0,
+          "observation_end_kyr_bp": 400.0,
+          "response_start_kyr_bp": 0.0,
+          "response_end_kyr_bp": 396.4642638777152,
+          "anchor_age_kyr_bp": 396.4642638777152
+        }
+      ]
+    },
+    "fixed": {
+      "catalogue_id": "barker_fixed_threshold_speleo_0_400",
+      "n_source_events": 59,
+      "history_tau_kyr": 1.5,
+      "initial_history": 0.0,
+      "quadrature_order": 4,
+      "scaling": {
+        "lr04": {
+          "mean": 4.163773139231321,
+          "min": 3.1,
+          "max": 5.02,
+          "range": 1.9199999999999995
+        },
+        "co2": {
+          "mean": 224.68964419607255,
+          "min": 180.565516782075,
+          "max": 313.6602846482332,
+          "range": 133.09476786615818
+        }
+      },
+      "support": [
+        {
+          "segment_id": "Barker2011",
+          "observation_start_kyr_bp": 0.0,
+          "observation_end_kyr_bp": 400.0,
+          "response_start_kyr_bp": 0.0,
+          "response_end_kyr_bp": 392.2456958970233,
+          "anchor_age_kyr_bp": 392.2456958970233
+        }
+      ]
+    }
+  }
+}
