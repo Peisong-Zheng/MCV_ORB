@@ -1,4 +1,4 @@
-\begin{thebibliography}{34}
+\begin{thebibliography}{33}
 \providecommand{\natexlab}[1]{#1}
 \expandafter\ifx\csname urlstyle\endcsname\relax
   \providecommand{\doi}[1]{doi:\discretionary{}{}{}#1}\else
@@ -43,13 +43,6 @@ Dansgaard, W., et~al., Evidence for general instability of past climate from a
 Davison, A.~C., and D.~V. Hinkley, \textit{Bootstrap Methods and their
   Application}, Cambridge University Press, \doi{10.1017/CBO9780511802843},
   1997.
-
-\bibitem[{\textit{Ditlevsen et~al.}(2005)\textit{Ditlevsen, Kristensen, and
-  Andersen}}]{ditlevsen2005recurrence}
-Ditlevsen, P.~D., M.~S. Kristensen, and K.~K. Andersen, The recurrence time of
-  {Dansgaard--Oeschger} events and limits on the possible periodic component,
-  \textit{Journal of Climate}, \textit{18}(14), 2594--2603,
-  \doi{10.1175/JCLI3437.1}, 2005.
 
 \bibitem[{\textit{Dokken et~al.}(2013)\textit{Dokken, Nisancioglu, Li,
   Battisti, and Kissel}}]{dokken2013dansgaard}
@@ -99,13 +92,6 @@ Holm, S., A simple sequentially rejective multiple test procedure,
 Kass, R.~E., U.~T. Eden, and E.~N. Brown, \textit{Analysis of Neural Data},
   Springer Series in Statistics, Springer, New York,
   \doi{10.1007/978-1-4614-9602-1}, 2014.
-
-\bibitem[{\textit{Kleppin et~al.}(2015)\textit{Kleppin, Jochum, Otto-Bliesner,
-  Shields, and Yeager}}]{kleppin2015stochastic}
-Kleppin, H., M.~Jochum, B.~Otto-Bliesner, C.~A. Shields, and S.~Yeager,
-  Stochastic atmospheric forcing as a cause of {Greenland} climate transitions,
-  \textit{Journal of Climate}, \textit{28}(19), 7741--7763,
-  \doi{10.1175/JCLI-D-14-00728.1}, 2015.
 
 \bibitem[{\textit{Kuniyoshi et~al.}(2022)\textit{Kuniyoshi, Abe-Ouchi,
   Sherriff-Tadano, Chan, and Saito}}]{kuniyoshi2022effect}
@@ -221,5 +207,11 @@ Zhang, X., S.~Barker, G.~Knorr, G.~Lohmann, R.~Drysdale, Y.~Sun, D.~Hodell, and
   F.~Chen, Direct astronomical influence on abrupt climate variability,
   \textit{Nature Geoscience}, \textit{14}(11), 819--826,
   \doi{10.1038/s41561-021-00846-6}, 2021.
+
+\bibitem[{\textit{Zheng et~al.}(2021)\textit{Zheng, Pedro, Jochum, Rasmussen,
+  and Lai}}]{zheng2021different}
+Zheng, P., J.~B. Pedro, M.~Jochum, S.~O. Rasmussen, and Z.~Lai, Different
+  trends in antarctic temperature and atmospheric co2 during the last glacial,
+  \textit{Geophysical Research Letters}, \textit{48}(14), e2021GL093,868, 2021.
 
 \end{thebibliography}

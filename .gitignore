@@ -5,18 +5,29 @@ __pycache__/
 .venv/
 ~$*.xlsx
 
-# Manuscript sources and numbered figures are versioned; LaTeX build products are not.
-orbital_event_paper/*.aux
-orbital_event_paper/*.bbl
-orbital_event_paper/*.blg
-orbital_event_paper/*.fdb_latexmk
-orbital_event_paper/*.fls
-orbital_event_paper/*.log
-orbital_event_paper/*.out
-orbital_event_paper/*.synctex.gz
-orbital_event_paper/*.toc
-orbital_event_paper/main.pdf
-orbital_event_paper/SI.pdf
+# Local agent instructions, progress records, and archived work.
+/AGENTS.md
+/agent_work/
 archive/
-docs/
 experiment_note/
+
+# Version only manuscript TeX, bibliography files, and figure assets.
+/orbital_event_paper/**
+!/orbital_event_paper/main.tex
+!/orbital_event_paper/SI.tex
+!/orbital_event_paper/*.bib
+!/orbital_event_paper/figures/
+!/orbital_event_paper/figures/**/
+!/orbital_event_paper/figures/**/*.pdf
+!/orbital_event_paper/figures/**/*.png
+!/orbital_event_paper/figures/**/*.svg
+!/orbital_event_paper/figures/**/*.jpg
+!/orbital_event_paper/figures/**/*.jpeg
+!/orbital_event_paper/figures/**/*.tif
+!/orbital_event_paper/figures/**/*.tiff
+!/orbital_event_paper/figures/**/*.eps
+
+
+/docs/
+/README.md
+/.vscode/

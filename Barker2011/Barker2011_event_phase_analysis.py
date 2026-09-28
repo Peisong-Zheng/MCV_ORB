@@ -27,6 +27,7 @@ from toolbox.project_config import (
     PROJECT_ROOT, LR04_XLSX, CO2_XLSX, PRE_TXT,
     ORBITAL_SOLUTION, ORBITAL_SOURCE_EPOCH, ORBITAL_AGE_OFFSET_TO_BP1950_KA,
 )
+from toolbox.workspace_paths import generated_notes_dir
 
 RUN_NAME = "Barker2011_event_phase_analysis"
 OUT_DATA_DIR = ROOT / "data/processed" / RUN_NAME
@@ -328,7 +329,7 @@ def save_figure(fig, output_dir=OUT_FIG_DIR, *, paper_export=False):
         copy_pdf_to_paper(pdf)
     return png, pdf
 
-def write_notes(result, fixed_result, notes_dir=ROOT / "experiment_note"):
+def write_notes(result, fixed_result, notes_dir=generated_notes_dir(ROOT)):
     notes_dir = Path(notes_dir)
     notes_dir.mkdir(parents=True, exist_ok=True)
     variable, fixed = [r["summary"].iloc[0] for r in (result, fixed_result)]
@@ -380,7 +381,7 @@ def main(argv=None):
         output / "event_definition_sensitivity.csv", index=False, float_format="%.12g")
     save_figure(plot_results(result, fixed), root / "figures" / RUN_NAME,
                 paper_export=not args.no_paper_export and args.output_root.resolve() == PROJECT_ROOT.resolve())
-    write_notes(result, fixed, root / "experiment_note")
+    write_notes(result, fixed, generated_notes_dir(root))
     for current in (result, fixed):
         s = current["summary"].iloc[0]
         print(f"{s.event_definition}: {s.n_response_events} response events; G={s.gain_bits_per_event:.6f}; "

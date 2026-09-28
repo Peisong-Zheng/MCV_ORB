@@ -12,9 +12,9 @@ archive identifiers remain to be completed.
 | `SI.tex`, `SI.pdf` | Detailed methods, sensitivity results, one event-age table and supplementary figures |
 | `reference.bib` | Shared bibliography and stable citation keys |
 | `reference_audit.md`, `literature_notes.md` | Source verification and claim checks |
-| `paper_plan.md` | Scientific narrative and allocation of evidence |
-| `draft_review.md` | Current review status and author revision items |
-| `figure_manifest.csv` | Canonical source PDF to manuscript figure mapping |
+| `../agent_work/plans/paper_plan.md` | Local scientific narrative and allocation of evidence |
+| `../agent_work/reviews/draft_review.md` | Local review status and author revision items |
+| `../paper_figure_manifest.csv` | Versioned source PDF to manuscript figure mapping |
 | `figures/`, `tables/` | Synchronized figures and CSV snapshots for manual table checks |
 
 ## Scientific configuration
@@ -73,7 +73,7 @@ also be checked with `python paper_figure_export.py --check` from the root.
 
 ## Figure maintenance
 
-`figure_manifest.csv` is authoritative for manuscript numbering. Source names
+`../paper_figure_manifest.csv` is authoritative for manuscript numbering. Source names
 remain descriptive. Main Figure 1 displays orbital drivers, events on
 precession, LR04 and CO2. Figure 2 shows descriptive phase counts, fitted
 expected counts, and conditional phase multipliers for each catalogue.
@@ -87,7 +87,7 @@ Its independent script reads a local public-domain Natural Earth coastline
 and saves PDF, editable SVG and PNG; it performs no statistical calculation.
 Figure S6 compares conditional climate and precession contributions;
 S7 applies the Figure 3 effect-precision analysis to Barker varying-threshold
-events. Text S2 reports chronology-sensitive G ranges and nominal significance
+events. Text S3 reports chronology-sensitive G ranges and nominal significance
 proportions for both catalogues; the former age histograms remain in research
 outputs. Figure S8 tests history decay and initialization, S9 tests climate
 and history response forms, and S10 compares orbital predictors.
@@ -118,7 +118,7 @@ research data folders.
 
 ## Validation and remaining work
 
-The [migration audit](../docs/reviews/continuous-time-migration-2026-09-12.md)
+The [migration audit](../agent_work/reviews/continuous-time-migration-2026-09-12.md)
 records current numerical, figure and manuscript validation. Earlier completed
 builds do not certify this revision. The complete previous project is frozen
 in `../archive/pre_continuous_time_2026-09-12/`.
@@ -127,3 +127,16 @@ Before submission, supply author names, affiliations, contributions, funding,
 declarations and real public code/data identifiers. Scientific prose follows
 Peisong's scientific writing style: physical question, concise evidence,
 explicit uncertainty definitions and restrained interpretation.
+
+## Supplementary text layout (2026-09-26)
+
+- Text S1: Event catalogues, onset ages, and observation intervals.
+- Text S2: Model fitting, significance tests, and event-spacing checks.
+- Text S3: Event-age ensembles and chronology sensitivity.
+- Text S4: Sampling and combined uncertainty in the phase effect.
+- Text S5: Sensitivity to history and climate-response assumptions.
+- Text S6: Sensitivity to event selection, transition direction, and missing events.
+- Text S7: Comparing precession, background climate, and other orbital predictors.
+
+Paper notation uses `a` for BP age and `t = a_r0 - a` for forward elapsed time.
+This is a manuscript-only notation change; analysis code and numerical results are unchanged.

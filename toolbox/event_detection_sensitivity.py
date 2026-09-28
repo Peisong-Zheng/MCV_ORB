@@ -12,6 +12,7 @@ import time
 
 import numpy as np
 import pandas as pd
+from toolbox.workspace_paths import generated_notes_dir
 
 
 EFFECT_METRICS = (
@@ -289,7 +290,7 @@ def save_results(result, context, output_root, run_name, *, diagnostics_root=Non
 
     output_root = Path(output_root)
     data_dir = output_root / "data/processed" / run_name
-    notes_dir = output_root / "experiment_note"
+    notes_dir = generated_notes_dir(output_root)
     diagnostics_dir = (output_root / "tests/diagnostics" / run_name if diagnostics_root is None
                        else Path(diagnostics_root) / run_name)
     for directory in (data_dir, notes_dir, diagnostics_dir):

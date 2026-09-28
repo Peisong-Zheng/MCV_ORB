@@ -71,8 +71,6 @@ MIS6/
 │   ├── MIS6_composite_event_record/
 │   ├── MIS6_event_age_uncertainty/
 │   └── Sofular_chronology_comparison/
-├── experiment_note/ # Methods, results and figure captions
-├── docs/plans/      # Earlier MIS 6 design records
 └── tests/
     └── diagnostics/MIS6_event_age_uncertainty/ # Full intermediate calculations
 ```
@@ -92,6 +90,9 @@ sigma, and the combined MC median and 95% range. The ensembles retain all 21
 event columns so their joint dependence remains available to downstream analyses.
 Detailed dated-control residuals, projection weights, covariances, detector runs
 and full summaries are under `tests/diagnostics/MIS6_event_age_uncertainty/`.
+Previous methods, results and figure-caption notes are preserved in
+`../archive/experiment_notes_2026-09-28/MIS6/experiment_note/`.
+Local design records have moved to `../agent_work/plans/MIS6/`.
 See the [output guide](data/processed/MIS6_event_age_uncertainty/README.md)
 for column definitions and the role of the So-57 alternative.
 
@@ -114,4 +115,4 @@ byte. Source-specific scripts and tests were updated for their new locations.
 Earlier output manifests and design records retain the paths used at the time
 of their original runs; they are historical provenance, not current run
 instructions. The move map is recorded in
-[`docs/relocation-2026-09-08.md`](docs/relocation-2026-09-08.md).
+[`docs/relocation-2026-09-08.md`](../agent_work/reviews/MIS6-relocation-2026-09-08.md).

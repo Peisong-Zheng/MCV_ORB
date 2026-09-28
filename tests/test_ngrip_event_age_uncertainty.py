@@ -143,7 +143,7 @@ def test_small_draws_have_stable_ids_and_independent_rows(events, grid):
 
 
 def test_grid_screening_reuses_saved_exact_ages(monkeypatch):
-    from docs.reviews import ngrip_knot_spacing_sensitivity as screening
+    import ngrip_knot_spacing_sensitivity as screening
     from toolbox import combined_likelihood as likelihood
     catalogue = likelihood.load_event_catalogue()
     def forbid_sampling(*args, **kwargs):

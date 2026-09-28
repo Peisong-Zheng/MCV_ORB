@@ -27,6 +27,7 @@ from toolbox import combined_likelihood
 from toolbox.point_process import PointProcessFitError
 from toolbox.project_config import PROJECT_ROOT
 from toolbox.catalogue_colors import CATALOGUE_COLORS
+from toolbox.workspace_paths import generated_notes_dir
 
 RUN_NAME = "NGRIP_MIS6_likelihood_bootstrap"
 OUT_DATA_DIR = PROJECT_ROOT / "data/processed" / RUN_NAME
@@ -382,7 +383,7 @@ def main(argv=None):
     args=parser.parse_args(argv)
     result=run_analysis(n_bootstrap=args.n_bootstrap,seed=args.seed,n_workers=args.workers,show_progress=True)
     save_tables(result,args.output_root/"data/processed"/RUN_NAME)
-    write_notes(result,args.output_root/"experiment_note")
+    write_notes(result,generated_notes_dir(args.output_root))
     if result["summary"].iloc[0].n_failed_replicates:
         raise RuntimeError("Unresolved bootstrap fits saved; p value and figure publication withheld")
     save_figure(result["replicates"],result["summary"],args.output_root/"figures"/RUN_NAME,

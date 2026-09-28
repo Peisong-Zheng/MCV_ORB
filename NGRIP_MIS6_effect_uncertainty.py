@@ -44,6 +44,7 @@ from toolbox import effect_uncertainty as effect
 from toolbox.point_process import PointProcessFitError
 from toolbox.point_process_diagnostics import residual_statistics
 from toolbox.project_config import PROJECT_ROOT, CO2_XLSX, LR04_XLSX, PRE_TXT
+from toolbox.workspace_paths import generated_notes_dir
 
 
 RUN_NAME = "NGRIP_MIS6_effect_uncertainty"
@@ -422,7 +423,7 @@ def main():
         parser.error("Require n-point >= 20, positive group/worker counts and nonnegative seed")
     output_dir = args.output_root / "data/processed" / RUN_NAME
     figure_dir = args.output_root / "figures" / RUN_NAME
-    notes_dir = args.output_root / "experiment_note"
+    notes_dir = generated_notes_dir(args.output_root)
     for directory in (output_dir, figure_dir, notes_dir):
         directory.mkdir(parents=True, exist_ok=True)
     started = time.perf_counter()

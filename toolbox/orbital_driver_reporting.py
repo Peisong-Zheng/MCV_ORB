@@ -13,6 +13,7 @@ import pandas as pd
 
 from toolbox import combined_likelihood
 from toolbox.project_config import PROJECT_ROOT
+from toolbox.workspace_paths import generated_notes_dir
 
 DRIVER_LABELS = {"ecc": "Eccentricity", "obl": "Obliquity",
                  "insol65n": "65°N summer-solstice\ninsolation"}
@@ -290,7 +291,7 @@ def save_results(result, output_root, run_name, catalogue_label, input_paths):
     hashes = [dict(path=str(path.relative_to(PROJECT_ROOT)),
                    sha256=hashlib.sha256(path.read_bytes()).hexdigest()) for path in paths]
     pd.DataFrame(hashes).to_csv(data_dir / "input_code_sha256.csv", index=False)
-    write_notes(result, output_root / "experiment_note", run_name, catalogue_label)
+    write_notes(result, generated_notes_dir(output_root), run_name, catalogue_label)
     redraw_saved_results(output_root, run_name, catalogue_label)
     return data_dir, figure_dir
 
@@ -309,7 +310,7 @@ def redraw_saved_results(output_root, run_name, catalogue_label):
         fig.savefig(figure_dir / f"{run_name}.{extension}", dpi=600)
     plt.close(fig)
     write_caption(dict(comparison_summary=summary, parameters=parameters),
-                  output_root / "experiment_note", run_name, catalogue_label)
+                  generated_notes_dir(output_root), run_name, catalogue_label)
     # Rendering provenance is separate from the hashes of the original model run.
     files = [(summary_path, "fitted comparison summary"), (parameter_path, "analysis settings"),
              (Path(__file__), "figure and caption code")]

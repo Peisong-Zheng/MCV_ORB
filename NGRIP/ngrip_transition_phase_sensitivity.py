@@ -22,13 +22,14 @@ import pandas as pd
 import NGRIP_MIS6_likelihood_bootstrap as bootstrap
 from toolbox import age_sensitivity, combined_likelihood as likelihood
 from toolbox.project_config import PROJECT_ROOT
+from toolbox.workspace_paths import generated_notes_dir
 
 ROOT = PROJECT_ROOT / "NGRIP"
 RUN_NAME = "ngrip_transition_phase_sensitivity"
 EVENT_INPUT = ROOT / "data/processed/ngrip_warming_cooling_starts.csv"
 AGE_INPUT = ROOT / "data/processed/ngrip_event_age_uncertainty/ngrip_event_age_realizations.csv"
 OUT_DIR = ROOT / "data/processed" / RUN_NAME
-NOTE_DIR = ROOT / "experiment_note"
+NOTE_DIR = generated_notes_dir(ROOT)
 EVENT_TYPES = ("cooling", "warming")
 N_BOOTSTRAP = 9_999
 N_REALIZATIONS = 10_000

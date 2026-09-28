@@ -13,6 +13,7 @@ from toolbox import combined_likelihood, age_sensitivity
 from toolbox.age_sensitivity_plotting import plot_sensitivity as draw_sensitivity
 from toolbox.project_config import PROJECT_ROOT
 from paper_figure_export import copy_pdf_to_paper
+from toolbox.workspace_paths import generated_notes_dir
 
 RUN_NAME='NGRIP_MIS6_event_uncertainty_sensitivity'
 OUT_DATA_DIR=PROJECT_ROOT/'data/processed'/RUN_NAME
@@ -170,7 +171,7 @@ def main():
     point=combined_likelihood.fit_catalogue(context.events,context)
     data=args.output_root/'data/processed'/RUN_NAME
     figures=args.output_root/'figures'/RUN_NAME
-    notes=args.output_root/'experiment_note'
+    notes=generated_notes_dir(args.output_root)
     for directory in (data,figures,notes): directory.mkdir(parents=True,exist_ok=True)
     if args.redraw:
         results=pd.read_csv(data/'gain_realizations.csv')

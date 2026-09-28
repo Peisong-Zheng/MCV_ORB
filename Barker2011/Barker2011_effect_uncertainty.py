@@ -25,6 +25,7 @@ import NGRIP_MIS6_effect_uncertainty as shared
 from toolbox import combined_likelihood as likelihood
 from toolbox import effect_uncertainty as effect
 from toolbox.project_config import PROJECT_ROOT, CO2_XLSX, LR04_XLSX, PRE_TXT
+from toolbox.workspace_paths import generated_notes_dir
 
 
 RUN_NAME = "Barker2011_effect_uncertainty"
@@ -109,7 +110,7 @@ def main():
     root = args.output_root / "Barker2011"
     data_dir = root / "data/processed" / RUN_NAME
     figure_dir = root / "figures" / RUN_NAME
-    notes_dir = root / "experiment_note"
+    notes_dir = generated_notes_dir(root)
     for directory in (data_dir, figure_dir, notes_dir):
         directory.mkdir(parents=True, exist_ok=True)
 

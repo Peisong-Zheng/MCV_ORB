@@ -21,6 +21,7 @@ import pandas as pd
 from toolbox import combined_likelihood
 from toolbox.figure_style import add_panel_label
 from toolbox.project_config import CO2_XLSX, LR04_XLSX, PRE_TXT, PROJECT_ROOT
+from toolbox.workspace_paths import generated_notes_dir
 
 RUN_NAME = "NGRIP_MIS6_likelihood_model_sensitivity"
 OUT_DATA_DIR = PROJECT_ROOT / "data/processed" / RUN_NAME
@@ -306,7 +307,7 @@ def main():
     output_dir = args.output_root / "data/processed" / RUN_NAME
     save_results(result, output_dir, args.output_root / "figures" / RUN_NAME,
                  paper_export=not args.no_paper_export)
-    write_notes(result, args.output_root / "experiment_note")
+    write_notes(result, generated_notes_dir(args.output_root))
     print(result["summary"][["variant", "gain_bits_per_event", "nominal_LR_p",
         "pre_phase_preferred_deg", "pre_phase_rate_ratio_max_vs_min",
         "delta_AIC_full_vs_same_support_reference"]].to_string(index=False))

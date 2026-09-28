@@ -135,7 +135,7 @@ Moseley et al. (2020) §5.2 的原文结论是外推到 120 ka 时约达 4.5%。
 原研究对于轨道调谐、系统计数偏差、事件存在性及外部驱动年代误差的
 限制仍适用，详见项目方法说明。
 
-迁移及一致性核验见 [2026-09-07 核验记录](../docs/reviews/ngrip-simplification-2026-09-07.md)。
+迁移及一致性核验见 [2026-09-07 核验记录](../agent_work/reviews/ngrip-simplification-2026-09-07.md)。
 
 ## 暖转冷与冷转暖的岁差相位比较
 
@@ -165,7 +165,7 @@ bootstrap 及年代敏感性函数。每类使用 9,999 个 bootstrap 序列和�
 - `parameters_and_provenance.csv`：窗口、缩放、参数、随机种子和输入哈希。
 
 方法和结果见
-[`experiment_note/ngrip_transition_phase_sensitivity_Methods_and_results.txt`](experiment_note/ngrip_transition_phase_sensitivity_Methods_and_results.txt)。
+[`experiment_note/ngrip_transition_phase_sensitivity_Methods_and_results.txt`](../archive/experiment_notes_2026-09-28/NGRIP/experiment_note/ngrip_transition_phase_sensitivity_Methods_and_results.txt)。
 年代敏感性比例使用有效样本作分母，所比较的是**名义 LR p**，不是对每条
 年代样本再做 bootstrap。冷暖事件来自同一记录并交替发生，相似相位不能当作
 两份独立验证。旧分箱分析继续保留在 `archive/standalone_and_proxy_pi_2026-09-05/`。

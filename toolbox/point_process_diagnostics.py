@@ -15,6 +15,7 @@ import time
 import numpy as np
 import pandas as pd
 from scipy.stats import beta as beta_distribution
+from toolbox.workspace_paths import generated_notes_dir
 
 
 GOF_STATISTICS = ("ks_uniform", "adjacent_dependence")
@@ -331,6 +332,51 @@ def run_history_test(context, *, n_bootstrap=4999, seed=20260914, workers=1,
     return dict(history_test=summary, history_replicates=replicates, history_coefficients=coefficients)
 
 
+def load_sampling_gof_replicates(source, context):
+    """Reuse all nominal-age sampling refits from the S4 effect experiment.
+
+    Select by scenario, never by fit success. Combined chronology/sampling
+    draws have different generators and cannot calibrate nominal-model fit.
+    """
+    from toolbox import combined_likelihood as likelihood
+
+    source = Path(source)
+    settings = pd.read_csv(source.parent / "parameters_and_provenance.csv").set_index("parameter").value
+    tau = settings.get("history_tau_ka", settings.get("history_tau_kyr"))
+    if (settings["model_version"] != likelihood.MODEL_VERSION or
+            float(tau) != context.history_tau_ka or
+            int(settings.get("quadrature_order", 4)) != context.quadrature_order):
+        raise ValueError("S4 model settings differ from the diagnostic context")
+
+    design = likelihood.prepare_catalogue(context.events, context, fixed_support=True)
+    full = likelihood.fit_terms(design, context.full_terms)
+    saved = pd.read_csv(source.parent / "point_generator.csv").rename(
+        columns=lambda name: name.removeprefix("beta__"))
+    if set(saved.columns) != set(full.terms):
+        raise ValueError("S4 generator does not contain the current full-model terms")
+    np.testing.assert_allclose(saved.loc[0, list(full.terms)].to_numpy(float), full.beta,
+                               rtol=1e-7, atol=1e-8,
+                               err_msg="S4 generator differs from the current nominal fit")
+
+    columns = ["replicate_id", "scenario", "outer_id", "seed", "fit_valid", "invalid_reason",
+               "response_exposure_kyr", "n_response_events", *GOF_STATISTICS, "residual_status"]
+    draws = pd.read_csv(source, usecols=columns)
+    sampling = draws.loc[draws.scenario.eq("B_sampling"), columns].reset_index(drop=True)
+    expected_ids = np.arange(1, int(settings["n_point"]) + 1)
+    if not np.array_equal(np.sort(sampling.replicate_id), expected_ids):
+        raise ValueError("S4 nominal sampling ensemble is incomplete or has duplicate IDs")
+    if not sampling.outer_id.eq(0).all() or not sampling.seed.eq(int(settings["seed"])).all():
+        raise ValueError("S4 nominal sampling draws have inconsistent generators or seeds")
+    np.testing.assert_allclose(sampling.response_exposure_kyr, context.response_exposure_kyr,
+                               rtol=1e-10, atol=1e-10,
+                               err_msg="S4 sampling draws use different response exposure")
+    provenance = dict(gof_source=str(source),
+                      gof_source_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+                      gof_bootstrap_replicates=len(sampling), gof_seed=int(settings["seed"]),
+                      gof_source_role="S4 nominal B_sampling full-model refits only")
+    return sampling, provenance
+
+
 def run_gof(context, *, replicates=None, n_bootstrap=1999, seed=20260915, workers=1,
             show_progress=True):
     """Assess full-model fit, or summarize diagnostics saved during full refits.
@@ -365,7 +411,7 @@ def save_results(result, context, output_root, run_name, parameters, *, diagnost
 
     output_root = Path(output_root)
     data_dir = output_root / "data/processed" / run_name
-    notes_dir = output_root / "experiment_note"
+    notes_dir = generated_notes_dir(output_root)
     diagnostic_dir = (output_root / "tests/diagnostics" / run_name if diagnostics_root is None
                       else Path(diagnostics_root) / run_name)
     for directory in (data_dir, notes_dir, diagnostic_dir):
@@ -410,6 +456,12 @@ def save_results(result, context, output_root, run_name, parameters, *, diagnost
         "Calibration simulates the nominal full model, refits it, then recomputes each statistic.",
         "Holm adjustment covers these two diagnostics within the catalogue. This is approximate",
         "parametric bootstrap calibration, not proof that the entire event model is correct."])
+    if "gof_source" in parameters:
+        sections.extend([
+            f"\nGOF reuses all {parameters['gof_bootstrap_replicates']:,} nominal-age sampling refits "
+            f"from S4 (seed {parameters['gof_seed']}); combined chronology/sampling draws are excluded.",
+            f"Source: {parameters['gof_source']}",
+            f"Source SHA256: {parameters['gof_source_sha256']}"])
     if gof_path.exists():
         gof = pd.read_csv(gof_path)
         columns = ["statistic", "observed", "bootstrap_p", "bootstrap_p_holm", "n_bootstrap", "n_invalid"]

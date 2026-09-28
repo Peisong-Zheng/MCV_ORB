@@ -1,17 +1,17 @@
 # Fdb version 4
-["bibtex %AUXDIR%/SI"] 1790357906.66168 "%AUXDIR%/SI.aux" "%AUXDIR%/SI.bbl" "%AUXDIR%/SI" 1790358396.74023 0
-  "%AUXDIR%/SI.aux" 1790358396.40079 20141 a72b5d859f9ce45886aade21845af157 "pdflatex"
-  "./reference.bib" 1790105659.01489 29864 79a03b966f5eb5c3dcad4db066c23abb ""
+["bibtex %AUXDIR%/SI"] 1790590252.62244 "%AUXDIR%/SI.aux" "%AUXDIR%/SI.bbl" "%AUXDIR%/SI" 1790590253.83766 0
+  "%AUXDIR%/SI.aux" 1790590253.50923 19224 1186c394af30face60a2b0fdf1d2face "pdflatex"
+  "./reference.bib" 1790442069.21848 30245 e6eb12690719606d5fd948e7994cf552 ""
   "/usr/local/texlive/2026/texmf-dist/bibtex/bst/aguplus/agu.bst" 1198374113 41998 e266928ecbf9a9be38e50b756398467d ""
   (generated)
   "%AUXDIR%/SI.bbl"
   "%AUXDIR%/SI.blg"
   (rewritten before read)
-["pdflatex"] 1790358395.59523 "/Users/pz/VScode/MCV_ORB/orbital_event_paper/SI.tex" "SI.pdf" "SI" 1790358396.74043 0
-  "%AUXDIR%/SI.aux" 1790358396.40079 20141 a72b5d859f9ce45886aade21845af157 "pdflatex"
-  "%AUXDIR%/SI.bbl" 1790357906.78002 7288 e4b55ddf1a550501b11f5766a0f35b8d "bibtex %AUXDIR%/SI"
-  "%AUXDIR%/SI.out" 1790358396.0853 0 d41d8cd98f00b204e9800998ecf8427e "pdflatex"
-  "/Users/pz/VScode/MCV_ORB/orbital_event_paper/SI.tex" 1790358395.48301 44127 43bae3368fac671f88e4949ee0d82d77 ""
+["pdflatex"] 1790590252.76007 "/Users/pz/VScode/MCV_ORB/orbital_event_paper/SI.tex" "SI.pdf" "SI" 1790590253.8379 0
+  "%AUXDIR%/SI.aux" 1790590253.50923 19224 1186c394af30face60a2b0fdf1d2face "pdflatex"
+  "%AUXDIR%/SI.bbl" 1790590252.75416 6947 6f1d788cf4161a83e700ee31fe082316 "bibtex %AUXDIR%/SI"
+  "%AUXDIR%/SI.out" 1790590253.19784 0 d41d8cd98f00b204e9800998ecf8427e "pdflatex"
+  "/Users/pz/VScode/MCV_ORB/orbital_event_paper/SI.tex" 1790590251.32753 46273 4c6ff8e851596f86bc78b2e1b4aa6f6e ""
   "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/lm/lm-ec.enc" 1254269338 2375 baa924870cfb487815765f9094cf3728 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/lm/lm-mathex.enc" 1202520719 3486 c7eadf5dcc57b3b2d11736679f6636ba ""
   "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/lm/lm-mathit.enc" 1202520719 2405 5dcf2c1b967ee25cc46c58cd52244aed ""
@@ -134,7 +134,7 @@
   "/usr/local/texlive/2026/texmf-var/fonts/map/pdftex/updmap/pdftex.map" 1778509680 5573038 b99aad5e4898a9034e953632f940512b ""
   "/usr/local/texlive/2026/texmf-var/web2c/pdftex/pdflatex.fmt" 1778509655 3636778 cda36ec2833bcb835c452b7c5babcf90 ""
   "/usr/local/texlive/2026/texmf.cnf" 1774209515 577 648cd9f92f9c0eac486f4c71c85cfbbe ""
-  "SI.tex" 1790358395.48301 44127 43bae3368fac671f88e4949ee0d82d77 ""
+  "SI.tex" 1790590251.32753 46273 4c6ff8e851596f86bc78b2e1b4aa6f6e ""
   "figures/FigS01.pdf" 1789160225.45925 104368 28743fd245226f94f8115a9cbe3515a8 ""
   "figures/FigS02.pdf" 1789160226.77076 106362 fce2f47ef12b035b208b3b55a75d7b91 ""
   "figures/FigS03.pdf" 1789160412.21344 55426 0dbcb8d9dbf5706e447ec3f0eae390e0 ""

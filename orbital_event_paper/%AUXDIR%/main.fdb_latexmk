@@ -1,17 +1,17 @@
 # Fdb version 4
-["bibtex %AUXDIR%/main"] 1790361714.94328 "%AUXDIR%/main.aux" "%AUXDIR%/main.bbl" "%AUXDIR%/main" 1790361777.12241 0
-  "%AUXDIR%/main.aux" 1790361776.79375 15528 1b341c999832563264aeba4ebf5837f7 "pdflatex"
-  "./reference.bib" 1790105659.01489 29864 79a03b966f5eb5c3dcad4db066c23abb ""
+["bibtex %AUXDIR%/main"] 1790590852.75433 "%AUXDIR%/main.aux" "%AUXDIR%/main.bbl" "%AUXDIR%/main" 1790590894.07667 0
+  "%AUXDIR%/main.aux" 1790590893.71556 15833 0b492e5256b68c424ef7c6cbdb6bcc22 "pdflatex"
+  "./reference.bib" 1790442069.21848 30245 e6eb12690719606d5fd948e7994cf552 ""
   "/usr/local/texlive/2026/texmf-dist/bibtex/bst/aguplus/agu.bst" 1198374113 41998 e266928ecbf9a9be38e50b756398467d ""
   (generated)
   "%AUXDIR%/main.bbl"
   "%AUXDIR%/main.blg"
   (rewritten before read)
-["pdflatex"] 1790361776.02322 "/Users/pz/VScode/MCV_ORB/orbital_event_paper/main.tex" "main.pdf" "main" 1790361777.1226 0
-  "%AUXDIR%/main.aux" 1790361776.79375 15528 1b341c999832563264aeba4ebf5837f7 "pdflatex"
-  "%AUXDIR%/main.bbl" 1790361715.06466 11977 74803045fa0e173899f41b1c888ef313 "bibtex %AUXDIR%/main"
-  "%AUXDIR%/main.out" 1790361776.79507 501 14a833845616e4ef0789dcd359413959 "pdflatex"
-  "/Users/pz/VScode/MCV_ORB/orbital_event_paper/main.tex" 1790361775.91695 67258 81b06d35cfe040e901dac139dc9e9bdc ""
+["pdflatex"] 1790590892.93699 "/Users/pz/VScode/MCV_ORB/orbital_event_paper/main.tex" "main.pdf" "main" 1790590894.07684 0
+  "%AUXDIR%/main.aux" 1790590893.71556 15833 0b492e5256b68c424ef7c6cbdb6bcc22 "pdflatex"
+  "%AUXDIR%/main.bbl" 1790590852.89548 11574 e6030cc48f51176e60e0ecc0fcb472e9 "bibtex %AUXDIR%/main"
+  "%AUXDIR%/main.out" 1790590893.71694 501 14a833845616e4ef0789dcd359413959 "pdflatex"
+  "/Users/pz/VScode/MCV_ORB/orbital_event_paper/main.tex" 1790590892.83186 43484 aa55ffc3711704a0c17307530d06d309 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/lm/lm-ec.enc" 1254269338 2375 baa924870cfb487815765f9094cf3728 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/lm/lm-mathex.enc" 1202520719 3486 c7eadf5dcc57b3b2d11736679f6636ba ""
   "/usr/local/texlive/2026/texmf-dist/fonts/enc/dvips/lm/lm-mathit.enc" 1202520719 2405 5dcf2c1b967ee25cc46c58cd52244aed ""
@@ -29,7 +29,9 @@
   "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/lm/ec-lmr6.tfm" 1254269338 12048 c1068d0f4772be9b0ec447692e1d6d82 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/lm/ec-lmr9.tfm" 1254269338 12084 b7f5e4c003de6f57f07c7e9fee73a37c ""
   "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/lm/ec-lmri10.tfm" 1254269338 17148 9556e1b5f936b77a796f68d2d559ba99 ""
+  "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/lm/ec-lmri9.tfm" 1254269338 17148 ca1ae65757b004f470b8cd636199f6fc ""
   "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/lm/ec-lmss8.tfm" 1254269338 11180 705632ac6b4fb69204ad970192cdf4e5 ""
+  "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/lm/ec-lmtt10.tfm" 1254269338 1372 2ef2c2b492b3c4cd7879fe083abbb061 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/lm/lmex10.tfm" 1148093231 992 ce925c9346c7613270a79afbee98c070 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/lm/lmmi10.tfm" 1148093231 1528 6d36b2385e0ca062a654de6ac59cb34f ""
   "/usr/local/texlive/2026/texmf-dist/fonts/tfm/public/lm/lmmi12.tfm" 1148093231 1524 753b192b18f2991794f9d41a8228510b ""
@@ -61,10 +63,12 @@
   "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/lm/lmr8.pfb" 1255129361 122174 a7a08406857c9530a0320a2517f60370 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/lm/lmr9.pfb" 1255129361 121065 50bbfa703ce7e11638752ef5a6d120c7 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/lm/lmri10.pfb" 1255129361 112593 fda2373ba4420af33949610de4c28fe8 ""
+  "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/lm/lmri9.pfb" 1255129361 109598 cb570392cb143ca78182169795feed7a ""
   "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/lm/lmss8.pfb" 1255129361 94400 e33ecfb646a9f148e2e53da01a9168fe ""
   "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/lm/lmsy10.pfb" 1254269338 27863 09ce3735688ffde955e72da27c95b61a ""
   "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/lm/lmsy6.pfb" 1254269338 28109 6d61305ed3d0eb794ebe36f15cf44aa0 ""
   "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/lm/lmsy8.pfb" 1254269338 27802 5c876bb2c4040caaf035d60bd74a86bd ""
+  "/usr/local/texlive/2026/texmf-dist/fonts/type1/public/lm/lmtt10.pfb" 1255129361 113227 1010e11451afc2822c95dae77c390042 ""
   "/usr/local/texlive/2026/texmf-dist/tex/context/base/mkii/supp-pdf.mkii" 1461363279 71627 94eb9990bed73c364d7f53f960cc8c5b ""
   "/usr/local/texlive/2026/texmf-dist/tex/generic/bigintcalc/bigintcalc.sty" 1576625341 40635 c40361e206be584d448876bba8a64a3b ""
   "/usr/local/texlive/2026/texmf-dist/tex/generic/bitset/bitset.sty" 1576016050 33961 6b5c75130e435b2bfdb9f480a09a39f9 ""
@@ -120,6 +124,7 @@
   "/usr/local/texlive/2026/texmf-dist/tex/latex/lm/ot1lmr.fd" 1616454256 1882 28c08db1407ebff35a658fd141753d16 ""
   "/usr/local/texlive/2026/texmf-dist/tex/latex/lm/t1lmr.fd" 1616454256 1867 996fe743d88a01aca041ed22cc10e1bb ""
   "/usr/local/texlive/2026/texmf-dist/tex/latex/lm/t1lmss.fd" 1616454256 1641 f48673bce41ac279099d0c9523459753 ""
+  "/usr/local/texlive/2026/texmf-dist/tex/latex/lm/t1lmtt.fd" 1616454256 2682 555da1faa2e266801e4b221d01a42cb5 ""
   "/usr/local/texlive/2026/texmf-dist/tex/latex/lm/ts1lmr.fd" 1616454256 1914 884882d7ebb0fd65cea93fca77ff6f5a ""
   "/usr/local/texlive/2026/texmf-dist/tex/latex/mhchem/mhchem.sty" 1706648908 133877 abeecc93dabd0b08364240f40830f21b ""
   "/usr/local/texlive/2026/texmf-dist/tex/latex/natbib/natbib.sty" 1291685959 45456 1c8843383c0bd05870c45fa0ebea6cc2 ""
@@ -135,7 +140,7 @@
   "figures/Fig02.pdf" 1789919832.77141 47523 9fc9532093167e51c028ec75fc5494da ""
   "figures/Fig03.pdf" 1790345435.67464 34130 051b283a122f428dce084580e1b66018 ""
   "figures/Fig04.pdf" 1790197792.38346 238136 56b05bdb1c0bef8b74ce7885e91cf4c7 ""
-  "main.tex" 1790361775.91695 67258 81b06d35cfe040e901dac139dc9e9bdc ""
+  "main.tex" 1790590892.83186 43484 aa55ffc3711704a0c17307530d06d309 ""
   (generated)
   "%AUXDIR%/main.aux"
   "%AUXDIR%/main.log"

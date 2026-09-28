@@ -100,7 +100,9 @@ bootstrap or change the existing model-fit diagnostics.
 including source IDs/roles, event phases, fitted rate samples, coefficients,
 likelihood statistics, scaling and support. Other experiments save their own
 replicate and summary tables under `data/processed/<script>/`, figures under
-`figures/<script>/` and explanatory text under `experiment_note/`.
+`figures/<script>/`. Generated explanatory text is kept locally under
+`../agent_work/scratch/experiment_note/Barker2011/`; previous notes are in
+`../archive/experiment_notes_2026-09-28/Barker2011/experiment_note/`.
 
 The bootstrap script defaults to varying threshold and keeps its existing
 outputs. `--event-definition fixed_threshold` writes into the bootstrap
@@ -115,7 +117,7 @@ palette assigns rose to varying threshold and green to fixed threshold;
 absolute-age axes put younger ages on the right.
 
 Current model validation is in the
-[migration audit](../docs/reviews/continuous-time-migration-2026-09-12.md).
+[migration audit](../agent_work/reviews/continuous-time-migration-2026-09-12.md).
 The complete previous project, including earlier Barker results, is preserved
 in `../archive/pre_continuous_time_2026-09-12/`. The original three-catalogue
 Barker workflow remains in `../archive/Barker2011_2026-09-05/`.

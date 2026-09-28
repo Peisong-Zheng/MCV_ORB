@@ -117,3 +117,55 @@ def test_boundary_lr_and_programming_errors_are_not_silently_reclassified():
     with pytest.raises(KeyError):
         diagnostics.run_refit_bootstrap(lambda rng: [], incorrect_fit,
                                        lambda events, fit: {}, n_replicates=2, seed=5)
+
+
+@pytest.fixture
+def sampling_cache(tmp_path):
+    from toolbox import combined_likelihood as likelihood
+
+    context = likelihood.build_barker_context()
+    design = likelihood.prepare_catalogue(context.events, context, fixed_support=True)
+    full = likelihood.fit_terms(design, context.full_terms)
+    pd.DataFrame([dict(zip(full.terms, full.beta))]).to_csv(
+        tmp_path / "point_generator.csv", index=False)
+    settings = dict(model_version=likelihood.MODEL_VERSION, history_tau_kyr=1.5,
+                    n_point=2, seed=41)
+    pd.DataFrame(settings.items(), columns=["parameter", "value"]).to_csv(
+        tmp_path / "parameters_and_provenance.csv", index=False)
+    draws = pd.DataFrame(dict(
+        replicate_id=[1, 2, 1], scenario=["B_sampling", "B_sampling", "C_joint"],
+        outer_id=[0, 0, 1], seed=41, fit_valid=[True, False, True],
+        invalid_reason=["", "failed fit", ""], response_exposure_kyr=context.response_exposure_kyr,
+        n_response_events=[70, 65, 66], ks_uniform=[0.1, np.nan, 0.9],
+        adjacent_dependence=[0.2, np.nan, 0.8], residual_status=["ok", "", "ok"]))
+    source = tmp_path / "effect_replicates.csv"
+    draws.to_csv(source, index=False)
+    return context, source
+
+
+def test_sampling_cache_excludes_joint_but_keeps_failed_nominal_refits(sampling_cache):
+    context, source = sampling_cache
+    sampling, provenance = diagnostics.load_sampling_gof_replicates(source, context)
+    assert sampling.replicate_id.tolist() == [1, 2]
+    assert sampling.scenario.eq("B_sampling").all()
+    assert not sampling.fit_valid.iloc[1]
+    assert provenance["gof_bootstrap_replicates"] == 2
+    result = diagnostics.bootstrap_summary(
+        {"ks_uniform": 0.05, "adjacent_dependence": 0.1}, sampling)
+    assert result.bootstrap_p.isna().all()  # A failed draw cannot disappear from calibration.
+
+
+def test_sampling_cache_rejects_incomplete_ensemble_or_changed_generator(sampling_cache):
+    context, source = sampling_cache
+    draws = pd.read_csv(source)
+    draws.iloc[[0, 2]].to_csv(source, index=False)
+    with pytest.raises(ValueError, match="incomplete"):
+        diagnostics.load_sampling_gof_replicates(source, context)
+
+    draws.to_csv(source, index=False)
+    path = source.parent / "point_generator.csv"
+    beta = pd.read_csv(path)
+    beta["pre_phase_sin"] += 0.1
+    beta.to_csv(path, index=False)
+    with pytest.raises(AssertionError, match="generator differs"):
+        diagnostics.load_sampling_gof_replicates(source, context)

@@ -27,12 +27,13 @@ from NGRIP_MIS6_likelihood_bootstrap import empirical_p_value, clopper_pearson_i
 from toolbox import combined_likelihood
 from toolbox.project_config import PROJECT_ROOT
 from toolbox.catalogue_colors import CATALOGUE_COLORS
+from toolbox.workspace_paths import generated_notes_dir
 
 ROOT = PROJECT_ROOT / "Barker2011"
 RUN_NAME = "Barker2011_likelihood_bootstrap"
 OUT_DATA_DIR = ROOT / "data/processed" / RUN_NAME
 OUT_FIG_DIR = ROOT / "figures" / RUN_NAME
-NOTE_DIR = ROOT / "experiment_note"
+NOTE_DIR = generated_notes_dir(ROOT)
 DEFAULT_N_BOOTSTRAP = 9_999
 DEFAULT_SEED = 20260909
 DEFAULT_N_WORKERS = 3
@@ -59,7 +60,7 @@ def output_directories(output_root, event_definition):
     if event_definition == "fixed_threshold":
         data_dir = data_dir / "fixed_threshold"
         figure_dir = figure_dir / "fixed_threshold"
-    return data_dir, figure_dir, root / "experiment_note"
+    return data_dir, figure_dir, generated_notes_dir(root)
 
 
 def save_tables(result, output_dir):

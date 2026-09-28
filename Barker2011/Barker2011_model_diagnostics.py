@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""History utility and full-model fit checks for Barker varying-threshold events."""
+"""History utility and full-model fit checks; reuse Barker S4 sampling refits."""
 
 import argparse
 import os
@@ -22,21 +22,22 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-root", type=Path, default=PROJECT_ROOT)
     parser.add_argument("--n-history", type=int, default=4999)
-    parser.add_argument("--n-gof", type=int, default=1999)
     parser.add_argument("--seed", type=int, default=20260916)
     parser.add_argument("--workers", type=int, default=3)
     parser.add_argument("--quadrature-order", type=int, default=4)
+    parser.add_argument("--gof-replicates", type=Path)
     parser.add_argument("--gof-only", action="store_true")
     args = parser.parse_args()
     context = likelihood.build_barker_context(quadrature_order=args.quadrature_order)
+    gof_source = args.gof_replicates or (
+        args.output_root / "Barker2011/data/processed/Barker2011_effect_uncertainty/effect_replicates.csv")
+    sampling, gof_parameters = diagnostics.load_sampling_gof_replicates(gof_source, context)
     result = {} if args.gof_only else diagnostics.run_history_test(
         context, n_bootstrap=args.n_history, seed=args.seed, workers=args.workers)
-    result.update(diagnostics.run_gof(context, n_bootstrap=args.n_gof,
-                                      seed=args.seed + 1, workers=args.workers))
+    result.update(diagnostics.run_gof(context, replicates=sampling))
     data_dir = diagnostics.save_results(result, context, args.output_root / "Barker2011", RUN_NAME,
         dict(history_bootstrap_replicates=args.n_history, history_seed=args.seed,
-             gof_bootstrap_replicates=args.n_gof, gof_seed=args.seed + 1,
-             gof_source_role="new nominal varying-threshold full-model refits"),
+             **gof_parameters),
         diagnostics_root=args.output_root / "tests/diagnostics")
     print(f"Saved {data_dir}")
     if any(not frame.fit_valid.all() for name, frame in result.items() if name.endswith("replicates")):

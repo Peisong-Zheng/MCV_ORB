@@ -20,11 +20,12 @@ from toolbox.catalogue_colors import CATALOGUE_COLORS
 from toolbox.model_stats import nested_likelihood_metrics
 from toolbox.project_config import PROJECT_ROOT, LR04_XLSX, CO2_XLSX, PRE_TXT
 from paper_figure_export import copy_pdf_to_paper
+from toolbox.workspace_paths import generated_notes_dir
 
 RUN_NAME = "climate_precession_contribution"
 DATA_DIR = PROJECT_ROOT / "data/processed" / RUN_NAME
 FIGURE_DIR = PROJECT_ROOT / "figures" / RUN_NAME
-NOTE_DIR = PROJECT_ROOT / "experiment_note"
+NOTE_DIR = generated_notes_dir(PROJECT_ROOT)
 CLIMATE_TERMS = ("lr04_scaled", "co2_scaled")
 PHASE_TERMS = ("pre_phase_sin", "pre_phase_cos")
 CATALOGUE_LABELS = {

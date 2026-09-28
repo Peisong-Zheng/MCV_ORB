@@ -111,8 +111,11 @@ trigger or remove source-age tuning assumptions.
 | `Figure_orbital_mechanism.py` | Geographic mechanism schematic for Figure 4; no model fitting |
 | `toolbox/point_process.py` | Continuous likelihood, strict event history and thinning |
 | `toolbox/combined_likelihood.py` | Shared forcing, exact supports and catalogue fits |
-| `data/processed/`, `experiment_note/` | Saved research results and explanatory notes |
-| `tests/diagnostics/` | Integration and migration checks |
+| `data/processed/` | Saved research results and reproducibility metadata |
+| `tests/`, source-record `tests/` | Scientific regression tests and reproducibility diagnostics |
+| `docs/` | Research input and chronology documentation |
+| `agent_work/` | Local plans, reviews, historical checks, and temporary outputs; excluded from Git |
+| `paper_figure_manifest.csv` | Versioned source-to-paper figure mapping |
 | `orbital_event_paper/` | Manuscript, SI and exported figures |
 
 Use the project's Python environment and `requirements.txt`. From the project
@@ -123,6 +126,8 @@ python NGRIP_MIS6_event_phase_analysis.py
 python Barker2011/Barker2011_event_phase_analysis.py
 python NGRIP_MIS6_event_uncertainty_sensitivity.py
 python Barker2011/Barker2011_event_uncertainty_sensitivity.py
+python ngrip_knot_spacing_sensitivity.py
+python sofular_component_likelihood_sensitivity.py
 python NGRIP_MIS6_likelihood_bootstrap.py
 python Barker2011/Barker2011_likelihood_bootstrap.py
 python Barker2011/Barker2011_likelihood_bootstrap.py --event-definition fixed_threshold --n-bootstrap 9999 --seed 20260920
@@ -142,6 +147,11 @@ make -C orbital_event_paper pdf
 make -C orbital_event_paper check
 ```
 
+Both model-diagnostic scripts reuse the nominal-age sampling rows in their
+catalogue's `effect_replicates.csv` (Text S4). Run the effect analysis first;
+`--gof-only` refreshes the fit diagnostics without rerunning the history test.
+The default effect ensembles provide 5,000 full-model refits per catalogue.
+
 Main-analysis tables distinguish `event_role` (conditioning/response), actual
 ages, fitted rate samples, coefficients, support and model statistics. Fitted
 rate samples are plotting coordinates, not event counts. Chronology fits are
@@ -151,6 +161,9 @@ Scripts supporting `--output-root` can write a separate review tree. Use
 
 The paper build reads saved results and compiles TeX; it does not refit models
 or rewrite manuscript prose. See [the paper README](orbital_event_paper/README.md).
+The paper Makefile and README remain local. A fresh checkout can synchronize
+saved figures with `python paper_figure_export.py`, then compile `main.tex` and
+`SI.tex` with `latexmk -pdf` from `orbital_event_paper/`.
 Absolute-age axes put younger ages on the right. Three catalogue colors are
 shared in `toolbox/catalogue_colors.py`.
 
@@ -164,6 +177,15 @@ The retired LR04–phase modulation experiment, including its code, results and
 figures, is preserved in
 [its archive](archive/LR04_phase_interaction_2026-09-23/README.md).
 Current validation and result status are recorded in the
-[continuous-time migration audit](docs/reviews/continuous-time-migration-2026-09-12.md).
+[continuous-time migration audit](agent_work/reviews/continuous-time-migration-2026-09-12.md).
 Earlier review reports retain their historical numbers. Author declarations and
 permanent public code/data identifiers remain to be completed before submission.
+
+Local agent instructions are in `AGENTS.md`, with current progress in
+`agent_work/STATUS.md`. Both are deliberately excluded from Git; normal `rg`
+searches omit them, so use `rg --no-ignore agent_work` for working records.
+They are not required to run the scientific analyses or regression tests.
+Old experiment notes are frozen in `archive/experiment_notes_2026-09-28/`.
+Reruns write new notes under `agent_work/scratch/experiment_note/`, leaving the
+archive unchanged. Historical migration checks are also retained locally under
+`agent_work/scratch/`; saved provenance records keep their original paths.

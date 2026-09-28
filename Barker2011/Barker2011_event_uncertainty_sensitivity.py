@@ -13,6 +13,7 @@ from toolbox import combined_likelihood as c, age_sensitivity
 from toolbox.age_sensitivity_plotting import plot_sensitivity
 from toolbox.project_config import PROJECT_ROOT
 from paper_figure_export import copy_pdf_to_paper
+from toolbox.workspace_paths import generated_notes_dir
 ROOT=PROJECT_ROOT/'Barker2011'
 RUN_NAME='Barker2011_event_uncertainty_sensitivity'
 OUT_DATA_DIR=ROOT/'data/processed'/RUN_NAME
@@ -36,7 +37,7 @@ def main():
     args=parser.parse_args()
     context=c.build_barker_context();point=c.fit_catalogue(context.events,context)
     root=args.output_root/'Barker2011'
-    data=root/'data/processed'/RUN_NAME;figures=root/'figures'/RUN_NAME;notes=root/'experiment_note'
+    data=root/'data/processed'/RUN_NAME;figures=root/'figures'/RUN_NAME;notes=generated_notes_dir(root)
     for directory in (data,figures,notes): directory.mkdir(parents=True,exist_ok=True)
     if args.redraw: results=pd.read_csv(data/'gain_realizations.csv')
     else:

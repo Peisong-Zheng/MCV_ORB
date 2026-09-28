@@ -21,6 +21,7 @@ from toolbox import combined_likelihood
 from toolbox.figure_style import add_panel_label
 from toolbox.model_stats import nested_likelihood_metrics
 from toolbox.project_config import PROJECT_ROOT, LR04_XLSX, CO2_XLSX, PRE_TXT
+from toolbox.workspace_paths import generated_notes_dir
 
 RUN_NAME = "NGRIP_MIS6_likelihood_design_sensitivity"
 OUT_DATA_DIR = PROJECT_ROOT / "data/processed" / RUN_NAME
@@ -243,7 +244,7 @@ def main():
     pooling = run_pooling_diagnostic()
     output_dir = args.output_root / "data/processed" / RUN_NAME
     write_outputs(design, initial, pooling, output_dir)
-    write_notes(design, initial, pooling, args.output_root / "experiment_note")
+    write_notes(design, initial, pooling, generated_notes_dir(args.output_root))
     save_figure(plot_sensitivity(design, initial), args.output_root / "figures" / RUN_NAME,
                 paper_export=not args.no_paper_export)
     print(design[["history_tau_kyr", "gain_bits_per_event", "nominal_LR_p"]].to_string(index=False))

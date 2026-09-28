@@ -23,6 +23,7 @@ from toolbox.project_config import (
     PROJECT_ROOT, LR04_XLSX, CO2_XLSX, PRE_TXT,
     ORBITAL_SOLUTION, ORBITAL_SOURCE_EPOCH, ORBITAL_AGE_OFFSET_TO_BP1950_KA,
 )
+from toolbox.workspace_paths import generated_notes_dir
 
 RUN_NAME = "NGRIP_MIS6_event_phase_analysis"
 OUT_DATA_DIR = PROJECT_ROOT / "data/processed" / RUN_NAME
@@ -445,7 +446,7 @@ def main(argv=None):
     write_outputs(result, args.output_root / "data/processed" / RUN_NAME)
     save_figure(plot_results(result), args.output_root / "figures" / RUN_NAME,
                 paper_export=not args.no_paper_export and args.output_root.resolve() == PROJECT_ROOT.resolve())
-    write_notes(result, args.output_root / "experiment_note")
+    write_notes(result, generated_notes_dir(args.output_root))
     s = result["summary"].iloc[0]
     print(f"{RUN_NAME}: {s.n_response_events} response events; G={s.gain_bits_per_event:.6f}; "
           f"LR={s.LR_statistic:.6f}; nominal p={s.nominal_LR_p:.6g}; phase={s.pre_phase_preferred_deg:.3f}")

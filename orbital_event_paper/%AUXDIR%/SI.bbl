@@ -1,4 +1,4 @@
-\begin{thebibliography}{22}
+\begin{thebibliography}{21}
 \providecommand{\natexlab}[1]{#1}
 \expandafter\ifx\csname urlstyle\endcsname\relax
   \providecommand{\doi}[1]{doi:\discretionary{}{}{}#1}\else
@@ -126,12 +126,6 @@ Rasmussen, S.~O., et~al., A stratigraphic framework for abrupt climatic changes
 Scholz, D., and D.~L. Hoffmann, {StalAge} -- an algorithm designed for
   construction of speleothem age models, \textit{Quaternary Geochronology},
   \textit{6}(3-4), 369--382, \doi{10.1016/j.quageo.2011.02.002}, 2011.
-
-\bibitem[{\textit{Self and Liang}(1987)}]{self1987asymptotic}
-Self, S.~G., and K.-Y. Liang, Asymptotic properties of maximum likelihood
-  estimators and likelihood ratio tests under nonstandard conditions,
-  \textit{Journal of the American Statistical Association}, \textit{82}(398),
-  605--610, \doi{10.1080/01621459.1987.10478472}, 1987.
 
 \bibitem[{\textit{Svensson et~al.}(2008)}]{svensson2008sixty}
 Svensson, A., et~al., A 60 000 year {Greenland} stratigraphic ice core
