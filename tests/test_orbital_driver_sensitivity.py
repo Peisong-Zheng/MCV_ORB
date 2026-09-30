@@ -11,12 +11,16 @@ import xarray as xr
 from toolbox import combined_likelihood
 from toolbox import orbital_driver_sensitivity as orbital
 from toolbox import orbital_driver_reporting as reporting
+from toolbox.project_config import BARKER_EVENT_CSVS
 
 
 @pytest.fixture(scope="module", params=("pooled", "barker"))
 def point_analysis(request):
-    context = (combined_likelihood.build_context() if request.param == "pooled"
-               else combined_likelihood.build_barker_context())
+    if request.param == "pooled":
+        context = combined_likelihood.build_context()
+    else:
+        events = pd.read_csv(BARKER_EVENT_CSVS["variable_threshold"], float_precision="round_trip")
+        context = combined_likelihood.build_barker_context(events)
     reference = combined_likelihood.fit_catalogue(context.events, context).summary
     context, _, _ = orbital.prepare_drivers(context)
     design = combined_likelihood.prepare_catalogue(context.events, context)

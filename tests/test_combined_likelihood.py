@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from toolbox import combined_likelihood as c
+from toolbox.project_config import BARKER_EVENT_CSVS
 
 
 @pytest.fixture(scope="module")
@@ -24,6 +25,18 @@ def test_frozen_catalogue_and_chosen_model(context):
     assert c.FULL_TERMS == c.REDUCED_TERMS + ("pre_phase_sin", "pre_phase_cos")
     assert context.history_tau_ka == 1.5
     assert context.initial_history == 0
+
+
+@pytest.mark.parametrize("definition", ("variable_threshold", "fixed_threshold"))
+def test_barker_context_uses_two_column_input_without_modifying_it(definition):
+    events = pd.read_csv(BARKER_EVENT_CSVS[definition], float_precision="round_trip")
+    original = events.copy(deep=True)
+    context = c.build_barker_context(events, event_definition=definition)
+    assert list(events.columns) == ["event_id", c.EVENT_AGE_COLUMN]
+    pd.testing.assert_frame_equal(events, original, check_exact=True)
+    pd.testing.assert_frame_equal(context.events, original.assign(segment_id="Barker2011"), check_exact=True)
+    assert context.catalogue_id == f"barker_{definition}_speleo_0_400"
+    assert context.segments["Barker2011"].anchor_age_kyr_bp == events[c.EVENT_AGE_COLUMN].max()
 
 
 def test_exact_anchors_define_exposure_without_bins_or_gap(fitted):
@@ -180,3 +193,8 @@ def test_event_phase_sampling_uses_bp1950_phase_convention(context):
     assert phases.pre_phase_deg.between(0, 360).all()
     assert not phases.pre_phase_extrapolated.any()
     np.testing.assert_allclose(np.sin(phases.pre_phase_rad), np.sin(np.deg2rad(phases.pre_phase_deg)), atol=1e-12)
+    minimal_events = context.events[["event_id", c.EVENT_AGE_COLUMN]].copy()
+    original = minimal_events.copy(deep=True)
+    minimal_phases = c.sample_event_phases(minimal_events)
+    pd.testing.assert_frame_equal(minimal_phases, phases[minimal_phases.columns], check_exact=True)
+    pd.testing.assert_frame_equal(minimal_events, original, check_exact=True)

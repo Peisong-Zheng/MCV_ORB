@@ -15,12 +15,14 @@ if str(ROOT) not in sys.path:
 import NGRIP_MIS6_effect_uncertainty as analysis
 from toolbox import combined_likelihood
 from toolbox import effect_uncertainty as effect
+from toolbox.project_config import BARKER_EVENT_CSVS
 
 
 def test_barker_uses_named_phase_coefficients_and_its_own_age_support():
     from Barker2011 import Barker2011_effect_uncertainty as barker
 
-    context = combined_likelihood.build_barker_context()
+    events = pd.read_csv(BARKER_EVENT_CSVS["variable_threshold"], float_precision="round_trip")
+    context = combined_likelihood.build_barker_context(events)
     fit = combined_likelihood.fit_catalogue(context.events, context)
     assert "mis6_segment" not in fit.full.terms
     expected = [fit.full.beta[fit.full.terms.index(term)] for term in effect.PHASE_TERMS]

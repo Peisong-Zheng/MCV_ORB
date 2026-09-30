@@ -10,15 +10,38 @@ independent of all source-age constraints in the primary study.
 
 ## Inputs and age uncertainty
 
+- `data_pre_processing.py` prepares the event inputs before any analysis:
+  `data/processed/barker_events_variable_threshold.csv` (70 rows) and
+  `data/processed/barker_events_fixed_threshold.csv` (59 rows). Each contains
+  only `event_id,event_age_kyr_bp`, replacing the former 11-column source
+  table. The two definitions select different rows, with identical ages for
+  shared IDs. Ages are saved with 17 significant digits and read with
+  `float_precision="round_trip"`.
 - `data/raw/Barker et al-2011-SOM.xls`: `Sheet1`, Excel row 9 as header.
-  Event ages come from `SpeloAge (kyr).1`; retain a pick value of 1 in
-  `DO pick variable threshold` or `DO pick`. Stable event IDs retain the
-  visible source Excel row as `Barker_S3_XXX`.
+  The preparation script takes `SpeloAge (kyr).1`, retains a pick value of 1
+  in `DO pick variable threshold` or `DO pick`, filters to 0–400 kyr and
+  sorts by age. Stable IDs retain the visible source Excel row as
+  `Barker_S3_XXX`; they are not renumbered within each definition.
 - `data/raw/Barker2011_TableS1.csv`: transcription of the 60-row chronology
-  table, checked against `references/Barker2011_SOM.pdf`.
+  table in the published supplement. The age sampler reads this CSV directly;
+  a local copy of the supplementary PDF is not required.
 - Shared background and orbital sources reside in `../data/raw/`: LR04,
   composite CO2, La2004 precession/obliquity/eccentricity, and 65°N
   summer-solstice insolation.
+
+Analyses read the selected CSV directly, then build the scientific context:
+
+```python
+events = pd.read_csv(BARKER_EVENT_CSVS[event_definition], float_precision="round_trip")
+context = combined_likelihood.build_barker_context(events, event_definition=event_definition)
+fit = combined_likelihood.fit_catalogue(context.events, context)
+```
+
+The context adds the required `Barker2011` segment constant; it does not
+reconstruct the discarded source, label or duplicate-age columns. Missing
+prepared files raise an error rather than triggering Excel parsing. Existing
+provenance code may still read raw-file bytes, so the original SOM remains
+part of the project.
 
 The age sampler uses SpeleoAge and the published combined uncertainty.
 Control-point offsets are interpolated across the data gap; a conservative
@@ -74,6 +97,7 @@ diagnostics save tables and notes without adding default manuscript figures.
 Run from the workspace root using the project Python environment:
 
 ```bash
+python Barker2011/data_pre_processing.py
 python Barker2011/Barker2011_event_phase_analysis.py
 python Barker2011/Barker2011_event_age_uncertainty.py
 python Barker2011/Barker2011_event_uncertainty_sensitivity.py
@@ -85,16 +109,24 @@ python Barker2011/Barker2011_event_detection_sensitivity.py
 python Barker2011/Barker2011_orbital_driver_sensitivity.py
 ```
 
+For an isolated preparation check, pass `--output-dir` to
+`data_pre_processing.py`. It writes only the two event CSVs and checks counts,
+IDs, age order and agreement between the definitions.
+
 Existing combined-age realizations can be reused without rerunning the sampler.
+Their `age_ka_bp__Barker_S3_*` columns, IDs and saved values are unchanged by
+the two-column input preparation; the existing orbital selection is unchanged.
 `Barker2011_effect_uncertainty.py` reuses all 10,000 age fits, runs 5,000
 full-model simulations at nominal chronology, and simulates 50 sequences
 from each of 200 distinct age-specific full models. All three use the same
 95% coefficient-ellipse construction and projection as NGRIP–MIS6. Sampling
 gives an approximate conditional confidence region; chronology and combined
 regions describe sensitivity to the assumed age errors. The figure labels
-name these sources directly. Its PDF supplies manuscript Figure S7. Use `--redraw` to regenerate
-the figure from saved replicates; it does not rerun the BG-model significance
-bootstrap or change the existing model-fit diagnostics.
+name these sources directly. Its PDF supplies manuscript Figure S7. The
+`--redraw` mode uses saved replicates but requires the saved source hashes to
+match. Historical Barker effect runs currently fail that check after shared
+code changes; neither the check nor historical hashes are rewritten to bypass
+it. Redrawing does not rerun the BG-model significance bootstrap.
 
 `event_phase_analysis` writes nominal main and `fixed_threshold/` results,
 including source IDs/roles, event phases, fitted rate samples, coefficients,
@@ -103,6 +135,20 @@ replicate and summary tables under `data/processed/<script>/`, figures under
 `figures/<script>/`. Generated explanatory text is kept locally under
 `../agent_work/scratch/experiment_note/Barker2011/`; previous notes are in
 `../archive/experiment_notes_2026-09-28/Barker2011/experiment_note/`.
+
+New event-pass-through tables contain fewer source-description columns.
+`event_age_kyr_bp` is the single nominal-age field in current calculations and
+new chronology summaries; derived quantile names such as `age_q025_ka` remain.
+Existing result CSVs and frozen ensembles are not rewritten to adopt this schema.
+
+Local regression checks formerly under `Barker2011/tests/` now reside in
+`../agent_work/tests/Barker2011/`. They are not analysis entry points or paper
+figure producers. The directory is local, excluded from Git and from default
+pytest discovery. To run these checks explicitly from the project root:
+
+```bash
+python -m pytest -q agent_work/tests/Barker2011
+```
 
 The bootstrap script defaults to varying threshold and keeps its existing
 outputs. `--event-definition fixed_threshold` writes into the bootstrap

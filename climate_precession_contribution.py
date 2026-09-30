@@ -18,7 +18,7 @@ import pandas as pd
 from toolbox import combined_likelihood as likelihood
 from toolbox.catalogue_colors import CATALOGUE_COLORS
 from toolbox.model_stats import nested_likelihood_metrics
-from toolbox.project_config import PROJECT_ROOT, LR04_XLSX, CO2_XLSX, PRE_TXT
+from toolbox.project_config import PROJECT_ROOT, BARKER_EVENT_CSVS, LR04_XLSX, CO2_XLSX, PRE_TXT
 from paper_figure_export import copy_pdf_to_paper
 from toolbox.workspace_paths import generated_notes_dir
 
@@ -85,11 +85,10 @@ def fit_contributions(context):
 
 
 def run_analysis():
-    contexts = {
-        "primary": likelihood.build_context(),
-        "variable": likelihood.build_barker_context("variable_threshold"),
-        "fixed": likelihood.build_barker_context("fixed_threshold"),
-    }
+    contexts = {"primary": likelihood.build_context()}
+    for catalogue, definition in (("variable", "variable_threshold"), ("fixed", "fixed_threshold")):
+        events = pd.read_csv(BARKER_EVENT_CSVS[definition], float_precision="round_trip")
+        contexts[catalogue] = likelihood.build_barker_context(events, event_definition=definition)
     comparisons, model_rows, coefficients = [], [], []
     for catalogue, context in contexts.items():
         models, table = fit_contributions(context)
@@ -204,6 +203,7 @@ def write_notes(comparisons, contexts):
     )
     (NOTE_DIR / f"{RUN_NAME}_Caption.txt").write_text(caption)
     sources = [likelihood.EVENT_CATALOGUE_CSV, likelihood.OBSERVATION_SEGMENTS_CSV,
+               *BARKER_EVENT_CSVS.values(),
                PROJECT_ROOT / "Barker2011/data/raw/Barker et al-2011-SOM.xls",
                LR04_XLSX, CO2_XLSX, PRE_TXT]
     provenance = dict(model_version=likelihood.MODEL_VERSION, age_units="kyr BP1950",

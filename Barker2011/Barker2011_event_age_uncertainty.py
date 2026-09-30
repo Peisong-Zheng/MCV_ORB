@@ -26,12 +26,12 @@ import scipy
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from paper_figure_export import copy_pdf_to_paper
 from toolbox.figure_style import add_panel_label
+from toolbox.project_config import BARKER_EVENT_CSVS
 from Barker2011 import Barker2011_event_phase_analysis as main_analysis
 
-ROOT = main_analysis.ROOT
+ROOT = Path(__file__).resolve().parent
 RUN_NAME = "Barker2011_event_age_uncertainty"
 CONTROL_CSV = ROOT / "data/raw/Barker2011_TableS1.csv"
-SOURCE_PDF = ROOT / "references/Barker2011_SOM.pdf"
 OUT_DATA_DIR = ROOT / "data/processed" / RUN_NAME
 OUT_FIG_DIR = ROOT / "figures" / RUN_NAME
 N_REALIZATIONS = 10_000
@@ -96,10 +96,10 @@ def interpolate_offsets(ages, controls, control_offsets):
             + weight * control_offsets[:, right])
 
 
-def prepare_events(controls):
-    events = main_analysis.load_barker_source()
-    events.insert(0, "event_id", [f"Barker_S3_{row:03d}" for row in events.source_excel_row])
-    age = events.event_age_ka.to_numpy(float)
+def prepare_events(events, controls):
+    """Attach chronology controls to the prepared event ages."""
+    events = events.copy()
+    age = events.event_age_kyr_bp.to_numpy(float)
     left, right, weight = interpolation_weights(age, controls)
     events["left_control_id"] = controls.control_id.to_numpy()[left]
     events["right_control_id"] = controls.control_id.to_numpy()[right]
@@ -115,7 +115,7 @@ def sample_realizations(events, controls, n_realizations=N_REALIZATIONS, seed=RA
     """Reject whole crossed control maps; never repair a draw by sorting ages."""
     if n_realizations <= 0:
         raise ValueError("n_realizations must be positive")
-    ages = events.event_age_ka.to_numpy(float)
+    ages = events.event_age_kyr_bp.to_numpy(float)
     knots = controls.speleo_age_ka.to_numpy(float)
     half_width = controls.combined_uncertainty_ka.to_numpy(float)
     if np.any(np.diff(ages) <= 0) or not np.isfinite(half_width).all() or np.any(half_width < 0):
@@ -150,23 +150,23 @@ def age_columns(events):
 
 
 def summarize_ages(events, controls, draws, control_offsets):
-    summary = events[["event_id", "event_age_ka", "left_control_id", "right_control_id",
+    summary = events[["event_id", "event_age_kyr_bp", "left_control_id", "right_control_id",
                       "right_control_weight", "in_published_alignment_gap",
                       "in_long_control_interval", "beyond_last_published_control"]].copy()
-    left, right, weight = interpolation_weights(events.event_age_ka, controls)
+    left, right, weight = interpolation_weights(events.event_age_kyr_bp, controls)
     half_width = controls.combined_uncertainty_ka.to_numpy(float)
     summary["interpolated_half_width_ka"] = (1 - weight) * half_width[left] + weight * half_width[right]
     # This is the pre-conditioning variance of a weighted sum of independent uniforms.
     summary["proposal_sd_ka"] = np.sqrt(((1 - weight) * half_width[left])**2
                                        + (weight * half_width[right])**2) / np.sqrt(3)
-    offsets = draws - events.event_age_ka.to_numpy(float)
+    offsets = draws - events.event_age_kyr_bp.to_numpy(float)
     for frame, values in ((summary, offsets), (controls, control_offsets)):
         frame["accepted_offset_mean_ka"] = values.mean(axis=0)
         frame["accepted_offset_sd_ka"] = values.std(axis=0, ddof=1)
         for label, q in (("q025", 0.025), ("median", 0.5), ("q975", 0.975)):
             frame[f"accepted_offset_{label}_ka"] = np.quantile(values, q, axis=0)
     for label in ("q025", "median", "q975"):
-        summary[f"age_{label}_ka"] = summary.event_age_ka + summary[f"accepted_offset_{label}_ka"]
+        summary[f"age_{label}_ka"] = summary.event_age_kyr_bp + summary[f"accepted_offset_{label}_ka"]
     return summary
 
 
@@ -215,7 +215,7 @@ def plot_uncertainty(events, controls, control_offsets):
     ax.plot(age, median, color=BLUE, lw=1.4, label="MC median")
     ax.axhline(0, color="0.2", lw=0.65)
     ax.set_ylim(-3.35, 3.35)
-    event_age = events.event_age_ka.to_numpy(float)
+    event_age = events.event_age_kyr_bp.to_numpy(float)
     ax.plot(event_age, np.full(len(events), -3.12), "|", color=main_analysis.EVENT_COLOR,
             ms=5, label="Warming events", clip_on=False)
     ax.set_xlabel("Age (kyr BP)")
@@ -234,7 +234,8 @@ def save_figure(fig, directory, stem):
 
 def main():
     controls = prepare_controls()
-    events = prepare_events(controls)
+    events = pd.read_csv(BARKER_EVENT_CSVS["variable_threshold"], float_precision="round_trip")
+    events = prepare_events(events, controls)
     draws, control_offsets, diagnostics = sample_realizations(events, controls)
     controls = controls.copy()
     summary = summarize_ages(events, controls, draws, control_offsets)
@@ -245,6 +246,7 @@ def main():
                                  columns=[f"age_ka_bp__{name}" for name in controls.control_id])
     control_table.insert(0, "realization_id", ids)
     settings = dict(diagnostics, n_events=len(events), n_published_controls=60,
+                    event_input_csv=str(BARKER_EVENT_CSVS["variable_threshold"].relative_to(ROOT.parent)),
                     n_auxiliary_controls=1, auxiliary_age_ka=AUXILIARY_AGE_KA,
                     auxiliary_half_width_ka=controls.combined_uncertainty_ka.iloc[-1],
                     auxiliary_unfloored_extrapolation_ka=controls.unfloored_extrapolation_ka.iloc[-1],
@@ -260,7 +262,7 @@ def main():
                     n_events_beyond_last_control=int(events.beyond_last_published_control.sum()),
                     extra_event_picking_error=False, forcing_chronology_perturbed=False,
                     edc3_used_in_sampling=False, intervals="accepted ensemble quantiles, not confidence intervals")
-    parameters = parameters_table(settings, dict(table_s1=CONTROL_CSV, som_pdf=SOURCE_PDF,
+    parameters = parameters_table(settings, dict(table_s1=CONTROL_CSV,
                                   events=main_analysis.BARKER_XLS, sampler=Path(__file__).resolve(),
                                   main_analysis=Path(main_analysis.__file__).resolve()))
     OUT_DATA_DIR.mkdir(parents=True, exist_ok=True)

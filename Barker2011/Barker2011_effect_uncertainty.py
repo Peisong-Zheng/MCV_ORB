@@ -24,7 +24,7 @@ import pandas as pd
 import NGRIP_MIS6_effect_uncertainty as shared
 from toolbox import combined_likelihood as likelihood
 from toolbox import effect_uncertainty as effect
-from toolbox.project_config import PROJECT_ROOT, CO2_XLSX, LR04_XLSX, PRE_TXT
+from toolbox.project_config import PROJECT_ROOT, BARKER_EVENT_CSVS, CO2_XLSX, LR04_XLSX, PRE_TXT
 from toolbox.workspace_paths import generated_notes_dir
 
 
@@ -114,7 +114,8 @@ def main():
     for directory in (data_dir, figure_dir, notes_dir):
         directory.mkdir(parents=True, exist_ok=True)
 
-    context = likelihood.build_barker_context("variable_threshold")
+    events = pd.read_csv(BARKER_EVENT_CSVS["variable_threshold"], float_precision="round_trip")
+    context = likelihood.build_barker_context(events)
     point_fit = likelihood.fit_catalogue(context.events, context)
     effect.validate_effect_fit(point_fit)
     draws, ages, age_columns = load_age_inputs(context.events)
@@ -146,6 +147,7 @@ def main():
         # Save every replicate before checking failures; never replace difficult draws.
         replicates.to_csv(data_dir / "effect_replicates.csv", index=False, float_format="%.12g")
         settings = dict(model_version=likelihood.MODEL_VERSION, event_definition="variable_threshold",
+                        event_input_csv=str(BARKER_EVENT_CSVS["variable_threshold"].relative_to(PROJECT_ROOT)),
                         n_point=args.n_point, n_outer=args.n_outer, n_inner=args.n_inner,
                         seed=args.seed, workers=args.workers, n_age_total=len(ages),
                         n_age_valid=int(ages.fit_valid.sum()), history_tau_kyr=context.history_tau_ka,

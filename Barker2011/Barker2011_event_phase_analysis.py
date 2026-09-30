@@ -24,7 +24,7 @@ from toolbox import combined_likelihood, event_inputs, orbital_phase
 from toolbox.catalogue_colors import CATALOGUE_COLORS
 from toolbox.phase_response_plotting import format_phase_response_axis, mark_preferred_phase
 from toolbox.project_config import (
-    PROJECT_ROOT, LR04_XLSX, CO2_XLSX, PRE_TXT,
+    PROJECT_ROOT, BARKER_EVENT_CSVS, LR04_XLSX, CO2_XLSX, PRE_TXT,
     ORBITAL_SOLUTION, ORBITAL_SOURCE_EPOCH, ORBITAL_AGE_OFFSET_TO_BP1950_KA,
 )
 from toolbox.workspace_paths import generated_notes_dir
@@ -33,8 +33,6 @@ RUN_NAME = "Barker2011_event_phase_analysis"
 OUT_DATA_DIR = ROOT / "data/processed" / RUN_NAME
 OUT_FIG_DIR = ROOT / "figures" / RUN_NAME
 BARKER_XLS = ROOT / "data/raw/Barker et al-2011-SOM.xls"
-DATASET_ID = "barker_variable_threshold_speleo_0_400"
-EVENT_TYPE = "barker_do_warming_variable_threshold_speleo"
 CATALOGUE_LABEL = "Barker variable-threshold D-O warmings, SpeleoAge 0-400 ka"
 AGE_COLUMN = "SpeloAge (kyr).1"
 PICK_COLUMN = "DO pick variable threshold"
@@ -47,33 +45,15 @@ ANALYSIS_START_KA, ANALYSIS_END_KA = 0.0, 400.0
 HISTORY_TAU_KA = combined_likelihood.DEFAULT_HISTORY_TAU_KA
 REDUCED_TERMS = tuple(t for t in combined_likelihood.REDUCED_TERMS if t != combined_likelihood.SEGMENT_TERM)
 FULL_TERMS = REDUCED_TERMS + ("pre_phase_sin", "pre_phase_cos")
-MODEL_SPECS = (("reduced", REDUCED_TERMS, "History and climate"),
-               ("full", FULL_TERMS, "History, climate and precession"))
-
-
-def load_barker_source(event_definition="variable_threshold"):
-    """Retain the source-table interface used by the upstream chronology script.
-
-    That script creates its own stable Barker_S3 IDs. Main fits use the complete
-    ID-bearing catalogue in ``build_barker_context`` instead.
-    """
-    events = combined_likelihood.load_barker_events(event_definition).drop(columns="event_id")
-    events["dataset_id"] = DATASET_ID.replace("variable_threshold", event_definition)
-    events["event_type"] = EVENT_TYPE.replace("variable_threshold", event_definition)
-    events["age_column"] = AGE_COLUMN
-    events["pick_column"] = PICK_COLUMNS[event_definition]
-    events["analysis_start_ka"] = ANALYSIS_START_KA
-    events["analysis_end_ka"] = ANALYSIS_END_KA
-    return events
 
 
 def run_analysis(event_definition="variable_threshold"):
-    context = combined_likelihood.build_barker_context(event_definition, history_tau_ka=HISTORY_TAU_KA)
+    events = pd.read_csv(BARKER_EVENT_CSVS[event_definition], float_precision="round_trip")
+    context = combined_likelihood.build_barker_context(
+        events, event_definition=event_definition, history_tau_ka=HISTORY_TAU_KA,
+    )
     fit = combined_likelihood.fit_catalogue(context.events, context)
     events = fit.design.all_events.copy()
-    events["dataset_id"] = context.catalogue_id
-    events["age_column"] = AGE_COLUMN
-    events["pick_column"] = PICK_COLUMNS[event_definition]
     phases = combined_likelihood.sample_event_phases(events)
     # Descriptive-column names remain readable by the chronology figure code.
     for target, source in [("phase_rad", "pre_phase_rad"), ("phase_deg", "pre_phase_deg"),
@@ -106,9 +86,9 @@ def validate_results(result):
     expected = EXPECTED_COUNTS[summary.event_definition]
     if len(events) != expected or events.included_in_response.sum() != expected - 1:
         raise ValueError("Exactly one oldest event conditions this definition's fit")
-    if not events.event_id.is_unique or np.any(np.diff(events.event_age_ka) <= 0):
+    if not events.event_id.is_unique or np.any(np.diff(events.event_age_kyr_bp) <= 0):
         raise ValueError("Barker event identities and strictly ordered ages must be preserved")
-    if not np.isclose(summary.response_exposure_kyr, events.event_age_ka.max() - ANALYSIS_START_KA):
+    if not np.isclose(summary.response_exposure_kyr, events.event_age_kyr_bp.max() - ANALYSIS_START_KA):
         raise ValueError("Continuous support does not match the exact anchor")
     if result["event_phases"].pre_phase_extrapolated.any():
         raise ValueError("An event phase is extrapolated")
@@ -128,6 +108,8 @@ def build_parameters(result):
         ("event_pick_column", PICK_COLUMNS[s.event_definition], "", "retain published pick value 1"),
         ("event_age_reference", "BP1950 assumed", "", "precise source epoch unverified"),
         ("event_age_offset_applied", 0.0, "kyr", "source numerical ages retained"),
+        ("event_input_csv", str(BARKER_EVENT_CSVS[s.event_definition].relative_to(PROJECT_ROOT)),
+         "", "prepared event IDs and ages"),
         ("history_tau", HISTORY_TAU_KA, "kyr", "continuous exponential decay time"),
         ("history_coefficient_domain", "beta_H <= 0", "", "inhibition or no history effect"),
         ("initial_unobserved_history", result["context"].initial_history, "weighted events", "boundary approximation"),
@@ -257,7 +239,7 @@ def plot_results(result, fixed_result=None):
         phases = current["event_phases"]
         label = f"{'Fixed' if fixed else 'Variable'} threshold (n = {s.n_rayleigh_events})"
         # Large open squares can surround the primary dots at shared event ages.
-        timeline.scatter(phases["event_age_ka"], phases["orbital_value_at_event"],
+        timeline.scatter(phases["event_age_kyr_bp"], phases["orbital_value_at_event"],
                          s=30 if fixed else 15, marker="s" if fixed else "o",
                          facecolor="none" if fixed else color, edgecolor=color,
                          linewidth=0.75 if fixed else 0.4, zorder=4 if fixed else 3, label=label)
@@ -350,7 +332,7 @@ SpeleoAge numerical values are retained under a BP1950 working assumption; the p
         for s in (variable, fixed))
     methods = f"""CONTINUOUS-TIME BARKER SPELEOAGE ANALYSIS
 
-Read Supplementary Table S3 in Sheet1 of Barker et al-2011-SOM.xls (header row 9). The second SpeloAge column supplies actual event ages; published DO pick variable threshold and DO pick columns supply the two definitions. Retain pick=1 over 0--400 kyr. Stable event IDs use source Excel row numbers. The two definitions share {shared} rows. No source ages, picks or age realizations are regenerated.
+Read the two-column event CSVs prepared by Barker2011/data_pre_processing.py. Preparation reads Supplementary Table S3 in Sheet1 of Barker et al-2011-SOM.xls (header row 9), using the second SpeloAge column and published DO pick variable threshold or DO pick values of 1 over 0--400 kyr. Stable event IDs use source Excel row numbers. The two definitions share {shared} rows. The analysis preserves these ages and IDs and does not regenerate age realizations.
 
 For each catalogue, condition on the exact oldest event and retain all younger exposure to 0 kyr, including the final no-event tail. Unknown pre-anchor history is set to zero as a boundary approximation. History sums strictly older actual events with exp(-age difference / 1.5 kyr) weights; its coefficient is nonpositive. Reduced intensity is exp(intercept + history + LR04 + CO2); full adds precession sine and cosine. Fixed nominal time means and source-interpolated response ranges scale climate. Fitting uses event log intensities minus integrated intensity, with no event bins. Numerical integration splits at events and source interpolation knots.
 

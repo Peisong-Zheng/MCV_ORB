@@ -10,12 +10,15 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
 from toolbox import event_inputs, orbital_phase, point_process
 from toolbox.model_stats import nested_likelihood_metrics
-from toolbox.project_config import PROJECT_ROOT, LR04_XLSX, CO2_XLSX, PRE_TXT, ORBITAL_DRIVER_SETTINGS
+from toolbox.project_config import (
+    PROJECT_ROOT, LR04_XLSX, CO2_XLSX, PRE_TXT, ORBITAL_DRIVER_SETTINGS,
+)
 
 EVENT_CATALOGUE_CSV = PROJECT_ROOT / "data/curated/ngrip_mis6_warming_events.csv"
 OBSERVATION_SEGMENTS_CSV = PROJECT_ROOT / "data/curated/observation_segments.csv"
@@ -29,8 +32,11 @@ MODEL_VERSION = "continuous_exponential_inhibition_2026-09-12"
 REDUCED_TERMS = (HISTORY_TERM, "lr04_scaled", "co2_scaled", SEGMENT_TERM)
 FULL_TERMS = REDUCED_TERMS + ("pre_phase_sin", "pre_phase_cos")
 RESOLUTION_COVARIATE_INCLUDED = False
-EVENT_COLUMNS = ("event_id", "event_label", EVENT_AGE_COLUMN, "segment_id", "source_record",
-                 "source_event_label", "data_source", "label_source", "timing_method", "source_table")
+EVENT_COLUMNS = (
+    "event_id", "event_label", EVENT_AGE_COLUMN, "segment_id", "source_record",
+    "source_event_label", "data_source", "label_source", "timing_method", "source_table",
+)
+
 
 @dataclass(frozen=True)
 class SegmentContext:
@@ -40,6 +46,7 @@ class SegmentContext:
     response_start_kyr_bp: float
     response_end_kyr_bp: float
     anchor_age_kyr_bp: float
+
 
 @dataclass(frozen=True)
 class LikelihoodContext:
@@ -59,7 +66,11 @@ class LikelihoodContext:
 
     @property
     def response_exposure_kyr(self):
-        return sum(s.response_end_kyr_bp-s.response_start_kyr_bp for s in self.segments.values())
+        return sum(
+            segment.response_end_kyr_bp - segment.response_start_kyr_bp
+            for segment in self.segments.values()
+        )
+
 
 @dataclass
 class CatalogueDesign:
@@ -71,6 +82,7 @@ class CatalogueDesign:
     @property
     def weights(self):
         return self.integration_frame.weight.to_numpy(float)
+
 
 @dataclass
 class CombinedLikelihoodFit:
@@ -85,9 +97,10 @@ class CombinedLikelihoodFit:
 
 
 def _require_columns(frame, columns, name):
-    missing=set(columns).difference(frame.columns)
+    missing = set(columns).difference(frame.columns)
     if missing:
         raise ValueError(f"{name} is missing columns: {sorted(missing)}")
+
 
 def validate_event_catalogue(events: pd.DataFrame) -> pd.DataFrame:
     """Validate and return the frozen 55-event warming catalogue."""
@@ -139,7 +152,6 @@ def load_event_catalogue(path: Path = EVENT_CATALOGUE_CSV) -> pd.DataFrame:
     return validate_event_catalogue(pd.read_csv(path))
 
 
-
 def load_observation_segments(path=OBSERVATION_SEGMENTS_CSV):
     frame = pd.read_csv(path)
     cols = ["segment_id", "observation_start_kyr_bp", "observation_end_kyr_bp"]
@@ -147,248 +159,399 @@ def load_observation_segments(path=OBSERVATION_SEGMENTS_CSV):
     if frame.segment_id.duplicated().any():
         raise ValueError("Observation segment IDs must be unique")
     for row in frame.itertuples():
-        if not np.isfinite([row.observation_start_kyr_bp,row.observation_end_kyr_bp]).all() or row.observation_start_kyr_bp>=row.observation_end_kyr_bp:
+        if (
+            not np.isfinite([row.observation_start_kyr_bp, row.observation_end_kyr_bp]).all()
+            or row.observation_start_kyr_bp >= row.observation_end_kyr_bp
+        ):
             raise ValueError("Observation support must be finite and positive")
-    return frame.drop(columns=[c for c in frame if c.startswith("common_response_")])
+    return frame.drop(columns=[column for column in frame if column.startswith("common_response_")])
 
 
 @lru_cache(maxsize=8)
 def _source_forcings(lr04_path, co2_path, precession_path):
     # Read native samples once; interpolation and scaling have separate roles.
-    lr = pd.read_excel(lr04_path)
-    co = pd.read_excel(co2_path, sheet_name="Sheet2")
-    lr_age, lr_value = event_inputs.clean_series(lr[event_inputs.find_column(lr.columns,"time")].to_numpy(float),
-                                                lr[event_inputs.find_column(lr.columns,"d18o")].to_numpy(float))
-    co_age, co_value = event_inputs.clean_series(co[event_inputs.find_column(co.columns,"gasage")].to_numpy(float)/1000,
-                                                co[event_inputs.find_column(co.columns,"co2")].to_numpy(float))
+    lr04 = pd.read_excel(lr04_path)
+    co2 = pd.read_excel(co2_path, sheet_name="Sheet2")
+    lr04_age, lr04_value = event_inputs.clean_series(
+        lr04[event_inputs.find_column(lr04.columns, "time")].to_numpy(float),
+        lr04[event_inputs.find_column(lr04.columns, "d18o")].to_numpy(float),
+    )
+    co2_age, co2_value = event_inputs.clean_series(
+        co2[event_inputs.find_column(co2.columns, "gasage")].to_numpy(float) / 1000,
+        co2[event_inputs.find_column(co2.columns, "co2")].to_numpy(float),
+    )
     settings = dict(ORBITAL_DRIVER_SETTINGS["pre"], path=precession_path)
-    phase = orbital_phase.build_phase_series("pre",settings)
-    forcings={"lr04":(lr_age,lr_value), "co2":(co_age,co_value),
-              "precession_index":(phase.series.age_ka.to_numpy(float), phase.series.value.to_numpy(float))}
-    anchors=(phase.extrema.age_ka.to_numpy(float),phase.extrema.anchor_phase_unwrapped_rad.to_numpy(float))
-    return forcings,anchors
+    phase = orbital_phase.build_phase_series("pre", settings)
+    forcings = {
+        "lr04": (lr04_age, lr04_value),
+        "co2": (co2_age, co2_value),
+        "precession_index": (
+            phase.series.age_ka.to_numpy(float),
+            phase.series.value.to_numpy(float),
+        ),
+    }
+    phase_extrema = (
+        phase.extrema.age_ka.to_numpy(float),
+        phase.extrema.anchor_phase_unwrapped_rad.to_numpy(float),
+    )
+    return forcings, phase_extrema
 
 
 def _segments_for_events(events, observation_segments):
-    segments={}
-    if set(events.segment_id)!=set(observation_segments.segment_id):
+    segments = {}
+    if set(events.segment_id) != set(observation_segments.segment_id):
         raise ValueError("Every observation segment must have conditioning events")
     for row in observation_segments.itertuples():
-        ages=events.loc[events.segment_id.eq(row.segment_id), EVENT_AGE_COLUMN].to_numpy(float)
-        if not np.isfinite(ages).all() or len(np.unique(ages))!=len(ages):
+        ages = events.loc[events.segment_id.eq(row.segment_id), EVENT_AGE_COLUMN].to_numpy(float)
+        if not np.isfinite(ages).all() or len(np.unique(ages)) != len(ages):
             raise ValueError("Event ages must be finite and unique within each segment")
-        young=float(row.observation_start_kyr_bp); old=float(row.observation_end_kyr_bp)
-        if np.any(ages<young) or np.any(ages>old):
+        observation_young = float(row.observation_start_kyr_bp)
+        observation_old = float(row.observation_end_kyr_bp)
+        if np.any(ages < observation_young) or np.any(ages > observation_old):
             raise ValueError(f"An event lies outside the {row.segment_id} observation window")
-        anchor=float(ages.max())
-        if anchor<=young:
+        anchor_age = float(ages.max())
+        if anchor_age <= observation_young:
             raise ValueError("No response exposure after the conditioning event")
-        segments[row.segment_id]=SegmentContext(row.segment_id,young,old,young,anchor,anchor)
+        segments[row.segment_id] = SegmentContext(
+            segment_id=row.segment_id,
+            observation_start_kyr_bp=observation_young,
+            observation_end_kyr_bp=observation_old,
+            response_start_kyr_bp=observation_young,
+            response_end_kyr_bp=anchor_age,
+            anchor_age_kyr_bp=anchor_age,
+        )
     return segments
 
 
 def _scale_forcing(source, segments):
-    age,value=source
-    total=integral=0.0
-    extrema=[]
-    for s in segments.values():
-        lo,hi=s.response_start_kyr_bp,s.response_end_kyr_bp
-        knots=np.r_[lo,age[(age>lo)&(age<hi)],hi]
-        values=event_inputs.interpolate_checked(knots,age,value,context="forcing response support")
-        integral+=np.trapezoid(values,knots)
-        total+=hi-lo
-        extrema.extend([values.min(),values.max()])
-    minimum,maximum=float(min(extrema)),float(max(extrema))
-    return dict(mean=integral/total,min=minimum,max=maximum,range=maximum-minimum or 1.0)
+    """Center by response-time mean and scale by the forcing's response range."""
+    source_age, source_value = source
+    exposure_kyr = 0.0
+    forcing_integral = 0.0
+    extrema = []
+    for segment in segments.values():
+        response_young = segment.response_start_kyr_bp
+        response_old = segment.response_end_kyr_bp
+        inside = (source_age > response_young) & (source_age < response_old)
+        knots = np.r_[response_young, source_age[inside], response_old]
+        values = event_inputs.interpolate_checked(
+            knots, source_age, source_value, context="forcing response support",
+        )
+        forcing_integral += np.trapezoid(values, knots)
+        exposure_kyr += response_old - response_young
+        extrema.extend([values.min(), values.max()])
+    minimum, maximum = float(min(extrema)), float(max(extrema))
+    return dict(
+        mean=forcing_integral / exposure_kyr,
+        min=minimum,
+        max=maximum,
+        range=maximum - minimum or 1.0,
+    )
 
 
 def build_context(observation_segments=None, *, events=None, history_tau_ka=DEFAULT_HISTORY_TAU_KA,
-                  initial_history=0.0,quadrature_order=4,catalogue_id=CATALOGUE_ID,
-                  lr04_path=LR04_XLSX,co2_path=CO2_XLSX,precession_path=PRE_TXT):
-    if history_tau_ka<=0 or initial_history<0:
+                  initial_history=0.0, quadrature_order=4, catalogue_id=CATALOGUE_ID,
+                  lr04_path=LR04_XLSX, co2_path=CO2_XLSX, precession_path=PRE_TXT):
+    """Set nominal event support, source forcings and time-weighted scaling."""
+    if history_tau_ka <= 0 or initial_history < 0:
         raise ValueError("History decay must be positive; initial history must be nonnegative")
-    events=load_event_catalogue() if events is None else events.copy()
-    observations=load_observation_segments() if observation_segments is None else observation_segments.copy()
-    segments=_segments_for_events(events,observations)
-    sources,phase=_source_forcings(Path(lr04_path),Path(co2_path),Path(precession_path))
-    scaling={name:_scale_forcing(source,segments) for name,source in sources.items() if name!="precession_index"}
-    reduced=REDUCED_TERMS if "MIS6" in segments and len(segments)>1 else tuple(t for t in REDUCED_TERMS if t!=SEGMENT_TERM)
-    return LikelihoodContext(observations,events,segments,dict(sources),scaling,phase,
-                             history_tau_ka,initial_history,quadrature_order,catalogue_id,
-                             reduced,reduced+("pre_phase_sin","pre_phase_cos"),{})
+    events = load_event_catalogue() if events is None else events.copy()
+    observations = (
+        load_observation_segments()
+        if observation_segments is None else observation_segments.copy()
+    )
+    segments = _segments_for_events(events, observations)
+    sources, phase_extrema = _source_forcings(
+        Path(lr04_path), Path(co2_path), Path(precession_path),
+    )
+    scaling = {
+        name: _scale_forcing(source, segments)
+        for name, source in sources.items() if name != "precession_index"
+    }
+    if "MIS6" in segments and len(segments) > 1:
+        reduced_terms = REDUCED_TERMS
+    else:
+        reduced_terms = tuple(term for term in REDUCED_TERMS if term != SEGMENT_TERM)
+    return LikelihoodContext(
+        observation_segments=observations,
+        events=events,
+        segments=segments,
+        forcings=dict(sources),
+        scaling=scaling,
+        phase_extrema=phase_extrema,
+        history_tau_ka=history_tau_ka,
+        initial_history=initial_history,
+        quadrature_order=quadrature_order,
+        catalogue_id=catalogue_id,
+        reduced_terms=reduced_terms,
+        full_terms=reduced_terms + ("pre_phase_sin", "pre_phase_cos"),
+        derived_terms={},
+    )
 
 
-def load_barker_events(event_definition="variable_threshold"):
-    path=PROJECT_ROOT/"Barker2011/data/raw/Barker et al-2011-SOM.xls"
-    raw=pd.read_excel(path,sheet_name="Sheet1",header=8)
-    pick={"variable_threshold":"DO pick variable threshold","fixed_threshold":"DO pick"}[event_definition]
-    frame=raw[["SpeloAge (kyr).1",pick]].apply(pd.to_numeric,errors="coerce")
-    frame.columns=["event_age_ka","pick_value"]
-    frame["source_row"]=raw.index
-    frame=frame.loc[frame.pick_value.eq(1)&frame.event_age_ka.between(0,400)].sort_values("event_age_ka").reset_index(drop=True)
-    frame["source_excel_row"]=frame.source_row+10
-    frame["event_index"]=np.arange(1,len(frame)+1)
-    frame["event_id"]=[f"Barker_S3_{row:03d}" for row in frame.source_excel_row]
-    frame["event_label"]=[f"Barker event {i}" for i in frame.event_index]
-    frame["segment_id"]="Barker2011"
-    frame[EVENT_AGE_COLUMN]=frame.event_age_ka
-    frame["event_definition"]=event_definition
-    frame["source"]=str(path.relative_to(PROJECT_ROOT))
-    expected=70 if event_definition=="variable_threshold" else 59
-    if len(frame)!=expected:
-        raise ValueError("Unexpected Barker source event count")
-    return frame
+def build_barker_context(events, event_definition="variable_threshold", **kwargs):
+    """Set Barker's observation window from an explicitly supplied event table."""
+    counts = {"variable_threshold": 70, "fixed_threshold": 59}
+    if event_definition not in counts:
+        raise ValueError(f"Unknown Barker event definition: {event_definition}")
+    _require_columns(events, ("event_id", EVENT_AGE_COLUMN), "Barker events")
+    if len(events) != counts[event_definition]:
+        raise ValueError(f"Expected {counts[event_definition]} {event_definition} events")
+    if events.event_id.isna().any() or not events.event_id.is_unique:
+        raise ValueError("Barker event IDs must be present and unique")
+    ages = events[EVENT_AGE_COLUMN].to_numpy(float)
+    if not np.isfinite(ages).all() or np.any(np.diff(ages) <= 0):
+        raise ValueError("Barker event ages must be finite and strictly increasing")
+    events = events.assign(segment_id="Barker2011")
+    support = pd.DataFrame([dict(
+        segment_id="Barker2011", observation_start_kyr_bp=0., observation_end_kyr_bp=400.,
+    )])
+    return build_context(
+        support, events=events, catalogue_id=f"barker_{event_definition}_speleo_0_400", **kwargs,
+    )
 
 
-def build_barker_context(event_definition="variable_threshold",**kwargs):
-    events=load_barker_events(event_definition)
-    support=pd.DataFrame([dict(segment_id="Barker2011",observation_start_kyr_bp=0.,observation_end_kyr_bp=400.)])
-    return build_context(support,events=events,catalogue_id=f"barker_{event_definition}_speleo_0_400",**kwargs)
+def add_forcing(context, name, ages, values):
+    ages, values = event_inputs.clean_series(ages, values, context=name)
+    return replace(
+        context,
+        forcings={**context.forcings, name: (ages, values)},
+        scaling={**context.scaling, name: _scale_forcing((ages, values), context.segments)},
+    )
 
 
-def add_forcing(context,name,ages,values):
-    ages,values=event_inputs.clean_series(ages,values,context=name)
-    return replace(context,forcings={**context.forcings,name:(ages,values)},
-                   scaling={**context.scaling,name:_scale_forcing((ages,values),context.segments)})
-
-
-def condition_context(context,events):
+def condition_context(context, events):
     """Update exact anchors/support for an age draw, retaining nominal scaling."""
-    return replace(context,events=events.copy(),segments=_segments_for_events(events,context.observation_segments))
+    return replace(
+        context,
+        events=events.copy(),
+        segments=_segments_for_events(events, context.observation_segments),
+    )
 
 
-def integration_breakpoints(context,segment,event_ages=()):
-    lo,hi=segment.response_start_kyr_bp,segment.response_end_kyr_bp
-    sources=[source[0] for source in context.forcings.values()]
+def integration_breakpoints(context, segment, event_ages=()):
+    response_young = segment.response_start_kyr_bp
+    response_old = segment.response_end_kyr_bp
+    source_ages = [source[0] for source in context.forcings.values()]
     # Include rectangular-history exits too; exponential and elapsed variants
     # are continuous between actual events and external interpolation knots.
-    events=np.asarray(event_ages,float)
-    candidates=np.concatenate([np.array([lo,hi]),*sources,context.phase_extrema[0],events,events-context.history_tau_ka])
-    return np.unique(candidates[(candidates>=lo)&(candidates<=hi)])
+    events = np.asarray(event_ages, float)
+    candidates = np.concatenate([
+        np.array([response_young, response_old]),
+        *source_ages,
+        context.phase_extrema[0],
+        events,
+        events - context.history_tau_ka,
+    ])
+    within_response = (candidates >= response_young) & (candidates <= response_old)
+    return np.unique(candidates[within_response])
 
 
-def evaluate_features(context,ages,segment_id,event_ages):
+def evaluate_features(context, ages, segment_id, event_ages):
     """Evaluate BP forcing samples and forward-time history within one segment."""
-    ages=np.asarray(ages,float)
-    segment=context.segments[segment_id]
-    elapsed_kyr=segment.anchor_age_kyr_bp-ages
-    frame={"age_kyr_bp":ages,"elapsed_kyr":elapsed_kyr,
-           "segment_id":np.repeat(segment_id,len(ages)),"intercept":np.ones(len(ages))}
+    ages = np.asarray(ages, float)
+    segment = context.segments[segment_id]
+    elapsed_kyr = segment.anchor_age_kyr_bp - ages
+    frame = {
+        "age_kyr_bp": ages,
+        "elapsed_kyr": elapsed_kyr,
+        "segment_id": np.repeat(segment_id, len(ages)),
+        "intercept": np.ones(len(ages)),
+    }
+
     # Interpolate on the original BP axis, including the published phase convention.
-    for name,(source_age,source_value) in context.forcings.items():
-        values=event_inputs.interpolate_checked(ages,source_age,source_value,context=name) if len(ages) else np.array([])
-        frame[name]=values
+    for name, (source_age, source_value) in context.forcings.items():
+        if len(ages):
+            values = event_inputs.interpolate_checked(
+                ages, source_age, source_value, context=name,
+            )
+        else:
+            values = np.array([])
+        frame[name] = values
         if name in context.scaling:
-            scale=context.scaling[name]
-            frame[name+"_scaled"]=(values-scale["mean"])/scale["range"]
-    phase,extra=orbital_phase.interpolate_unwrapped_phase(ages,*context.phase_extrema)
-    frame.update(pre_phase_unwrapped_rad=phase,pre_phase_rad=np.mod(phase,2*np.pi),
-                 pre_phase_deg=np.mod(np.degrees(phase),360),pre_phase_sin=np.sin(phase),
-                 pre_phase_cos=np.cos(phase),pre_phase_extrapolated=extra)
-    event_ages=np.sort(np.asarray(event_ages,float))[::-1]
-    event_elapsed_kyr=segment.anchor_age_kyr_bp-event_ages
-    frame[HISTORY_TERM]=point_process.exponential_history(ages,event_ages,context.history_tau_ka,
-                           anchor_age=segment.anchor_age_kyr_bp,initial_history=context.initial_history)
+            scale = context.scaling[name]
+            frame[name + "_scaled"] = (values - scale["mean"]) / scale["range"]
+    phase, extrapolated = orbital_phase.interpolate_unwrapped_phase(ages, *context.phase_extrema)
+    frame.update(
+        pre_phase_unwrapped_rad=phase,
+        pre_phase_rad=np.mod(phase, 2 * np.pi),
+        pre_phase_deg=np.mod(np.degrees(phase), 360),
+        pre_phase_sin=np.sin(phase),
+        pre_phase_cos=np.cos(phase),
+        pre_phase_extrapolated=extrapolated,
+    )
+
+    event_ages = np.sort(np.asarray(event_ages, float))[::-1]
+    event_elapsed_kyr = segment.anchor_age_kyr_bp - event_ages
+    frame[HISTORY_TERM] = point_process.exponential_history(
+        ages, event_ages, context.history_tau_ka,
+        anchor_age=segment.anchor_age_kyr_bp,
+        initial_history=context.initial_history,
+    )
     # Compare on the unshifted forward axis (-BP) to preserve exact event and
     # window endpoints; origin subtraction can merge adjacent floating values.
-    comparison_time=-ages
-    event_comparison_time=-event_ages
-    previous_count=np.searchsorted(event_comparison_time,comparison_time,side="left")
-    since_last_kyr=np.zeros(len(ages))
-    present=previous_count>0
-    since_last_kyr[present]=elapsed_kyr[present]-event_elapsed_kyr[previous_count[present]-1]
-    frame["time_since_last_event_kyr"]=since_last_kyr
-    frame["log_time_since_last_event"]=np.log1p(since_last_kyr)
-    window_start=comparison_time-context.history_tau_ka
-    first_recent=np.searchsorted(event_comparison_time,window_start,side="right")
-    frame["rectangular_history_count"]=(previous_count-first_recent).astype(float)
-    frame[SEGMENT_TERM]=np.full(len(ages),float(segment_id=="MIS6"))
-    for name,factors in (context.derived_terms or {}).items():
-        frame[name]=np.prod([frame[f] for f in factors],axis=0)
+    comparison_time = -ages
+    event_comparison_time = -event_ages
+    previous_count = np.searchsorted(event_comparison_time, comparison_time, side="left")
+    since_last_kyr = np.zeros(len(ages))
+    has_previous_event = previous_count > 0
+    since_last_kyr[has_previous_event] = (
+        elapsed_kyr[has_previous_event]
+        - event_elapsed_kyr[previous_count[has_previous_event] - 1]
+    )
+    frame["time_since_last_event_kyr"] = since_last_kyr
+    frame["log_time_since_last_event"] = np.log1p(since_last_kyr)
+    window_start = comparison_time - context.history_tau_ka
+    first_recent = np.searchsorted(event_comparison_time, window_start, side="right")
+    frame["rectangular_history_count"] = (previous_count - first_recent).astype(float)
+    frame[SEGMENT_TERM] = np.full(len(ages), float(segment_id == "MIS6"))
+    for name, factors in (context.derived_terms or {}).items():
+        frame[name] = np.prod([frame[factor] for factor in factors], axis=0)
     return pd.DataFrame(frame)
 
 
-def prepare_catalogue(events,context,*,fixed_support=False):
-    events=events.copy()
-    _require_columns(events,(EVENT_AGE_COLUMN,"segment_id"),"Event catalogue")
-    checked=_segments_for_events(events,context.observation_segments)
+def prepare_catalogue(events, context, *, fixed_support=False):
+    """Separate conditioning events, response events and integration samples."""
+    events = events.copy()
+    _require_columns(events, (EVENT_AGE_COLUMN, "segment_id"), "Event catalogue")
+    event_segments = _segments_for_events(events, context.observation_segments)
     if fixed_support:
-        for name,s in context.segments.items():
-            if checked[name].anchor_age_kyr_bp!=s.anchor_age_kyr_bp:
+        for segment_id, segment in context.segments.items():
+            if event_segments[segment_id].anchor_age_kyr_bp != segment.anchor_age_kyr_bp:
                 raise ValueError("Fixed support requires the original conditioning event")
-        active=replace(context,events=events)
+        active_context = replace(context, events=events)
     else:
-        active=replace(context,events=events,segments=checked)
-    event_frames=[];integral_frames=[];role_frames=[]
-    for name,s in active.segments.items():
-        part=events.loc[events.segment_id.eq(name)].sort_values(EVENT_AGE_COLUMN).copy()
-        age=part[EVENT_AGE_COLUMN].to_numpy(float)
-        response=(age<s.response_end_kyr_bp)&(age>=s.response_start_kyr_bp)
-        part["event_role"]=np.where(age==s.anchor_age_kyr_bp,"conditioning",np.where(response,"response","history_only"))
-        part["included_in_response"]=response
-        role_frames.append(part)
-        event_frame=evaluate_features(active,age[response],name,age)
-        if "event_id" in part:
-            event_frame["event_id"]=part.loc[response,"event_id"].to_numpy()
+        active_context = replace(context, events=events, segments=event_segments)
+
+    event_frames = []
+    integral_frames = []
+    catalogue_frames = []
+    for segment_id, segment in active_context.segments.items():
+        segment_events = (
+            events.loc[events.segment_id.eq(segment_id)]
+            .sort_values(EVENT_AGE_COLUMN).copy()
+        )
+        event_ages = segment_events[EVENT_AGE_COLUMN].to_numpy(float)
+        is_response = (
+            (event_ages < segment.response_end_kyr_bp)
+            & (event_ages >= segment.response_start_kyr_bp)
+        )
+        is_conditioning = event_ages == segment.anchor_age_kyr_bp
+        segment_events["event_role"] = np.where(
+            is_conditioning, "conditioning", np.where(is_response, "response", "history_only"),
+        )
+        segment_events["included_in_response"] = is_response
+        catalogue_frames.append(segment_events)
+
+        event_frame = evaluate_features(
+            active_context, event_ages[is_response], segment_id, event_ages,
+        )
+        if "event_id" in segment_events:
+            event_frame["event_id"] = segment_events.loc[is_response, "event_id"].to_numpy()
         event_frames.append(event_frame)
-        knots=integration_breakpoints(active,s,age)
+
+        knots = integration_breakpoints(active_context, segment, event_ages)
         # BP-ordered nodes retain their original interpolation samples. The
         # positive kyr weights also integrate du, since u=anchor-age and |du/da|=1.
-        nodes,weights=point_process.gauss_legendre_intervals(knots,order=active.quadrature_order)
-        integration=evaluate_features(active,nodes,name,age)
-        integration["weight"]=weights
+        nodes, weights = point_process.gauss_legendre_intervals(
+            knots, order=active_context.quadrature_order,
+        )
+        integration = evaluate_features(active_context, nodes, segment_id, event_ages)
+        integration["weight"] = weights
         integral_frames.append(integration)
-    return CatalogueDesign(pd.concat(event_frames,ignore_index=True),pd.concat(integral_frames,ignore_index=True),
-                           pd.concat(role_frames,ignore_index=True),active)
+    return CatalogueDesign(
+        event_frame=pd.concat(event_frames, ignore_index=True),
+        integration_frame=pd.concat(integral_frames, ignore_index=True),
+        all_events=pd.concat(catalogue_frames, ignore_index=True),
+        context=active_context,
+    )
 
 
-def fit_terms(design,terms,start_beta=None):
-    names=("intercept",*terms)
-    return point_process.fit_point_process(design.event_frame.loc[:,names].to_numpy(float),
-              design.integration_frame.loc[:,names].to_numpy(float),design.weights,names,start_beta=start_beta)
+def fit_terms(design, terms, start_beta=None):
+    names = ("intercept", *terms)
+    event_design = design.event_frame.loc[:, names].to_numpy(float)
+    integral_design = design.integration_frame.loc[:, names].to_numpy(float)
+    return point_process.fit_point_process(
+        event_design, integral_design, design.weights, names, start_beta=start_beta,
+    )
 
 
-def fit_summary(design,reduced,full):
-    metrics=nested_likelihood_metrics(loglik_full=full.log_likelihood,loglik_reduced=reduced.log_likelihood,
-                df=len(full.beta)-len(reduced.beta),n_events=len(design.event_frame),aic_full=full.aic,aic_reduced=reduced.aic)
-    betas=dict(zip(full.terms,full.beta))
-    sine,cosine=betas.get("pre_phase_sin",np.nan),betas.get("pre_phase_cos",np.nan)
-    amp=float(np.hypot(sine,cosine))
-    context=design.context
-    return {"catalogue_id":context.catalogue_id,"model_version":MODEL_VERSION,
-            "n_source_events":len(design.all_events),"n_response_events":len(design.event_frame),
-            "n_conditioning_events":len(context.segments),"response_exposure_kyr":context.response_exposure_kyr,
-            "history_kernel":"exponential","history_initialization":"condition_on_exact_oldest_event",
-            "history_tau_kyr":context.history_tau_ka,"history_coefficient_domain":"nonpositive",
-            "initial_unobserved_history":context.initial_history,**metrics,"nominal_LR_p":metrics["LR_p_value"],
-            "pre_phase_preferred_deg":float(np.degrees(np.arctan2(sine,cosine))%360) if amp>1e-10 else np.nan,
-            "pre_phase_rate_ratio_max_vs_min":float(np.exp(2*amp)),"pre_phase_amplitude":amp,
-            "beta_history":betas.get(HISTORY_TERM,np.nan),
-            "mis6_vs_ngrip_rate_ratio_full":float(np.exp(betas[SEGMENT_TERM])) if SEGMENT_TERM in betas else np.nan,
-            "all_models_converged":bool(reduced.converged and full.converged),
-            "likelihood_nesting_ok":metrics["ll_gain_nats"]>=-1e-7}
+def fit_summary(design, reduced, full):
+    metrics = nested_likelihood_metrics(
+        loglik_full=full.log_likelihood,
+        loglik_reduced=reduced.log_likelihood,
+        df=len(full.beta) - len(reduced.beta),
+        n_events=len(design.event_frame),
+        aic_full=full.aic,
+        aic_reduced=reduced.aic,
+    )
+    betas = dict(zip(full.terms, full.beta))
+    beta_sin = betas.get("pre_phase_sin", np.nan)
+    beta_cos = betas.get("pre_phase_cos", np.nan)
+    amplitude = float(np.hypot(beta_sin, beta_cos))
+    context = design.context
+    return {
+        "catalogue_id": context.catalogue_id,
+        "model_version": MODEL_VERSION,
+        "n_source_events": len(design.all_events),
+        "n_response_events": len(design.event_frame),
+        "n_conditioning_events": len(context.segments),
+        "response_exposure_kyr": context.response_exposure_kyr,
+        "history_kernel": "exponential",
+        "history_initialization": "condition_on_exact_oldest_event",
+        "history_tau_kyr": context.history_tau_ka,
+        "history_coefficient_domain": "nonpositive",
+        "initial_unobserved_history": context.initial_history,
+        **metrics,
+        "nominal_LR_p": metrics["LR_p_value"],
+        "pre_phase_preferred_deg": (
+            float(np.degrees(np.arctan2(beta_sin, beta_cos)) % 360)
+            if amplitude > 1e-10 else np.nan
+        ),
+        "pre_phase_rate_ratio_max_vs_min": float(np.exp(2 * amplitude)),
+        "pre_phase_amplitude": amplitude,
+        "beta_history": betas.get(HISTORY_TERM, np.nan),
+        "mis6_vs_ngrip_rate_ratio_full": (
+            float(np.exp(betas[SEGMENT_TERM])) if SEGMENT_TERM in betas else np.nan
+        ),
+        "all_models_converged": bool(reduced.converged and full.converged),
+        "likelihood_nesting_ok": metrics["ll_gain_nats"] >= -1e-7,
+    }
 
 
-def fit_catalogue(events,context,*,fixed_support=False):
-    design=prepare_catalogue(events,context,fixed_support=fixed_support)
-    reduced=fit_terms(design,context.reduced_terms)
-    start=np.zeros(len(context.full_terms)+1)
+def fit_catalogue(events, context, *, fixed_support=False):
+    """Fit the reduced model, then add phase terms from the same starting fit."""
+    design = prepare_catalogue(events, context, fixed_support=fixed_support)
+    reduced = fit_terms(design, context.reduced_terms)
+    start_beta = np.zeros(len(context.full_terms) + 1)
     if np.isfinite(reduced.beta).all():
-        for term,beta in zip(reduced.terms,reduced.beta):
-            start[("intercept",*context.full_terms).index(term)]=beta
-    full=fit_terms(design,context.full_terms,start_beta=start)
-    return CombinedLikelihoodFit(design,reduced,full,fit_summary(design,reduced,full))
+        for term, beta in zip(reduced.terms, reduced.beta):
+            start_beta[("intercept", *context.full_terms).index(term)] = beta
+    full = fit_terms(design, context.full_terms, start_beta=start_beta)
+    return CombinedLikelihoodFit(
+        design=design,
+        reduced=reduced,
+        full=full,
+        summary=fit_summary(design, reduced, full),
+    )
 
 
-def fit_point_catalogue(events=None,context=None):
-    context=build_context() if context is None else context
-    return fit_catalogue(context.events if events is None else events,context)
+def fit_point_catalogue(events=None, context=None):
+    context = build_context() if context is None else context
+    return fit_catalogue(context.events if events is None else events, context)
 
 
 def coefficient_table(fit):
-    return pd.DataFrame([dict(model_id=name,term=term,beta=beta,rate_ratio_per_unit=np.exp(beta))
-                        for name,model in (("reduced",fit.reduced),("full",fit.full))
-                        for term,beta in zip(model.terms,model.beta)])
+    rows = []
+    for model_id, model in (("reduced", fit.reduced), ("full", fit.full)):
+        for term, beta in zip(model.terms, model.beta):
+            rows.append(dict(
+                model_id=model_id,
+                term=term,
+                beta=beta,
+                rate_ratio_per_unit=np.exp(beta),
+            ))
+    return pd.DataFrame(rows)
 
 
 def support_table(context):
@@ -396,24 +559,38 @@ def support_table(context):
 
 
 def scaling_table(context):
-    return pd.DataFrame([dict(forcing_id=name,**scale,weighting="nominal response time") for name,scale in context.scaling.items()])
+    return pd.DataFrame([
+        dict(forcing_id=name, **scale, weighting="nominal response time")
+        for name, scale in context.scaling.items()
+    ])
 
 
-def fitted_rate_table(fit,step_kyr=0.1):
-    frames=[]
-    for name,s in fit.context.segments.items():
-        ages=fit.design.all_events.loc[fit.design.all_events.segment_id.eq(name),EVENT_AGE_COLUMN].to_numpy(float)
+def fitted_rate_table(fit, step_kyr=0.1):
+    frames = []
+    for segment_id, segment in fit.context.segments.items():
+        event_ages = fit.design.all_events.loc[
+            fit.design.all_events.segment_id.eq(segment_id), EVENT_AGE_COLUMN,
+        ].to_numpy(float)
         # Paired BP neighbors show the event jump. History membership compares
         # their unshifted coordinates, even if anchor-age rounds them to one u.
-        after=np.nextafter(ages,-np.inf)
-        after=after[after>=s.response_start_kyr_bp]
-        query=np.unique(np.r_[np.arange(s.response_start_kyr_bp,s.response_end_kyr_bp,step_kyr),ages,after,s.response_end_kyr_bp])
-        features=evaluate_features(fit.context,query,name,ages)
-        out=features[["segment_id","age_kyr_bp","lr04","co2","precession_index","pre_phase_deg"]].copy()
-        for model_id,model in (("reduced",fit.reduced),("full",fit.full)):
-            out[model_id+"_rate"]=np.exp(features.loc[:,model.terms].to_numpy(float)@model.beta)
-        frames.append(out)
-    return pd.concat(frames,ignore_index=True)
+        after_event = np.nextafter(event_ages, -np.inf)
+        after_event = after_event[after_event >= segment.response_start_kyr_bp]
+        query_ages = np.unique(np.r_[
+            np.arange(segment.response_start_kyr_bp, segment.response_end_kyr_bp, step_kyr),
+            event_ages,
+            after_event,
+            segment.response_end_kyr_bp,
+        ])
+        features = evaluate_features(fit.context, query_ages, segment_id, event_ages)
+        rates = features[[
+            "segment_id", "age_kyr_bp", "lr04", "co2", "precession_index", "pre_phase_deg",
+        ]].copy()
+        for model_id, model in (("reduced", fit.reduced), ("full", fit.full)):
+            rate_design = features.loc[:, model.terms].to_numpy(float)
+            rates[model_id + "_rate"] = np.exp(rate_design @ model.beta)
+        frames.append(rates)
+    return pd.concat(frames, ignore_index=True)
+
 
 def sample_event_phases(
     events: pd.DataFrame,
@@ -422,7 +599,7 @@ def sample_event_phases(
 ) -> pd.DataFrame:
     """Evaluate BP1950-corrected La2004 precession phase at event ages."""
 
-    _require_columns(events, ("event_id", "event_label", age_column), "Event table")
+    _require_columns(events, ("event_id", age_column), "Event table")
     ages = pd.to_numeric(events[age_column], errors="coerce").to_numpy(float)
     if not np.isfinite(ages).all():
         raise ValueError("Event ages must be finite before phase interpolation")

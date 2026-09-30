@@ -25,7 +25,7 @@ from scipy.stats import chi2
 import NGRIP_MIS6_likelihood_bootstrap as bootstrap
 from NGRIP_MIS6_likelihood_bootstrap import empirical_p_value, clopper_pearson_interval
 from toolbox import combined_likelihood
-from toolbox.project_config import PROJECT_ROOT
+from toolbox.project_config import PROJECT_ROOT, BARKER_EVENT_CSVS
 from toolbox.catalogue_colors import CATALOGUE_COLORS
 from toolbox.workspace_paths import generated_notes_dir
 
@@ -44,11 +44,14 @@ def run_analysis(*, n_bootstrap=DEFAULT_N_BOOTSTRAP, seed=DEFAULT_SEED,
                  n_workers=1, show_progress=False, event_definition="variable_threshold"):
     if event_definition not in EVENT_DEFINITIONS:
         raise ValueError(f"Unknown event definition: {event_definition}")
-    context = combined_likelihood.build_barker_context(event_definition)
+    events = pd.read_csv(BARKER_EVENT_CSVS[event_definition], float_precision="round_trip")
+    context = combined_likelihood.build_barker_context(events, event_definition=event_definition)
     result = bootstrap.run_analysis(context=context, n_bootstrap=n_bootstrap, seed=seed,
                                     n_workers=n_workers, show_progress=show_progress)
     result["summary"]["event_definition"] = event_definition
     result["parameters"].loc[len(result["parameters"])] = ["event_definition", event_definition]
+    result["parameters"].loc[len(result["parameters"])] = [
+        "event_input_csv", str(BARKER_EVENT_CSVS[event_definition].relative_to(PROJECT_ROOT))]
     return result
 
 

@@ -11,7 +11,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from toolbox import combined_likelihood as c, age_sensitivity
 from toolbox.age_sensitivity_plotting import plot_sensitivity
-from toolbox.project_config import PROJECT_ROOT
+from toolbox.project_config import PROJECT_ROOT, BARKER_EVENT_CSVS
 from paper_figure_export import copy_pdf_to_paper
 from toolbox.workspace_paths import generated_notes_dir
 ROOT=PROJECT_ROOT/'Barker2011'
@@ -19,9 +19,6 @@ RUN_NAME='Barker2011_event_uncertainty_sensitivity'
 OUT_DATA_DIR=ROOT/'data/processed'/RUN_NAME
 OUT_FIG_DIR=ROOT/'figures'/RUN_NAME
 AGE_INPUT=ROOT/'data/processed/Barker2011_event_age_uncertainty/event_age_realizations.csv'
-
-def prepare_context():
-    return c.build_barker_context()
 
 def fit_realizations(realizations,context,show_progress=False,n_workers=1):
     columns=[f'age_ka_bp__{event_id}' for event_id in context.events.event_id]
@@ -35,7 +32,9 @@ def main():
     parser.add_argument('--no-paper-export',action='store_true')
     parser.add_argument('--redraw',action='store_true')
     args=parser.parse_args()
-    context=c.build_barker_context();point=c.fit_catalogue(context.events,context)
+    events=pd.read_csv(BARKER_EVENT_CSVS['variable_threshold'],float_precision='round_trip')
+    context=c.build_barker_context(events)
+    point=c.fit_catalogue(context.events,context)
     root=args.output_root/'Barker2011'
     data=root/'data/processed'/RUN_NAME;figures=root/'figures'/RUN_NAME;notes=generated_notes_dir(root)
     for directory in (data,figures,notes): directory.mkdir(parents=True,exist_ok=True)
@@ -67,6 +66,7 @@ def main():
     (notes/f'{RUN_NAME}_Methods_and_results.txt').write_text(text)
     (notes/f'{RUN_NAME}_Caption.txt').write_text('Sensitivity to the saved Barker SpeleoAge realizations. (a) G; (b) nominal LR p; (c) preferred phase; (d) phase maximum/minimum rate ratio; (e) AIC(full) − AIC(reduced). Lines mark the point-age estimate, MC median and decision references. The fixed-threshold catalogue has no separate chronology ensemble.\n')
     pd.DataFrame([dict(parameter=k,value=v) for k,v in dict(model_version=c.MODEL_VERSION,history_tau_kyr=1.5,
+        event_input_csv=str(BARKER_EVENT_CSVS['variable_threshold'].relative_to(PROJECT_ROOT)),
         history_coefficient_domain='nonpositive',source=str(AGE_INPUT.relative_to(PROJECT_ROOT)),n_realizations=len(results)).items()]).to_csv(data/'parameters_and_provenance.csv',index=False)
     print(summary.to_string(index=False))
 

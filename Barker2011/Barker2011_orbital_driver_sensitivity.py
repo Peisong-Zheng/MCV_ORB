@@ -11,9 +11,11 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import pandas as pd
+
 from toolbox import combined_likelihood, orbital_driver_sensitivity as orbital
 from toolbox import orbital_driver_reporting as reporting
-from toolbox.project_config import PROJECT_ROOT, LR04_XLSX, CO2_XLSX, PRE_TXT, OBL_TXT
+from toolbox.project_config import PROJECT_ROOT, BARKER_EVENT_CSVS, LR04_XLSX, CO2_XLSX, PRE_TXT, OBL_TXT
 
 ROOT = PROJECT_ROOT / "Barker2011"
 RUN_NAME = "Barker2011_orbital_driver_sensitivity"
@@ -23,13 +25,15 @@ AGE_INPUT = ROOT / "data/processed" / RUN_NAME / "selected_realizations.csv"
 
 
 def run_analysis(n_realizations=N_REALIZATIONS, show_progress=True, quadrature_order=4):
-    context = combined_likelihood.build_barker_context(quadrature_order=quadrature_order)
+    events = pd.read_csv(BARKER_EVENT_CSVS["variable_threshold"], float_precision="round_trip")
+    context = combined_likelihood.build_barker_context(events, quadrature_order=quadrature_order)
     context, scaling, provenance = orbital.prepare_drivers(context)
     age_columns = [f"age_ka_bp__{event_id}" for event_id in context.events.event_id]
     selected = reporting.read_selected_realizations(AGE_INPUT, age_columns, n_realizations)
     result = orbital.analyze_chronologies(context, selected, age_columns, show_progress=show_progress)
     result.update(scaling=scaling, provenance=provenance, parameters=dict(
         catalogue=CATALOGUE_LABEL, method="continuous conditional point process",
+        event_input_csv=str(BARKER_EVENT_CSVS["variable_threshold"].relative_to(PROJECT_ROOT)),
         n_realizations=len(selected), selection_seed=20260909,
         history_tau_kyr=context.history_tau_ka, initial_history=context.initial_history,
         history_coefficient_domain="beta_H <= 0", quadrature_order=context.quadrature_order,

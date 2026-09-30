@@ -67,7 +67,8 @@ def plot_data_overview():
     fixed_phases = read_table(BARKER / "fixed_threshold/event_precession_phases.csv")
     support = read_table(PRIMARY_ORBITAL / "support.csv").set_index("segment_id")
     # Overview curves use native source series, independent of any model grid.
-    context = combined_likelihood.build_barker_context()
+    barker_events = pd.read_csv(project_config.BARKER_EVENT_CSVS["variable_threshold"], float_precision="round_trip")
+    context = combined_likelihood.build_barker_context(barker_events)
     age = np.linspace(0, 400, 4001)
     drivers = pd.DataFrame({"age_kyr_bp": age})
     for name, (knots, values) in context.forcings.items():
@@ -81,7 +82,7 @@ def plot_data_overview():
     INPUTS.update((project_config.LR04_XLSX, project_config.CO2_XLSX, project_config.PRE_TXT))
     assert events.groupby("source_record").size().to_dict() == {"MF": 16, "NGRIP": 34, "Sofular": 5}
     assert [len(primary_phases), len(variable_phases), len(fixed_phases)] == [55, 70, 59]
-    assert np.isin(fixed_phases.event_age_ka, variable_phases.event_age_ka).all()
+    assert np.isin(fixed_phases.event_age_kyr_bp, variable_phases.event_age_kyr_bp).all()
     np.testing.assert_allclose(primary_phases.event_age_kyr_bp, events.event_age_kyr_bp)
 
     # Reserve the right margin for two explicitly colored orbital scales.
@@ -115,10 +116,10 @@ def plot_data_overview():
     phase.plot(drivers.age_kyr_bp, drivers.precession_index, color="0.40", lw=0.9, zorder=1)
     # Use the stored forcing value at each event, without age jitter. Larger
     # open squares leave both symbols visible for shared Barker event picks.
-    phase.scatter(variable_phases.event_age_ka, variable_phases.orbital_value_at_event,
+    phase.scatter(variable_phases.event_age_kyr_bp, variable_phases.orbital_value_at_event,
                   s=13, marker="o", c=CATALOGUE_COLORS["variable"], linewidths=0, zorder=3,
                   label="Barker 2011: varying threshold (n = 70)")
-    phase.scatter(fixed_phases.event_age_ka, fixed_phases.orbital_value_at_event,
+    phase.scatter(fixed_phases.event_age_kyr_bp, fixed_phases.orbital_value_at_event,
                   s=24, marker="s", facecolors="none", edgecolors=CATALOGUE_COLORS["fixed"],
                   linewidths=0.7, zorder=4, label="Barker 2011: fixed threshold (n = 59)")
     phase.scatter(primary_phases.event_age_kyr_bp, primary_phases.precession_index,

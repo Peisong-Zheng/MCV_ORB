@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from toolbox import point_process_diagnostics as diagnostics
+from toolbox.project_config import BARKER_EVENT_CSVS
 
 
 def cumulative_from_uniform(values):
@@ -123,7 +124,8 @@ def test_boundary_lr_and_programming_errors_are_not_silently_reclassified():
 def sampling_cache(tmp_path):
     from toolbox import combined_likelihood as likelihood
 
-    context = likelihood.build_barker_context()
+    events = pd.read_csv(BARKER_EVENT_CSVS["variable_threshold"], float_precision="round_trip")
+    context = likelihood.build_barker_context(events)
     design = likelihood.prepare_catalogue(context.events, context, fixed_support=True)
     full = likelihood.fit_terms(design, context.full_terms)
     pd.DataFrame([dict(zip(full.terms, full.beta))]).to_csv(
