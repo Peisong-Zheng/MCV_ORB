@@ -16,11 +16,10 @@ import numpy as np
 import pandas as pd
 
 from toolbox import combined_likelihood as likelihood
-from toolbox.catalogue_colors import CATALOGUE_COLORS
 from toolbox.model_stats import nested_likelihood_metrics
-from toolbox.project_config import PROJECT_ROOT, BARKER_EVENT_CSVS, LR04_XLSX, CO2_XLSX, PRE_TXT
+from toolbox.project_config import PROJECT_ROOT, BARKER_EVENT_CSVS, CATALOGUE_COLORS, LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV
 from paper_figure_export import copy_pdf_to_paper
-from toolbox.workspace_paths import generated_notes_dir
+from toolbox.project_config import generated_notes_dir
 
 RUN_NAME = "climate_precession_contribution"
 DATA_DIR = PROJECT_ROOT / "data/processed" / RUN_NAME
@@ -204,8 +203,7 @@ def write_notes(comparisons, contexts):
     (NOTE_DIR / f"{RUN_NAME}_Caption.txt").write_text(caption)
     sources = [likelihood.EVENT_CATALOGUE_CSV, likelihood.OBSERVATION_SEGMENTS_CSV,
                *BARKER_EVENT_CSVS.values(),
-               PROJECT_ROOT / "Barker2011/data/raw/Barker et al-2011-SOM.xls",
-               LR04_XLSX, CO2_XLSX, PRE_TXT]
+               LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV]
     provenance = dict(model_version=likelihood.MODEL_VERSION, age_units="kyr BP1950",
                       inputs=[str(p.relative_to(PROJECT_ROOT)) for p in sources], catalogues={})
     for key, context in contexts.items():

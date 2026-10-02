@@ -6,7 +6,6 @@ oldest event, and refits both models. Each event definition has its own fitted
 background model and response interval. Chronology is fixed in this experiment.
 """
 import argparse
-import hashlib
 import os
 from pathlib import Path
 import sys
@@ -25,19 +24,29 @@ from scipy.stats import chi2
 import NGRIP_MIS6_likelihood_bootstrap as bootstrap
 from NGRIP_MIS6_likelihood_bootstrap import empirical_p_value, clopper_pearson_interval
 from toolbox import combined_likelihood
-from toolbox.project_config import PROJECT_ROOT, BARKER_EVENT_CSVS
-from toolbox.catalogue_colors import CATALOGUE_COLORS
-from toolbox.workspace_paths import generated_notes_dir
+from toolbox.project_config import PROJECT_ROOT, BARKER_EVENT_CSVS, CATALOGUE_COLORS
 
 ROOT = PROJECT_ROOT / "Barker2011"
 RUN_NAME = "Barker2011_likelihood_bootstrap"
 OUT_DATA_DIR = ROOT / "data/processed" / RUN_NAME
 OUT_FIG_DIR = ROOT / "figures" / RUN_NAME
-NOTE_DIR = generated_notes_dir(ROOT)
 DEFAULT_N_BOOTSTRAP = 9_999
 DEFAULT_SEED = 20260909
 DEFAULT_N_WORKERS = 3
 EVENT_DEFINITIONS = ("variable_threshold", "fixed_threshold")
+
+REPLICATE_COLUMNS = [
+    "bootstrap_id", "n_events_response", "fit_valid", "status", "solver_attempts", "failure_reason",
+    "loglik_reduced", "loglik_full", "LR_statistic", "quadrature_order",
+]
+SUMMARY_COLUMNS = [
+    "model_version", "event_definition", "n_source_events", "n_response_events", "LR_statistic",
+    "response_exposure_kyr", "n_bootstrap", "n_valid_replicates", "n_failed_replicates",
+    "n_bootstrap_exceeding_or_equal_observed", "empirical_p_plus_one", "empirical_p_ci95_low",
+    "empirical_p_ci95_high", "seed", "history_tau_kyr", "initial_unobserved_history", "quadrature_order",
+    "event_input_csv", "response_start_kyr_bp", "response_end_kyr_bp", "n_zero_event_replicates",
+    "n_same_data_refinements", "loglik_reduced", "loglik_full",
+]
 
 
 def run_analysis(*, n_bootstrap=DEFAULT_N_BOOTSTRAP, seed=DEFAULT_SEED,
@@ -52,6 +61,16 @@ def run_analysis(*, n_bootstrap=DEFAULT_N_BOOTSTRAP, seed=DEFAULT_SEED,
     result["parameters"].loc[len(result["parameters"])] = ["event_definition", event_definition]
     result["parameters"].loc[len(result["parameters"])] = [
         "event_input_csv", str(BARKER_EVENT_CSVS[event_definition].relative_to(PROJECT_ROOT))]
+    support = combined_likelihood.support_table(context).iloc[0]
+    for name, value in dict(
+        history_tau_kyr=context.history_tau_ka,
+        initial_unobserved_history=context.initial_history,
+        quadrature_order=context.quadrature_order,
+        event_input_csv=str(BARKER_EVENT_CSVS[event_definition].relative_to(PROJECT_ROOT)),
+        response_start_kyr_bp=support.response_start_kyr_bp,
+        response_end_kyr_bp=support.response_end_kyr_bp,
+    ).items():
+        result["summary"][name] = value
     return result
 
 
@@ -63,16 +82,17 @@ def output_directories(output_root, event_definition):
     if event_definition == "fixed_threshold":
         data_dir = data_dir / "fixed_threshold"
         figure_dir = figure_dir / "fixed_threshold"
-    return data_dir, figure_dir, generated_notes_dir(root)
+    return data_dir, figure_dir
 
 
 def save_tables(result, output_dir):
-    bootstrap.save_tables(result, output_dir)
-    path = Path(output_dir) / "input_code_sha256.csv"
-    hashes = pd.read_csv(path)
-    hashes.loc[len(hashes)] = [str(Path(__file__).relative_to(PROJECT_ROOT)),
-                               hashlib.sha256(Path(__file__).read_bytes()).hexdigest()]
-    hashes.to_csv(path,index=False)
+    """Keep the null distribution, failed rows and calibration in two tables."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    result["replicates"].reindex(columns=REPLICATE_COLUMNS).to_csv(
+        output_dir / "bootstrap_replicates.csv", index=False, float_format="%.12g")
+    result["summary"][SUMMARY_COLUMNS].to_csv(
+        output_dir / "summary.csv", index=False, float_format="%.12g")
 
 
 def save_figure(replicates, summary, output_dir=OUT_FIG_DIR, *, paper_export=False):
@@ -87,24 +107,6 @@ def save_figure(replicates, summary, output_dir=OUT_FIG_DIR, *, paper_export=Fal
         build_figure()
     return png,pdf
 
-
-def write_notes(result, notes_dir=NOTE_DIR):
-    notes_dir = Path(notes_dir)
-    notes_dir.mkdir(parents=True,exist_ok=True)
-    s=result["summary"].iloc[0]
-    definition = s.event_definition.replace("_", "-")
-    note_name = RUN_NAME + ("_fixed_threshold" if s.event_definition == "fixed_threshold" else "")
-    caption=f"""Continuous background-model bootstrap calibration of the precession-phase test in Barker et al. (2011) {definition} warming events on SpeleoAge. Gray bars show {s.n_bootstrap} simulated likelihood-ratio (LR) statistics, the colored line marks observed LR={s.LR_statistic:.4f}, and the dashed curve is the chi-square(2) asymptotic reference. Each simulation retains the exact oldest observed event and the fixed younger endpoint, generates continuous response events with dynamic inhibitory exponential history, and refits both models under beta_H <= 0. The plus-one bootstrap p is {s.empirical_p_plus_one:.6g}; the 95% Monte Carlo interval [{s.empirical_p_ci95_low:.6g}, {s.empirical_p_ci95_high:.6g}] is a Clopper-Pearson binomial interval for the null exceedance probability. Chronology is fixed.
-"""
-    methods=f"""BARKER CONTINUOUS PHASE NULL BOOTSTRAP
-The {definition} catalogue contains {s.n_source_events} SpeleoAge warmings, of which the exact oldest event initializes history and {s.n_response_events} enter the event likelihood. The response exposure is {s.response_exposure_kyr:.9f} kyr. Its own background (reduced) model contains LR04, CO2 and inhibitory exponential event history (tau=1.5 kyr), plus an intercept. Full adds phase sine and cosine. Both use actual event log intensities minus integrated intensity. All younger exposure, including the event-free terminal tail, enters the integral. The unknown pre-anchor history is fixed to zero. SpeleoAge follows the main analysis's BP1950 convention.
-
-Simulation uses continuous thinning from the fitted reduced model. Each accepted event immediately updates the exponential history; the total response event count varies. Both models are refitted on each new catalogue, with forcing standardization and support held fixed. Bootstrap calibration uses LR instead of G because response event counts vary. The plus-one p is (1 + count[LR_sim >= LR_observed])/(B+1); its exact binomial interval describes finite simulation precision, not effect uncertainty. Event ages are not binned. Numerical recovery uses the same events with refined integration; no failed catalogue is replaced. An all-empty response has LR=0 and undefined G. Any unresolved replicate prevents p-value and figure publication.
-
-Observed G={s.gain_bits_per_event:.9f} bits/event; LR={s.LR_statistic:.9f}; nominal LR p={s.nominal_LR_p:.9g}; Delta AIC={s.delta_AIC_full_minus_reduced:.9f}. B={s.n_bootstrap}; exceedances={s.n_bootstrap_exceeding_or_equal_observed}; plus-one p={s.empirical_p_plus_one:.9g}; 95% Monte Carlo interval=[{s.empirical_p_ci95_low:.9g}, {s.empirical_p_ci95_high:.9g}]. Seed={s.seed}. Failed replicates={s.n_failed_replicates}; zero-response replicates={s.n_zero_event_replicates}; same-data numerical refinements={s.n_same_data_refinements}. Nominal chi-square LR p remains the standard model-comparison result; bootstrap checks sensitivity to that asymptotic reference for the phase test. This experiment is conditional on the {definition} point-age catalogue and its fitted null model. Age Monte Carlo is not nested, and fixed-threshold chronology uncertainty is not separately assessed.
-"""
-    (notes_dir/f"{note_name}_Caption.txt").write_text(caption)
-    (notes_dir/f"{note_name}_Methods_and_results.txt").write_text(methods)
 
 def plot_null_distribution(replicates, summary):
     """Show the fitted-reduced-model null and the observed phase improvement."""
@@ -140,9 +142,8 @@ def main(argv=None):
     args=parser.parse_args(argv)
     result=run_analysis(n_bootstrap=args.n_bootstrap,seed=args.seed,n_workers=args.workers,
                         show_progress=True,event_definition=args.event_definition)
-    data_dir, figure_dir, notes_dir = output_directories(args.output_root, args.event_definition)
+    data_dir, figure_dir = output_directories(args.output_root, args.event_definition)
     save_tables(result,data_dir)
-    write_notes(result,notes_dir)
     if result["summary"].iloc[0].n_failed_replicates:
         raise RuntimeError("Unresolved bootstrap fits saved; p value and figure publication withheld")
     save_figure(result["replicates"],result["summary"],figure_dir,

@@ -18,7 +18,7 @@ from matplotlib.path import Path as MplPath
 import numpy as np
 
 from paper_figure_export import copy_pdf_to_paper
-from toolbox.figure_style import add_panel_label
+from toolbox.plotting import add_panel_label
 
 PROJECT = Path(__file__).resolve().parent
 LAND = PROJECT / "data/raw/maps/ne_110m_land.geojson"

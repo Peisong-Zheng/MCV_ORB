@@ -6,16 +6,32 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+MODEL_VERSION = "continuous_exponential_inhibition_2026-09-12"
 
 
 LR04_XLSX = PROJECT_ROOT / "data/raw/lr04.xlsx"
 CO2_XLSX = PROJECT_ROOT / "data/raw/composite_co2.xlsx"
 PRE_TXT = PROJECT_ROOT / "data/raw/pre_1000_60_inter100.txt"
 OBL_TXT = PROJECT_ROOT / "data/raw/obl_1000_60_inter100.txt"
+ECC_TXT = PROJECT_ROOT / "data/raw/ecc_1000_60_inter100.txt"
+INSOLATION_NC = PROJECT_ROOT / "data/raw/solstice_insolation_NH.nc"
+
+FORCING_DIR = PROJECT_ROOT / "data/processed/forcings"
+LR04_CSV = FORCING_DIR / "lr04.csv"
+CO2_CSV = FORCING_DIR / "co2.csv"
+ORBITAL_CSV = FORCING_DIR / "orbital.csv"
+INSOLATION_65N_CSV = FORCING_DIR / "insolation_65n.csv"
+PRECESSION_PHASE_CSV = FORCING_DIR / "precession_phase_anchors.csv"
 
 BARKER_EVENT_CSVS = {
     definition: PROJECT_ROOT / f"Barker2011/data/processed/barker_events_{definition}.csv"
     for definition in ("variable_threshold", "fixed_threshold")
+}
+
+CATALOGUE_COLORS = {
+    "primary": "#3E6C8E",  # NGRIP–MIS6: blue.
+    "variable": "#CC6677",  # Barker varying threshold: rose.
+    "fixed": "#228833",  # Barker fixed threshold: green.
 }
 
 # Calendar reference years
@@ -54,3 +70,16 @@ ORBITAL_DRIVER_SETTINGS = {
         "color": "#009E73",
     },
 }
+
+
+def generated_notes_dir(output_root):
+    """Keep notes outside research outputs, including in isolated review runs.
+
+    Callers supply their catalogue output directory. Source-catalogue notes
+    share the parent workspace's agent_work folder with primary-catalogue notes.
+    """
+    root = Path(output_root)
+    scope = "primary"
+    if root.name in {"NGRIP", "MIS6", "Barker2011"}:
+        scope, root = root.name, root.parent
+    return root / "agent_work/scratch/experiment_note" / scope

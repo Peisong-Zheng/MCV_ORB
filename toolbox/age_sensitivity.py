@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from toolbox import combined_likelihood as likelihood
 from toolbox.point_process import PointProcessFitError
+from toolbox.model_stats import unwrap_phase
 
 _CONTEXT = None
 
@@ -64,10 +65,6 @@ def fit_realizations(context,realizations,age_columns,n_workers=1,show_progress=
                      n_numerical_failures=int(numeric_fail),age_input_reused=True,event_count_pattern_cache=False,
                      model_version=likelihood.MODEL_VERSION)
     return out,diagnostics
-
-
-def unwrap_phase(values,center):
-    return center+(np.asarray(values)-center+180)%360-180
 
 
 def summarize(results,point):

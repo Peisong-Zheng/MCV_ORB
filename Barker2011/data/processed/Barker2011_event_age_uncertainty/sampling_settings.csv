@@ -1,0 +1,5 @@
+parameter,value
+random_seed,20260908
+n_realizations,10000
+n_proposals,42764
+n_rejected_crossed_controls,32727

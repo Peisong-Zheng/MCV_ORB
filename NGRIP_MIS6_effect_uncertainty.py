@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import replace
 import hashlib
 import json
 import multiprocessing as mp
@@ -33,8 +32,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-from toolbox.phase_response_plotting import format_phase_response_axis, mark_preferred_phase
-from toolbox.figure_style import add_panel_label
+from toolbox.plotting import format_phase_response_axis, mark_preferred_phase
+from toolbox.plotting import add_panel_label
 import numpy as np
 import pandas as pd
 import scipy
@@ -43,8 +42,8 @@ from toolbox import combined_likelihood
 from toolbox import effect_uncertainty as effect
 from toolbox.point_process import PointProcessFitError
 from toolbox.point_process_diagnostics import residual_statistics
-from toolbox.project_config import PROJECT_ROOT, CO2_XLSX, LR04_XLSX, PRE_TXT
-from toolbox.workspace_paths import generated_notes_dir
+from toolbox.project_config import PROJECT_ROOT, CO2_CSV, LR04_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV
+from toolbox.project_config import generated_notes_dir
 
 
 RUN_NAME = "NGRIP_MIS6_effect_uncertainty"
@@ -348,29 +347,10 @@ def save_provenance(output_dir, args, age_results, context, selected, elapsed):
         output_dir / "parameters_and_provenance.csv", index=False)
     inputs = [Path(__file__), Path(effect.__file__), Path(combined_likelihood.__file__),
         PROJECT_ROOT / "toolbox/point_process.py", AGE_DRAWS, args.age_results,
-        combined_likelihood.EVENT_CATALOGUE_CSV, CO2_XLSX, LR04_XLSX, PRE_TXT]
+        combined_likelihood.EVENT_CATALOGUE_CSV, CO2_CSV, LR04_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV]
     pd.DataFrame([dict(path=str(p.relative_to(PROJECT_ROOT)) if p.is_absolute() else str(p),
         sha256=hashlib.sha256(p.read_bytes()).hexdigest()) for p in inputs]).to_csv(
         output_dir / "input_code_sha256.csv", index=False)
-
-
-def validate_saved_inputs(point_fit, output_dir, input_paths):
-    """Prevent a style-only redraw from mixing old simulations with new inputs."""
-    saved = pd.read_csv(output_dir / "point_generator.csv")[BETA_COLUMNS].iloc[0].to_numpy(float)
-    # Allow optimizer roundoff, then use the stored generator for an exact redraw.
-    if not np.allclose(saved, point_fit.full.beta, rtol=1e-7, atol=1e-8):
-        raise ValueError("Saved effect generator differs from the current fit; rerun simulations")
-    parameters = pd.read_csv(output_dir / "parameters_and_provenance.csv").set_index("parameter").value
-    if (parameters.get("model_version") != combined_likelihood.MODEL_VERSION or
-            float(parameters["history_tau_ka"]) != point_fit.context.history_tau_ka):
-        raise ValueError("Saved effect model settings differ; rerun simulations")
-    manifest = pd.read_csv(output_dir / "input_code_sha256.csv")
-    hashes = {(PROJECT_ROOT / str(row.path)).resolve(): row.sha256 for row in manifest.itertuples()}
-    for path in input_paths:
-        path = Path(path).resolve()
-        if hashes.get(path) != hashlib.sha256(path.read_bytes()).hexdigest():
-            raise ValueError(f"Saved effect input changed: {path.name}; rerun simulations")
-    return saved
 
 
 def save_effect_outputs(summary, curves, regions, output_dir):
@@ -423,6 +403,15 @@ def main():
         parser.error("Require n-point >= 20, positive group/worker counts and nonnegative seed")
     output_dir = args.output_root / "data/processed" / RUN_NAME
     figure_dir = args.output_root / "figures" / RUN_NAME
+    if args.redraw:
+        # Redraw the saved experiment; current upstream files need not recreate it.
+        summary = pd.read_csv(output_dir / "effect_summary.csv")
+        curves = pd.read_csv(output_dir / "phase_response_bands.csv")
+        saved_regions = json.loads((output_dir / "coefficient_regions.json").read_text())
+        regions = {scenario: saved_regions[name] for scenario, name in SCENARIOS.items()}
+        plot_results(summary, curves, regions, figure_dir, not args.no_paper_export)
+        print(summary.to_string(index=False), flush=True)
+        return
     notes_dir = generated_notes_dir(args.output_root)
     for directory in (output_dir, figure_dir, notes_dir):
         directory.mkdir(parents=True, exist_ok=True)
@@ -432,27 +421,21 @@ def main():
     point_fit = combined_likelihood.fit_catalogue(events, context)
     effect.validate_effect_fit(point_fit)
     draws, age_results = load_age_inputs(events, args.age_results)
-    if args.redraw:
-        saved_beta = validate_saved_inputs(point_fit, output_dir, [AGE_DRAWS, args.age_results,
-            combined_likelihood.EVENT_CATALOGUE_CSV, CO2_XLSX, LR04_XLSX, PRE_TXT])
-        point_fit = replace(point_fit, full=replace(point_fit.full, beta=saved_beta))
-        replicates = pd.read_csv(output_dir / "effect_replicates.csv")
-    else:
-        generators, selected = build_generators(events, context, point_fit, draws, age_results,
-                                               args.n_outer, args.seed)
-        selected.to_csv(output_dir / "selected_age_generators.csv", index=False)
-        pd.DataFrame([dict(zip(BETA_COLUMNS, point_fit.full.beta))]).to_csv(
-            output_dir / "point_generator.csv", index=False)
-        age_results[["realization_id", "fit_valid", "invalid_reason"]].to_csv(
-            output_dir / "age_support_status.csv", index=False)
-        replicates = run_simulations(context, generators, args.n_point, args.n_inner, args.seed, args.workers)
-        replicates.to_csv(output_dir / "effect_replicates.csv", index=False, float_format="%.12g")
-        # Reuse the nominal full-model refits for model diagnostics.
-        gof_columns = ["replicate_id", "scenario", "fit_valid", "invalid_reason",
-                       "n_response_events", "ks_uniform", "adjacent_dependence", "residual_status"]
-        replicates.loc[replicates.scenario.eq("B_sampling"), gof_columns].to_csv(
-            output_dir / "gof_replicates.csv", index=False, float_format="%.12g")
-        save_provenance(output_dir, args, age_results, context, selected, time.perf_counter()-started)
+    generators, selected = build_generators(events, context, point_fit, draws, age_results,
+                                           args.n_outer, args.seed)
+    selected.to_csv(output_dir / "selected_age_generators.csv", index=False)
+    pd.DataFrame([dict(zip(BETA_COLUMNS, point_fit.full.beta))]).to_csv(
+        output_dir / "point_generator.csv", index=False)
+    age_results[["realization_id", "fit_valid", "invalid_reason"]].to_csv(
+        output_dir / "age_support_status.csv", index=False)
+    replicates = run_simulations(context, generators, args.n_point, args.n_inner, args.seed, args.workers)
+    replicates.to_csv(output_dir / "effect_replicates.csv", index=False, float_format="%.12g")
+    # Reuse the nominal full-model refits for model diagnostics.
+    gof_columns = ["replicate_id", "scenario", "fit_valid", "invalid_reason",
+                   "n_response_events", "ks_uniform", "adjacent_dependence", "residual_status"]
+    replicates.loc[replicates.scenario.eq("B_sampling"), gof_columns].to_csv(
+        output_dir / "gof_replicates.csv", index=False, float_format="%.12g")
+    save_provenance(output_dir, args, age_results, context, selected, time.perf_counter()-started)
     summary, regions = summarize_effects(point_fit, age_results, replicates)
     curves = build_curve_table(point_fit, regions)
     save_effect_outputs(summary, curves, regions, output_dir)

@@ -16,12 +16,12 @@ from matplotlib.ticker import MultipleLocator
 import numpy as np
 import pandas as pd
 import argparse
-from toolbox import combined_likelihood, orbital_driver_sensitivity, event_inputs, project_config
+from toolbox import event_model, project_config
 
 from paper_figure_export import copy_pdf_to_paper
-from toolbox.catalogue_colors import CATALOGUE_COLORS
-from toolbox.figure_style import add_panel_label as panel_label
-from toolbox.phase_response_plotting import format_phase_response_axis, mark_preferred_phase
+from toolbox.project_config import CATALOGUE_COLORS
+from toolbox.plotting import add_panel_label as panel_label
+from toolbox.plotting import format_phase_response_axis, mark_preferred_phase
 
 PROJECT = Path(__file__).resolve().parent
 RESULT_ROOT = PROJECT
@@ -66,20 +66,27 @@ def plot_data_overview():
     variable_phases = read_table(BARKER / "event_precession_phases.csv")
     fixed_phases = read_table(BARKER / "fixed_threshold/event_precession_phases.csv")
     support = read_table(PRIMARY_ORBITAL / "support.csv").set_index("segment_id")
-    # Overview curves use native source series, independent of any model grid.
-    barker_events = pd.read_csv(project_config.BARKER_EVENT_CSVS["variable_threshold"], float_precision="round_trip")
-    context = combined_likelihood.build_barker_context(barker_events)
+    # Read native forcing samples directly; plotting needs no fitted context.
+    lr04 = pd.read_csv(project_config.LR04_CSV, float_precision="round_trip")
+    co2 = pd.read_csv(project_config.CO2_CSV, float_precision="round_trip")
+    orbit = pd.read_csv(project_config.ORBITAL_CSV, float_precision="round_trip")
+    insolation = pd.read_csv(project_config.INSOLATION_65N_CSV, float_precision="round_trip")
     age = np.linspace(0, 400, 4001)
     drivers = pd.DataFrame({"age_kyr_bp": age})
-    for name, (knots, values) in context.forcings.items():
-        drivers[name] = event_inputs.interpolate_checked(age, knots, values, context="overview")
-    sources, _ = orbital_driver_sensitivity.load_driver_sources()
     orbital = pd.DataFrame({"age_kyr_bp": age})
-    for name, column in (("ecc", "ecc"), ("obl", "obl_deg"), ("insol65n", "insol65n_Wm2")):
-        source = sources[name]
-        orbital[column] = event_inputs.interpolate_checked(age, source["age"], source["values"], context="overview")
-        INPUTS.add(source["path"])
-    INPUTS.update((project_config.LR04_XLSX, project_config.CO2_XLSX, project_config.PRE_TXT))
+    for frame, name, source, column in (
+        (drivers, "lr04", lr04, "lr04"),
+        (drivers, "co2", co2, "co2_ppm"),
+        (drivers, "precession_index", orbit, "precession_index"),
+        (orbital, "ecc", orbit, "eccentricity"),
+        (orbital, "obl_deg", orbit, "obliquity_deg"),
+        (orbital, "insol65n_Wm2", insolation, "insolation_Wm2"),
+    ):
+        frame[name] = event_model.interpolate_checked(
+            age, source.age_kyr_bp.to_numpy(), source[column].to_numpy(), context="overview",
+        )
+    INPUTS.update((project_config.LR04_CSV, project_config.CO2_CSV,
+                   project_config.ORBITAL_CSV, project_config.INSOLATION_65N_CSV))
     assert events.groupby("source_record").size().to_dict() == {"MF": 16, "NGRIP": 34, "Sofular": 5}
     assert [len(primary_phases), len(variable_phases), len(fixed_phases)] == [55, 70, 59]
     assert np.isin(fixed_phases.event_age_kyr_bp, variable_phases.event_age_kyr_bp).all()
@@ -116,10 +123,10 @@ def plot_data_overview():
     phase.plot(drivers.age_kyr_bp, drivers.precession_index, color="0.40", lw=0.9, zorder=1)
     # Use the stored forcing value at each event, without age jitter. Larger
     # open squares leave both symbols visible for shared Barker event picks.
-    phase.scatter(variable_phases.event_age_kyr_bp, variable_phases.orbital_value_at_event,
+    phase.scatter(variable_phases.event_age_kyr_bp, variable_phases.precession_index,
                   s=13, marker="o", c=CATALOGUE_COLORS["variable"], linewidths=0, zorder=3,
                   label="Barker 2011: varying threshold (n = 70)")
-    phase.scatter(fixed_phases.event_age_kyr_bp, fixed_phases.orbital_value_at_event,
+    phase.scatter(fixed_phases.event_age_kyr_bp, fixed_phases.precession_index,
                   s=24, marker="s", facecolors="none", edgecolors=CATALOGUE_COLORS["fixed"],
                   linewidths=0.7, zorder=4, label="Barker 2011: fixed threshold (n = 59)")
     phase.scatter(primary_phases.event_age_kyr_bp, primary_phases.precession_index,
@@ -160,8 +167,8 @@ def plot_data_overview():
     return fig
 
 
-def phase_inputs(folder, phase_column, color, label, fixed=False):
-    phases = read_table(folder / "event_precession_phases.csv")[phase_column].to_numpy()
+def phase_inputs(folder, color, label, fixed=False):
+    phases = read_table(folder / "event_precession_phases.csv").pre_phase_rad.to_numpy()
     summary = read_table(folder / "analysis_summary.csv").iloc[0]
     saved_coefficients = read_table(folder / "model_coefficients.csv")
     coefficients = saved_coefficients.loc[saved_coefficients.model_id.eq("full")].set_index("term").beta
@@ -199,9 +206,9 @@ def bootstrap_p_for_fit(folder, fitted_summary):
 
 def plot_phase_comparison():
     """Compare raw phase counts overlaid with fitted full/reduced expected counts."""
-    primary = phase_inputs(PRIMARY, "pre_phase_rad", CATALOGUE_COLORS["primary"], "NGRIP–MIS6")
-    variable = phase_inputs(BARKER, "phase_rad", CATALOGUE_COLORS["variable"], "Varying threshold")
-    fixed = phase_inputs(BARKER / "fixed_threshold", "phase_rad", CATALOGUE_COLORS["fixed"],
+    primary = phase_inputs(PRIMARY, CATALOGUE_COLORS["primary"], "NGRIP–MIS6")
+    variable = phase_inputs(BARKER, CATALOGUE_COLORS["variable"], "Varying threshold")
+    fixed = phase_inputs(BARKER / "fixed_threshold", CATALOGUE_COLORS["fixed"],
                          "Fixed threshold", fixed=True)
     # All three annotations use their own BG-null calibration at nominal ages.
     for record, folder in ((primary, PRIMARY_BOOTSTRAP), (variable, BARKER_BOOTSTRAP),
@@ -210,7 +217,6 @@ def plot_phase_comparison():
     assert [len(d["phases"]) for d in (primary, variable, fixed)] == [55, 70, 59]
     primary["sectors"] = read_table(PRIMARY / "phase_sector_fit.csv")
     variable["sectors"] = read_table(BARKER / "phase_sector_fit.csv")
-    fixed["sectors"] = read_table(BARKER / "fixed_threshold/phase_sector_fit.csv")
 
     fig = plt.figure(figsize=(180 / 25.4, 132 / 25.4))
     grid = fig.add_gridspec(2, 2, width_ratios=(1, 1.35), height_ratios=(1, 1),
@@ -359,8 +365,8 @@ def main():
     args = parser.parse_args()
     RESULT_ROOT = args.output_root.resolve()
     FIGURES = RESULT_ROOT / "figures/paper_summary"
-    INPUTS.add(PROJECT / "toolbox/phase_response_plotting.py")
-    INPUTS.add(PROJECT / "toolbox/catalogue_colors.py")
+    INPUTS.add(PROJECT / "toolbox/plotting.py")
+    INPUTS.add(PROJECT / "toolbox/project_config.py")
     plt.rcParams.update({"font.family": "sans-serif", "font.sans-serif": ["Arial", "DejaVu Sans"],
                          "font.size": 8, "axes.labelsize": 8.5, "axes.linewidth": 0.65,
                          "xtick.labelsize": 7.5, "ytick.labelsize": 7.5,
@@ -372,9 +378,6 @@ def main():
                    sha256=hashlib.sha256(path.read_bytes()).hexdigest()) for path in sorted(INPUTS)]
     inputs.append(dict(source=Path(__file__).name,
                        sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest()))
-    style_path = PROJECT / "toolbox/figure_style.py"
-    inputs.append(dict(source=style_path.relative_to(PROJECT).as_posix(),
-                       sha256=hashlib.sha256(style_path.read_bytes()).hexdigest()))
     pd.DataFrame(inputs).to_csv(FIGURES / "input_sha256.csv", index=False)
     print("Saved manuscript overview, phase comparison and orbital comparison; no models refitted.")
 

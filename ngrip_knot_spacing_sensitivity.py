@@ -33,7 +33,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 import NGRIP_MIS6_event_uncertainty_sensitivity as pooled
 from toolbox import age_sensitivity, combined_likelihood, point_process
-from toolbox.project_config import CO2_XLSX, LR04_XLSX, PRE_TXT
+from toolbox.project_config import CO2_CSV, LR04_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV
 
 OUT_DATA_DIR = pooled.OUT_DATA_DIR / "ngrip_knot_spacing"
 KNOT_SPACINGS_KA = (2.5, 5.0, 10.0)
@@ -52,10 +52,10 @@ def input_manifest(input_dir) -> pd.DataFrame:
         *[input_dir / filename for filename in CHRONOLOGY_FILES],
         input_dir / "gain_realizations.csv", input_dir / "parameters_and_provenance.csv",
         combined_likelihood.EVENT_CATALOGUE_CSV, combined_likelihood.OBSERVATION_SEGMENTS_CSV,
-        CO2_XLSX, LR04_XLSX, PRE_TXT, Path(__file__), Path(pooled.__file__),
+        CO2_CSV, LR04_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV, Path(__file__), Path(pooled.__file__),
         Path(age_sensitivity.__file__), Path(combined_likelihood.__file__), Path(point_process.__file__),
         *[PROJECT_ROOT / "toolbox" / filename for filename in (
-            "project_config.py", "event_inputs.py", "orbital_phase.py", "model_stats.py",
+            "project_config.py", "event_model.py", "model_stats.py",
         )],
     ]
     rows = []

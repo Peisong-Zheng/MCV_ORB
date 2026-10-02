@@ -13,7 +13,7 @@ import pandas as pd
 
 from toolbox import combined_likelihood
 from toolbox.project_config import PROJECT_ROOT
-from toolbox.workspace_paths import generated_notes_dir
+from toolbox.project_config import generated_notes_dir
 
 DRIVER_LABELS = {"ecc": "Eccentricity", "obl": "Obliquity",
                  "insol65n": "65°N summer-solstice\ninsolation"}
@@ -277,7 +277,7 @@ def save_results(result, output_root, run_name, catalogue_label, input_paths):
                               rates[rate_columns].reset_index(drop=True)], axis=1)
     event_inputs.to_csv(data_dir / "event_inputs_and_fitted_rates.csv", index=False)
     for key in ("comparison_summary", "phase_summary", "mc_models", "mc_comparisons",
-                "selected_realizations", "realization_status", "reference_check",
+                "realization_status", "reference_check",
                 "scaling", "provenance", "events", "support"):
         result[key].to_csv(data_dir / f"{key}.csv", index=False)
     quadrature = result["integration"]
@@ -297,29 +297,15 @@ def save_results(result, output_root, run_name, catalogue_label, input_paths):
 
 
 def redraw_saved_results(output_root, run_name, catalogue_label):
-    """Refresh only figures and caption from saved fits; record the rendering inputs."""
+    """Plot saved comparisons without refitting or reading analysis inputs."""
     data_dir = output_root / "data/processed" / run_name
     figure_dir = output_root / "figures" / run_name
-    summary_path = data_dir / "comparison_summary.csv"
-    parameter_path = data_dir / "parameters.csv"
-    summary = pd.read_csv(summary_path)
-    parameters = pd.read_csv(parameter_path).set_index("parameter").value.to_dict()
+    summary = pd.read_csv(data_dir / "comparison_summary.csv")
     fig, _ = plot_comparisons(summary, catalogue_label)
     figure_dir.mkdir(parents=True, exist_ok=True)
     for extension in ("png", "pdf"):
         fig.savefig(figure_dir / f"{run_name}.{extension}", dpi=600)
     plt.close(fig)
-    write_caption(dict(comparison_summary=summary, parameters=parameters),
-                  generated_notes_dir(output_root), run_name, catalogue_label)
-    # Rendering provenance is separate from the hashes of the original model run.
-    files = [(summary_path, "fitted comparison summary"), (parameter_path, "analysis settings"),
-             (Path(__file__), "figure and caption code")]
-    rows = []
-    for path, role in files:
-        resolved = path.resolve()
-        label = resolved.relative_to(PROJECT_ROOT) if resolved.is_relative_to(PROJECT_ROOT) else resolved
-        rows.append(dict(path=str(label), role=role, sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
-    pd.DataFrame(rows).to_csv(data_dir / "figure_provenance.csv", index=False)
     return figure_dir
 
 

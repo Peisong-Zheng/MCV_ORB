@@ -10,7 +10,7 @@ import pypdfium2 as pdfium
 from pypdf import PdfReader, PdfWriter, Transformation
 
 from paper_figure_export import copy_pdf_to_paper
-from toolbox.figure_style import PANEL_FONT_SIZE, PANEL_FONT_FAMILY
+from toolbox.plotting import PANEL_FONT_SIZE, PANEL_FONT_FAMILY
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent

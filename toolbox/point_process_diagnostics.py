@@ -15,7 +15,7 @@ import time
 import numpy as np
 import pandas as pd
 from scipy.stats import beta as beta_distribution
-from toolbox.workspace_paths import generated_notes_dir
+from toolbox.project_config import generated_notes_dir
 
 
 GOF_STATISTICS = ("ks_uniform", "adjacent_dependence")
@@ -332,7 +332,7 @@ def run_history_test(context, *, n_bootstrap=4999, seed=20260914, workers=1,
     return dict(history_test=summary, history_replicates=replicates, history_coefficients=coefficients)
 
 
-def load_sampling_gof_replicates(source, context):
+def load_sampling_gof_replicates(source, context, *, full_model=None):
     """Reuse all nominal-age sampling refits from the S4 effect experiment.
 
     Select by scenario, never by fit success. Combined chronology/sampling
@@ -348,13 +348,14 @@ def load_sampling_gof_replicates(source, context):
             int(settings.get("quadrature_order", 4)) != context.quadrature_order):
         raise ValueError("S4 model settings differ from the diagnostic context")
 
-    design = likelihood.prepare_catalogue(context.events, context, fixed_support=True)
-    full = likelihood.fit_terms(design, context.full_terms)
+    if full_model is None:
+        design = likelihood.prepare_catalogue(context.events, context, fixed_support=True)
+        full_model = likelihood.fit_terms(design, context.full_terms)
     saved = pd.read_csv(source.parent / "point_generator.csv").rename(
         columns=lambda name: name.removeprefix("beta__"))
-    if set(saved.columns) != set(full.terms):
+    if len(saved) != 1 or set(saved.columns) != set(full_model.terms):
         raise ValueError("S4 generator does not contain the current full-model terms")
-    np.testing.assert_allclose(saved.loc[0, list(full.terms)].to_numpy(float), full.beta,
+    np.testing.assert_allclose(saved.loc[0, list(full_model.terms)].to_numpy(float), full_model.beta,
                                rtol=1e-7, atol=1e-8,
                                err_msg="S4 generator differs from the current nominal fit")
 
@@ -362,6 +363,8 @@ def load_sampling_gof_replicates(source, context):
                "response_exposure_kyr", "n_response_events", *GOF_STATISTICS, "residual_status"]
     draws = pd.read_csv(source, usecols=columns)
     sampling = draws.loc[draws.scenario.eq("B_sampling"), columns].reset_index(drop=True)
+    if not sampling.fit_valid.isin([True, False]).all():
+        raise ValueError("S4 nominal sampling draws need an explicit fit status")
     expected_ids = np.arange(1, int(settings["n_point"]) + 1)
     if not np.array_equal(np.sort(sampling.replicate_id), expected_ids):
         raise ValueError("S4 nominal sampling ensemble is incomplete or has duplicate IDs")
@@ -371,14 +374,13 @@ def load_sampling_gof_replicates(source, context):
                                rtol=1e-10, atol=1e-10,
                                err_msg="S4 sampling draws use different response exposure")
     provenance = dict(gof_source=str(source),
-                      gof_source_sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
                       gof_bootstrap_replicates=len(sampling), gof_seed=int(settings["seed"]),
                       gof_source_role="S4 nominal B_sampling full-model refits only")
     return sampling, provenance
 
 
 def run_gof(context, *, replicates=None, n_bootstrap=1999, seed=20260915, workers=1,
-            show_progress=True):
+            show_progress=True, full_model=None):
     """Assess full-model fit, or summarize diagnostics saved during full refits.
 
     Supplying replicates reuses a single nominal full-model experiment. Age
@@ -388,10 +390,11 @@ def run_gof(context, *, replicates=None, n_bootstrap=1999, seed=20260915, worker
     from toolbox import combined_likelihood as likelihood
 
     design = likelihood.prepare_catalogue(context.events, context, fixed_support=True)
-    full = likelihood.fit_terms(design, context.full_terms)
-    observed = residual_statistics(*likelihood.rescaled_event_intervals(design, full))
+    if full_model is None:
+        full_model = likelihood.fit_terms(design, context.full_terms)
+    observed = residual_statistics(*likelihood.rescaled_event_intervals(design, full_model))
     if replicates is None:
-        replicates = run_model_bootstrap(context, full, "gof", n_replicates=n_bootstrap,
+        replicates = run_model_bootstrap(context, full_model, "gof", n_replicates=n_bootstrap,
                                          seed=seed, workers=workers, show_progress=show_progress)
     if "scenario" in replicates and not replicates.scenario.eq("B_sampling").all():
         raise ValueError("GOF calibration must contain only nominal B_sampling full refits")
@@ -407,8 +410,15 @@ def run_gof(context, *, replicates=None, n_bootstrap=1999, seed=20260915, worker
 def save_results(result, context, output_root, run_name, parameters, *, diagnostics_root=None):
     """Write model checks as CSV and prose without introducing default figures."""
     from toolbox import combined_likelihood as likelihood
-    from toolbox.project_config import PROJECT_ROOT, LR04_XLSX, CO2_XLSX, PRE_TXT
+    from toolbox.project_config import (PROJECT_ROOT, LR04_CSV, CO2_CSV, ORBITAL_CSV,
+                                        PRECESSION_PHASE_CSV)
 
+    # The primary entry still saves its existing provenance; Barker writes its
+    # four scientific result tables directly and does not call this writer.
+    parameters = dict(parameters)
+    if "gof_source" in parameters:
+        parameters["gof_source_sha256"] = hashlib.sha256(
+            Path(parameters["gof_source"]).read_bytes()).hexdigest()
     output_root = Path(output_root)
     data_dir = output_root / "data/processed" / run_name
     notes_dir = generated_notes_dir(output_root)
@@ -427,9 +437,8 @@ def save_results(result, context, output_root, run_name, parameters, *, diagnost
     pd.DataFrame([dict(parameter=key, value=value) for key, value in metadata.items()]).to_csv(
         data_dir / "parameters_and_provenance.csv", index=False)
     inputs = [Path(__file__), Path(likelihood.__file__), PROJECT_ROOT / "toolbox/point_process.py",
-              LR04_XLSX, CO2_XLSX, PRE_TXT]
-    inputs.append(PROJECT_ROOT / "Barker2011/data/raw/Barker et al-2011-SOM.xls"
-                  if "Barker2011" in context.segments else likelihood.EVENT_CATALOGUE_CSV)
+              LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV]
+    inputs.append(likelihood.EVENT_CATALOGUE_CSV)
     pd.DataFrame([dict(path=str(path.relative_to(PROJECT_ROOT)),
                        sha256=hashlib.sha256(path.read_bytes()).hexdigest()) for path in inputs]).to_csv(
         diagnostic_dir / "input_code_sha256.csv", index=False)

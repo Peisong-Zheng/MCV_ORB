@@ -1,15 +1,77 @@
-"""Five-panel chronological sensitivity plot; no fitting or file I/O."""
+"""Shared panel styling, phase-response labels and chronology-sensitivity plots."""
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-from toolbox.figure_style import add_panel_label
-from toolbox.age_sensitivity import unwrap_phase as unwrap_around
-P_THRESHOLD=.05
+
+from toolbox.model_stats import unwrap_phase as unwrap_around
+
+PANEL_FONT_SIZE = 9
+PANEL_FONT_FAMILY = "DejaVu Sans"
+P_THRESHOLD = 0.05
+
+
+def add_panel_label(axis, label, x=-0.12, y=1.04):
+    """Keep letters separate from titles; positions can follow the panel layout."""
+    return axis.text(
+        x, y, f"({label})", transform=axis.transAxes,
+        fontsize=PANEL_FONT_SIZE, fontfamily=PANEL_FONT_FAMILY,
+        fontweight="bold", color="black", ha="left", va="bottom",
+        clip_on=False, zorder=10,
+    )
+
+
+def format_phase_response_axis(axis, fontsize=7):
+    """The extrema named below the ticks belong to the precession index."""
+    axis.set_xlim(0, 360)
+    axis.set_xticks([0, 90, 180, 270, 360],
+                   ["0°\nMinimum", "90°", "180°\nMaximum", "270°", "360°\nMinimum"])
+    axis.tick_params(axis="x", labelsize=fontsize)
+    # Keep the longer endpoint labels inside narrow publication panels.
+    axis.get_xticklabels()[0].set_ha("left")
+    axis.get_xticklabels()[-1].set_ha("right")
+    axis.set_xlabel("Precession-index phase", labelpad=3)
+    axis.set_ylabel("Rate multiplier")
+
+
+def mark_preferred_phase(axis, phase_deg, max_min_ratio, color="black"):
+    """For exp(a sin(phi) + b cos(phi)), the peak multiplier is sqrt(max/min)."""
+    axis.plot(phase_deg, max_min_ratio ** 0.5, "o", color=color,
+              markersize=3.5, markeredgecolor="white", markeredgewidth=0.4, zorder=5)
+
+
+def configure_barker_style():
+    """Use readable journal-scale typography and editable PDF fonts."""
+
+    plt.rcParams.update(
+        {
+            "font.family": "sans-serif",
+            "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
+            "font.size": 9.5,
+            "axes.labelsize": 10,
+            "axes.titlesize": 10,
+            "xtick.labelsize": 8.5,
+            "ytick.labelsize": 8.5,
+            "legend.fontsize": 8.5,
+            "axes.linewidth": 0.8,
+            "pdf.fonttype": 42,
+            "ps.fonttype": 42,
+            "savefig.facecolor": "white",
+        }
+    )
+
 
 def configure_plot_style():
-    plt.rcParams.update({'font.family':'sans-serif','font.sans-serif':['Arial','DejaVu Sans'],
-                         'font.size':9,'axes.labelsize':9,'pdf.fonttype':42,'ps.fonttype':42})
+    plt.rcParams.update({
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Arial", "DejaVu Sans"],
+        "font.size": 9,
+        "axes.labelsize": 9,
+        "pdf.fonttype": 42,
+        "ps.fonttype": 42,
+    })
+
 
 def _histogram_panel(
     ax: plt.Axes,
@@ -49,6 +111,7 @@ def _histogram_panel(
     ax.grid(False)
     ax.set_axisbelow(True)
     add_panel_label(ax, panel_label, x=-0.15, y=1.04)
+
 
 def plot_sensitivity(
     results: pd.DataFrame,

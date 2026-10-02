@@ -2,20 +2,18 @@
 
 from __future__ import annotations
 
-import hashlib
 import time
 
 import numpy as np
 import pandas as pd
-import xarray as xr
 from scipy.stats import chi2
 
 from toolbox import combined_likelihood, project_config
 
 
-ECC_TXT = project_config.PROJECT_ROOT / "data/raw/ecc_1000_60_inter100.txt"
+ECC_TXT = project_config.ECC_TXT
 OBL_TXT = project_config.OBL_TXT
-INSOLATION_NC = project_config.PROJECT_ROOT / "data/raw/solstice_insolation_NH.nc"
+INSOLATION_NC = project_config.INSOLATION_NC
 DRIVER_IDS = ("ecc", "obl", "insol65n")
 DRIVER_LABELS = {
     "ecc": "Eccentricity",
@@ -44,77 +42,29 @@ def _ordered_series(age, values):
 
 
 def load_driver_sources():
-    """Read native e, obliquity (degrees), and Q65 (W m-2) on BP1950 ages.
-
-    Preserve the source knots for exact-age interpolation and integration.
-    The La2004 source time is relative to J2000; positive past ages therefore
-    decrease by 0.05 kyr when expressed relative to 1950.
-    """
-    # Laskar et al. (2004), doi:10.1051/0004-6361:20041335.
-    # TXT time is negative in the past; obliquity source values are radians.
+    """Read native BP1950 samples; preprocessing already converted ages/units."""
+    orbital = pd.read_csv(project_config.ORBITAL_CSV, float_precision="round_trip")
+    insolation = pd.read_csv(project_config.INSOLATION_65N_CSV, float_precision="round_trip")
     source_data = {}
-    for driver, path in (("ecc", ECC_TXT), ("obl", OBL_TXT)):
-        raw = np.loadtxt(path)
-        if raw.ndim != 2 or raw.shape[1] != 2:
-            raise ValueError(f"Expected two source columns in {path}")
-        age_bp = -raw[:, 0] + project_config.ORBITAL_AGE_OFFSET_TO_BP1950_KA
-        values = raw[:, 1] if driver == "ecc" else np.rad2deg(raw[:, 1])
-        age_bp, values = _ordered_series(age_bp, values)
-        source_data[driver] = {
-            "path": path, "age": age_bp, "values": values,
-            "source_units": "dimensionless" if driver == "ecc" else "radians",
-            "units": "dimensionless" if driver == "ecc" else "degrees",
-            "age_conversion": "age_BP1950 = -source_time - 0.05 kyr",
-            "epoch_evidence": "La2004 source convention; project age-epoch audit",
-        }
-
-    with xr.open_dataset(INSOLATION_NC) as ds:
-        solar_longitude = float(ds["solar_longitude_deg"].item())
-        if not np.isclose(solar_longitude, 90.0, atol=1e-10, rtol=0):
-            raise ValueError("Insolation input is not northern summer solstice (90 degrees)")
-        if ds["daily_mean_insolation_Wm2"].attrs.get("units") != "W m-2":
-            raise ValueError("Expected insolation source units W m-2")
-        # Exact latitude selection avoids silently using a neighbouring grid point.
-        q65 = ds.swap_dims({"latitude": "latitude_degN"})[
-            "daily_mean_insolation_Wm2"
-        ].sel(latitude_degN=65.0)
-        age_bp = ds["age_kyr_BP"].to_numpy() + project_config.ORBITAL_AGE_OFFSET_TO_BP1950_KA
-        age_bp, values = _ordered_series(age_bp, q65.to_numpy())
-        source_data["insol65n"] = {
-            "path": INSOLATION_NC, "age": age_bp, "values": values,
-            "source_units": "W m-2", "units": "W m-2",
-            "age_conversion": "age_BP1950 = source_age_kyr_BP - 0.05 kyr",
-            "epoch_evidence": (
-                "J2000 inferred by numerical reconstruction from unshifted La2004 "
-                "inputs; source coordinate name alone does not establish BP1950"
-            ),
-            "latitude_degN": 65.0, "solar_longitude_deg": solar_longitude,
-            "solar_constant": ds.attrs.get("solar_constant", ""),
-            "source_history": ds.attrs.get("history", ""),
-        }
-
-    provenance_rows = []
-    for driver in DRIVER_IDS:
-        source = source_data[driver]
-        age, values = source["age"], source["values"]
-        provenance_rows.append({
-            "driver_id": driver, "source_file": str(source["path"]),
-            "sha256": hashlib.sha256(source["path"].read_bytes()).hexdigest(),
-            "reference": project_config.ORBITAL_REFERENCE,
-            "source_units": source["source_units"], "analysis_units": source["units"],
-            "source_epoch": "J2000", "analysis_epoch": "BP1950",
-            "age_offset_kyr": project_config.ORBITAL_AGE_OFFSET_TO_BP1950_KA,
-            "age_conversion": source["age_conversion"],
-            "epoch_evidence": source["epoch_evidence"],
-            "source_spacing_kyr": float(np.median(np.diff(age))),
-            "source_age_min_BP1950_kyr": float(age[0]),
-            "source_age_max_BP1950_kyr": float(age[-1]),
-            "interpolation": "linear; no extrapolation; native resolution unchanged",
-            **{key: source.get(key, np.nan) for key in (
-                "latitude_degN", "solar_longitude_deg", "solar_constant", "source_history"
-            )},
-        })
-    return source_data, pd.DataFrame(provenance_rows)
+    for driver, table, column, path, units in (
+        ("ecc", orbital, "eccentricity", project_config.ORBITAL_CSV, "dimensionless"),
+        ("obl", orbital, "obliquity_deg", project_config.ORBITAL_CSV, "degrees"),
+        ("insol65n", insolation, "insolation_Wm2", project_config.INSOLATION_65N_CSV, "W m-2"),
+    ):
+        age, values = _ordered_series(table.age_kyr_bp.to_numpy(), table[column].to_numpy())
+        source_data[driver] = dict(path=path, age=age, values=values, units=units)
+    provenance = pd.DataFrame([
+        dict(driver_id=driver, source_file=str(source["path"]),
+             reference=project_config.ORBITAL_REFERENCE,
+             source_units=source["units"], analysis_units=source["units"],
+             source_epoch="BP1950", analysis_epoch="BP1950", age_offset_kyr=0.,
+             source_spacing_kyr=float(np.median(np.diff(source["age"]))),
+             source_age_min_BP1950_kyr=float(source["age"][0]),
+             source_age_max_BP1950_kyr=float(source["age"][-1]),
+             interpolation="linear; no extrapolation; native resolution unchanged")
+        for driver, source in source_data.items()
+    ])
+    return source_data, provenance
 
 
 def prepare_drivers(context):

@@ -25,9 +25,8 @@ import pandas as pd
 from scipy.stats import beta as beta_distribution, chi2
 from toolbox import combined_likelihood
 from toolbox.point_process import PointProcessFitError
-from toolbox.project_config import PROJECT_ROOT
-from toolbox.catalogue_colors import CATALOGUE_COLORS
-from toolbox.workspace_paths import generated_notes_dir
+from toolbox.project_config import PROJECT_ROOT, CATALOGUE_COLORS
+from toolbox.project_config import generated_notes_dir
 
 RUN_NAME = "NGRIP_MIS6_likelihood_bootstrap"
 OUT_DATA_DIR = PROJECT_ROOT / "data/processed" / RUN_NAME

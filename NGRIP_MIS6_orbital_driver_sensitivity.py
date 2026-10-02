@@ -10,7 +10,7 @@ from pathlib import Path
 
 from toolbox import combined_likelihood, orbital_driver_sensitivity as orbital
 from toolbox import orbital_driver_reporting as reporting
-from toolbox.project_config import PROJECT_ROOT, LR04_XLSX, CO2_XLSX, PRE_TXT, OBL_TXT
+from toolbox.project_config import PROJECT_ROOT, LR04_CSV, CO2_CSV, ORBITAL_CSV, INSOLATION_65N_CSV, PRECESSION_PHASE_CSV
 
 ROOT = PROJECT_ROOT
 RUN_NAME = "NGRIP_MIS6_orbital_driver_sensitivity"
@@ -50,12 +50,9 @@ def main():
     result = run_analysis(args.n_realizations, quadrature_order=args.quadrature_order)
     inputs = [Path(__file__).resolve(), Path(orbital.__file__), Path(reporting.__file__),
         Path(combined_likelihood.__file__), PROJECT_ROOT / "toolbox/point_process.py",
-        PROJECT_ROOT / "toolbox/project_config.py", PROJECT_ROOT / "toolbox/event_inputs.py",
-        PROJECT_ROOT / "toolbox/orbital_phase.py", PROJECT_ROOT / "toolbox/event_process.py",
+        PROJECT_ROOT / "toolbox/project_config.py", PROJECT_ROOT / "toolbox/event_model.py",
         combined_likelihood.EVENT_CATALOGUE_CSV, combined_likelihood.OBSERVATION_SEGMENTS_CSV,
-        AGE_INPUT, LR04_XLSX, CO2_XLSX, PRE_TXT, OBL_TXT,
-        PROJECT_ROOT / "data/raw/ecc_1000_60_inter100.txt",
-        PROJECT_ROOT / "data/raw/solstice_insolation_NH.nc"]
+        AGE_INPUT, LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV, INSOLATION_65N_CSV]
     data_dir, _ = reporting.save_results(result, args.output_root, RUN_NAME, CATALOGUE_LABEL, inputs)
     print(result["comparison_summary"].to_string(index=False))
     print(f"Saved {data_dir}")

@@ -54,30 +54,28 @@ def test_fixed_threshold_uses_own_anchor_background_and_null(fixed_result, resul
 
 
 def test_fixed_outputs_do_not_replace_variable_outputs(fixed_result, result, tmp_path):
-    data_dir, figure_dir, notes_dir = bootstrap.output_directories(tmp_path, "variable_threshold")
-    fixed_data, fixed_figure, fixed_notes = bootstrap.output_directories(tmp_path, "fixed_threshold")
+    data_dir, figure_dir = bootstrap.output_directories(tmp_path, "variable_threshold")
+    fixed_data, fixed_figure = bootstrap.output_directories(tmp_path, "fixed_threshold")
     bootstrap.save_tables(result, data_dir)
-    bootstrap.write_notes(result, notes_dir)
     original_summary = (data_dir / "summary.csv").read_bytes()
-    original_note = (notes_dir / "Barker2011_likelihood_bootstrap_Caption.txt").read_bytes()
     bootstrap.save_tables(fixed_result, fixed_data)
-    bootstrap.write_notes(fixed_result, fixed_notes)
     assert (data_dir / "summary.csv").read_bytes() == original_summary
-    assert (notes_dir / "Barker2011_likelihood_bootstrap_Caption.txt").read_bytes() == original_note
     assert fixed_figure == figure_dir / "fixed_threshold"
     assert pd.read_csv(fixed_data / "summary.csv").event_definition.item() == "fixed_threshold"
-    caption = (notes_dir / "Barker2011_likelihood_bootstrap_fixed_threshold_Caption.txt").read_text()
-    assert "fixed-threshold" in caption and "Chronology is fixed" in caption
 
 
 def test_barker_staged_outputs_and_figure(result, tmp_path):
     import matplotlib.pyplot as plt
     bootstrap.save_tables(result, tmp_path / "data")
-    bootstrap.write_notes(result, tmp_path / "notes")
-    hashes = pd.read_csv(tmp_path / "data/input_code_sha256.csv")
-    assert hashes.path.str.contains("Barker2011_likelihood_bootstrap.py").any()
-    fig = bootstrap.plot_null_distribution(result["replicates"], result["summary"])
+    assert {path.name for path in (tmp_path / "data").iterdir()} == {
+        "summary.csv", "bootstrap_replicates.csv"}
+    replicates = pd.read_csv(tmp_path / "data/bootstrap_replicates.csv")
+    summary = pd.read_csv(tmp_path / "data/summary.csv")
+    np.testing.assert_allclose(replicates.LR_statistic, result["replicates"].LR_statistic, rtol=1e-11)
+    n_exceed = (replicates.LR_statistic >= summary.LR_statistic.item()).sum()
+    assert summary.empirical_p_plus_one.item() == pytest.approx((n_exceed + 1) / (len(replicates) + 1))
+    assert summary.seed.item() == 191
+    fig = bootstrap.plot_null_distribution(replicates, summary)
     assert len(fig.axes) == 1
     assert fig.axes[0].get_xlabel() == "Likelihood-ratio statistic"
     plt.close(fig)
-    assert "continuous" in (tmp_path / "notes/Barker2011_likelihood_bootstrap_Caption.txt").read_text().lower()

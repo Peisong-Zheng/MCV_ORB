@@ -12,8 +12,7 @@ and figures are kept in this directory, alongside the nominal main analysis.
 """
 
 from pathlib import Path
-import hashlib
-import platform
+import argparse
 import sys
 
 import matplotlib
@@ -21,13 +20,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import scipy
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from paper_figure_export import copy_pdf_to_paper
-from toolbox.figure_style import add_panel_label
-from toolbox.project_config import BARKER_EVENT_CSVS
-from Barker2011 import Barker2011_event_phase_analysis as main_analysis
+from toolbox.plotting import add_panel_label, configure_barker_style
+from toolbox.project_config import PROJECT_ROOT, BARKER_EVENT_CSVS, CATALOGUE_COLORS
 
 ROOT = Path(__file__).resolve().parent
 RUN_NAME = "Barker2011_event_age_uncertainty"
@@ -44,9 +41,8 @@ BLUE = "#4477AA"
 ORANGE = "#CC9933"
 
 
-def prepare_controls(path=CONTROL_CSV):
-    """Read published uncertainties and append the explicitly synthetic endpoint."""
-    raw = pd.read_csv(path)
+def prepare_controls(raw):
+    """Check published uncertainties and append the synthetic 400 ka endpoint."""
     columns = ["speleo_age_ka", "tuning_error_ka", "absolute_speleo_error_ka",
                "combined_uncertainty_ka"]
     controls = raw[columns].copy()
@@ -149,40 +145,18 @@ def age_columns(events):
     return [f"age_ka_bp__{event_id}" for event_id in events.event_id]
 
 
-def summarize_ages(events, controls, draws, control_offsets):
-    summary = events[["event_id", "event_age_kyr_bp", "left_control_id", "right_control_id",
-                      "right_control_weight", "in_published_alignment_gap",
-                      "in_long_control_interval", "beyond_last_published_control"]].copy()
-    left, right, weight = interpolation_weights(events.event_age_kyr_bp, controls)
-    half_width = controls.combined_uncertainty_ka.to_numpy(float)
-    summary["interpolated_half_width_ka"] = (1 - weight) * half_width[left] + weight * half_width[right]
-    # This is the pre-conditioning variance of a weighted sum of independent uniforms.
-    summary["proposal_sd_ka"] = np.sqrt(((1 - weight) * half_width[left])**2
-                                       + (weight * half_width[right])**2) / np.sqrt(3)
+def summarize_ages(events, draws):
+    """Accepted-ensemble age quantiles, not confidence intervals."""
+    summary = events[["event_id", "event_age_kyr_bp"]].copy()
     offsets = draws - events.event_age_kyr_bp.to_numpy(float)
-    for frame, values in ((summary, offsets), (controls, control_offsets)):
-        frame["accepted_offset_mean_ka"] = values.mean(axis=0)
-        frame["accepted_offset_sd_ka"] = values.std(axis=0, ddof=1)
-        for label, q in (("q025", 0.025), ("median", 0.5), ("q975", 0.975)):
-            frame[f"accepted_offset_{label}_ka"] = np.quantile(values, q, axis=0)
-    for label in ("q025", "median", "q975"):
-        summary[f"age_{label}_ka"] = summary.event_age_kyr_bp + summary[f"accepted_offset_{label}_ka"]
+    for label, q in (("q025", 0.025), ("median", 0.5), ("q975", 0.975)):
+        summary[f"age_{label}_ka"] = summary.event_age_kyr_bp + np.quantile(offsets, q, axis=0)
     return summary
-
-
-def parameters_table(settings, sources):
-    """Save the scientific settings and hashes of the actual run inputs."""
-    values = dict(settings, python_version=platform.python_version(), numpy_version=np.__version__,
-                  pandas_version=pd.__version__, scipy_version=scipy.__version__)
-    for label, path in sources.items():
-        values[f"source_{label}"] = str(path.relative_to(ROOT.parent))
-        values[f"sha256_{label}"] = hashlib.sha256(path.read_bytes()).hexdigest()
-    return pd.DataFrame(values.items(), columns=["parameter", "value"])
 
 
 def plot_uncertainty(events, controls, control_offsets):
     """Show proposal half-widths and accepted joint age-map perturbations."""
-    main_analysis.configure_plot_style()
+    configure_barker_style()
     fig, axes = plt.subplots(2, 1, figsize=(180 / 25.4, 125 / 25.4), sharex=True)
     fig.subplots_adjust(left=0.105, right=0.98, bottom=0.11, top=0.94, hspace=0.35)
     knots = controls.speleo_age_ka.to_numpy(float)
@@ -216,7 +190,7 @@ def plot_uncertainty(events, controls, control_offsets):
     ax.axhline(0, color="0.2", lw=0.65)
     ax.set_ylim(-3.35, 3.35)
     event_age = events.event_age_kyr_bp.to_numpy(float)
-    ax.plot(event_age, np.full(len(events), -3.12), "|", color=main_analysis.EVENT_COLOR,
+    ax.plot(event_age, np.full(len(events), -3.12), "|", color=CATALOGUE_COLORS["variable"],
             ms=5, label="Warming events", clip_on=False)
     ax.set_xlabel("Age (kyr BP)")
     ax.set_ylabel("Age offset (kyr)")
@@ -224,56 +198,64 @@ def plot_uncertainty(events, controls, control_offsets):
     return fig
 
 
-def save_figure(fig, directory, stem):
+def save_figure(fig, directory, stem, *, paper_export=True):
     directory.mkdir(parents=True, exist_ok=True)
     fig.savefig(directory / f"{stem}.png", dpi=600)
     fig.savefig(directory / f"{stem}.pdf")
-    copy_pdf_to_paper(directory / f"{stem}.pdf")
+    if paper_export:
+        copy_pdf_to_paper(directory / f"{stem}.pdf")
     plt.close(fig)
 
 
-def main():
-    controls = prepare_controls()
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--n-realizations", type=int, default=N_REALIZATIONS)
+    parser.add_argument("--seed", type=int, default=RANDOM_SEED)
+    parser.add_argument("--output-root", type=Path, default=PROJECT_ROOT)
+    parser.add_argument("--no-paper-export", action="store_true")
+    parser.add_argument("--redraw", action="store_true")
+    args = parser.parse_args(argv)
+    root = args.output_root / "Barker2011"
+    data = root / "data/processed" / RUN_NAME
+    figures = root / "figures" / RUN_NAME
     events = pd.read_csv(BARKER_EVENT_CSVS["variable_threshold"], float_precision="round_trip")
-    events = prepare_events(events, controls)
-    draws, control_offsets, diagnostics = sample_realizations(events, controls)
-    controls = controls.copy()
-    summary = summarize_ages(events, controls, draws, control_offsets)
-    ids = [f"Barker_MC_{i:05d}" for i in range(1, len(draws) + 1)]
-    ages_table = pd.DataFrame(draws, columns=age_columns(events))
-    ages_table.insert(0, "realization_id", ids)
-    control_table = pd.DataFrame(control_offsets + controls.speleo_age_ka.to_numpy(float),
-                                 columns=[f"age_ka_bp__{name}" for name in controls.control_id])
-    control_table.insert(0, "realization_id", ids)
-    settings = dict(diagnostics, n_events=len(events), n_published_controls=60,
-                    event_input_csv=str(BARKER_EVENT_CSVS["variable_threshold"].relative_to(ROOT.parent)),
-                    n_auxiliary_controls=1, auxiliary_age_ka=AUXILIARY_AGE_KA,
-                    auxiliary_half_width_ka=controls.combined_uncertainty_ka.iloc[-1],
-                    auxiliary_unfloored_extrapolation_ka=controls.unfloored_extrapolation_ka.iloc[-1],
-                    tail_control_count=N_TAIL_CONTROLS,
-                    age_coordinate="published SpeleoAge; BP1950 assumed, exact epoch unverified",
-                    proposal="independent Uniform(-combined uncertainty, +combined uncertainty)",
-                    uncertainty_convention="half-width assumed; source sigma/coverage level unspecified",
-                    interpolation="linear offsets on fixed original SpeleoAge coordinates",
-                    order_condition="reject entire nonmonotone control maps; never sort sampled ages",
-                    gap_interpolation="264.24-317.70 ka; no additional internal perturbation",
-                    n_events_in_published_gap=int(events.in_published_alignment_gap.sum()),
-                    n_events_in_long_control_interval=int(events.in_long_control_interval.sum()),
-                    n_events_beyond_last_control=int(events.beyond_last_published_control.sum()),
-                    extra_event_picking_error=False, forcing_chronology_perturbed=False,
-                    edc3_used_in_sampling=False, intervals="accepted ensemble quantiles, not confidence intervals")
-    parameters = parameters_table(settings, dict(table_s1=CONTROL_CSV,
-                                  events=main_analysis.BARKER_XLS, sampler=Path(__file__).resolve(),
-                                  main_analysis=Path(main_analysis.__file__).resolve()))
-    OUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    for name, table in (("age_control_points", controls), ("event_catalogue_used", events),
-                        ("event_age_realizations", ages_table), ("control_age_realizations", control_table),
-                        ("event_age_uncertainty_summary", summary), ("parameters_and_provenance", parameters)):
-        # Preserve the interpolation coordinate and draws at round-trip precision.
-        table.to_csv(OUT_DATA_DIR / f"{name}.csv", index=False, float_format="%.17g")
-    save_figure(plot_uncertainty(events, controls, control_offsets), OUT_FIG_DIR, RUN_NAME)
-    print(f"Saved {len(draws):,} ordered chronologies for {len(events)} events; "
-          f"proposal acceptance {diagnostics['acceptance_fraction']:.2%}")
+    if args.redraw:
+        controls = pd.read_csv(data / "age_control_points.csv", float_precision="round_trip")
+        control_ages = pd.read_csv(data / "control_age_realizations.csv", float_precision="round_trip")
+        columns = [f"age_ka_bp__{name}" for name in controls.control_id]
+        values = control_ages[columns].to_numpy(float)
+        if (control_ages.empty or not control_ages.realization_id.is_unique
+                or not np.isfinite(values).all() or not np.all(np.diff(values, axis=1) > 0)):
+            raise ValueError("Saved control ages must be finite, ordered and uniquely identified")
+        control_offsets = values - controls.speleo_age_ka.to_numpy(float)
+    else:
+        raw_controls = pd.read_csv(CONTROL_CSV)
+        controls = prepare_controls(raw_controls)
+        events = prepare_events(events, controls)
+        draws, control_offsets, diagnostics = sample_realizations(
+            events, controls, args.n_realizations, args.seed)
+        summary = summarize_ages(events, draws)
+        ids = [f"Barker_MC_{i:05d}" for i in range(1, len(draws) + 1)]
+        ages_table = pd.DataFrame(draws, columns=age_columns(events))
+        ages_table.insert(0, "realization_id", ids)
+        control_table = pd.DataFrame(control_offsets + controls.speleo_age_ka.to_numpy(float),
+                                     columns=[f"age_ka_bp__{name}" for name in controls.control_id])
+        control_table.insert(0, "realization_id", ids)
+        settings = pd.DataFrame([(name, diagnostics[name]) for name in (
+            "random_seed", "n_realizations", "n_proposals", "n_rejected_crossed_controls")],
+            columns=["parameter", "value"])
+        data.mkdir(parents=True, exist_ok=True)
+        for name, table in (
+            ("age_control_points", controls[["control_id", "speleo_age_ka", "combined_uncertainty_ka"]]),
+            ("event_age_realizations", ages_table), ("control_age_realizations", control_table),
+            ("event_age_uncertainty_summary", summary), ("sampling_settings", settings),
+        ):
+            # Preserve the interpolation coordinate and draws at round-trip precision.
+            table.to_csv(data / f"{name}.csv", index=False, float_format="%.17g")
+        print(f"Saved {len(draws):,} ordered chronologies for {len(events)} events; "
+              f"proposal acceptance {diagnostics['acceptance_fraction']:.2%}")
+    save_figure(plot_uncertainty(events, controls, control_offsets), figures, RUN_NAME,
+                paper_export=not args.no_paper_export and args.output_root.resolve() == PROJECT_ROOT.resolve())
 
 
 if __name__ == "__main__":

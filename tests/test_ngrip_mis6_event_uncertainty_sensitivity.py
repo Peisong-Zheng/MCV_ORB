@@ -15,7 +15,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import NGRIP_MIS6_event_uncertainty_sensitivity as analysis
-from toolbox import combined_likelihood, age_sensitivity, age_sensitivity_plotting
+from toolbox import combined_likelihood, age_sensitivity, plotting
 
 
 @pytest.fixture(scope="module")
@@ -242,12 +242,12 @@ def test_plot_uses_only_valid_realizations(events, small_setup, monkeypatch):
     context, _, _, _, point_fit = small_setup
     results, _ = analysis.fit_realizations(events, boundary_draws(events), context)
     sizes = []
-    original = age_sensitivity_plotting._histogram_panel
+    original = plotting._histogram_panel
     def inspect(ax, values, *args, **kwargs):
         sizes.append(len(values))
         assert np.isfinite(values).all()
         return original(ax, values, *args, **kwargs)
-    monkeypatch.setattr(age_sensitivity_plotting, '_histogram_panel', inspect)
-    fig = age_sensitivity_plotting.plot_sensitivity(results, point_fit)
+    monkeypatch.setattr(plotting, '_histogram_panel', inspect)
+    fig = plotting.plot_sensitivity(results, point_fit)
     assert sizes == [2] * 5
     plt.close(fig)

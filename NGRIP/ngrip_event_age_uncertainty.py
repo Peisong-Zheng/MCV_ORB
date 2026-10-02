@@ -18,7 +18,7 @@ import pandas as pd
 # The paper exporter lives in the project root.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from paper_figure_export import copy_pdf_to_paper
-from toolbox.figure_style import add_panel_label
+from toolbox.plotting import add_panel_label
 
 EVENTS_CSV = Path("data/processed/ngrip_warming_cooling_starts.csv")
 GRID_CSV = Path("data/processed/ngrip_chronology_grid.csv")

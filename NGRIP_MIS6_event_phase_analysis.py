@@ -17,20 +17,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from toolbox import combined_likelihood, event_inputs
-from toolbox.catalogue_colors import CATALOGUE_COLORS
-from toolbox.orbital_phase import rayleigh_rbar_threshold, rayleigh_test
-from toolbox.phase_response_plotting import format_phase_response_axis, mark_preferred_phase
+from toolbox import combined_likelihood, event_model
+from toolbox.model_stats import rayleigh_rbar_threshold, rayleigh_test
+from toolbox.plotting import format_phase_response_axis, mark_preferred_phase
 from toolbox.project_config import (
     PROJECT_ROOT,
-    LR04_XLSX,
-    CO2_XLSX,
-    PRE_TXT,
+    CATALOGUE_COLORS,
+    LR04_CSV,
+    CO2_CSV,
+    ORBITAL_CSV,
+    PRECESSION_PHASE_CSV,
     ORBITAL_SOLUTION,
     ORBITAL_SOURCE_EPOCH,
     ORBITAL_AGE_OFFSET_TO_BP1950_KA,
 )
-from toolbox.workspace_paths import generated_notes_dir
+from toolbox.project_config import generated_notes_dir
 
 RUN_NAME = "NGRIP_MIS6_event_phase_analysis"
 OUT_DATA_DIR = PROJECT_ROOT / "data/processed" / RUN_NAME
@@ -161,9 +162,10 @@ def build_parameters(result):
     inputs = {
         "event_catalogue": combined_likelihood.EVENT_CATALOGUE_CSV,
         "observation_segments": combined_likelihood.OBSERVATION_SEGMENTS_CSV,
-        "lr04_input": LR04_XLSX,
-        "co2_input": CO2_XLSX,
-        "precession_input": PRE_TXT,
+        "lr04_input": LR04_CSV,
+        "co2_input": CO2_CSV,
+        "precession_input": ORBITAL_CSV,
+        "phase_anchors_input": PRECESSION_PHASE_CSV,
     }
     for name, path in inputs.items():
         rows.append((name, str(path.relative_to(PROJECT_ROOT)), "", "source input"))
@@ -234,7 +236,7 @@ def _plot_segment_timeline(axis, segment, event_phases, precession_source):
     """Plot one observed segment without implying exposure across the gap."""
     segment_id = segment.segment_id
     ages = np.linspace(segment.observation_start_kyr_bp, segment.observation_end_kyr_bp, 1200)
-    precession = event_inputs.interpolate_checked(
+    precession = event_model.interpolate_checked(
         ages, *precession_source, context="precession timeline"
     )
     phases = event_phases.loc[event_phases["segment_id"].eq(segment_id)]

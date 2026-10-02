@@ -5,15 +5,18 @@ n_point,5000
 n_outer,200
 n_inner,50
 seed,20260925
-workers,3
 n_age_total,10000
 n_age_valid,10000
 history_tau_kyr,1.5
-history_coefficient_domain,beta_H <= 0
-age_reference,BP1950
 response_exposure_kyr,396.4642638777152
-elapsed_seconds,163.30165733397007
 n_failed,0
-A_interval,95_joint_working_region_projection
-B_interval,approximate_95_joint_confidence_region_projection
-C_interval,95_joint_working_region_projection
+event_input_csv,Barker2011/data/processed/barker_events_variable_threshold.csv
+age_draws_csv,Barker2011/data/processed/Barker2011_event_age_uncertainty/event_age_realizations.csv
+age_results_csv,Barker2011/data/processed/Barker2011_event_uncertainty_sensitivity/gain_realizations.csv
+lr04_csv,data/processed/forcings/lr04.csv
+co2_csv,data/processed/forcings/co2.csv
+orbital_csv,data/processed/forcings/orbital.csv
+phase_anchors_csv,data/processed/forcings/precession_phase_anchors.csv
+initial_history,0.0
+quadrature_order,4
+response_start_kyr_bp,0.0

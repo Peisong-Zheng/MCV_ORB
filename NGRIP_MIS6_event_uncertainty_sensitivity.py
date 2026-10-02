@@ -10,10 +10,10 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from toolbox import combined_likelihood, age_sensitivity
-from toolbox.age_sensitivity_plotting import plot_sensitivity as draw_sensitivity
+from toolbox.plotting import plot_sensitivity as draw_sensitivity
 from toolbox.project_config import PROJECT_ROOT
 from paper_figure_export import copy_pdf_to_paper
-from toolbox.workspace_paths import generated_notes_dir
+from toolbox.project_config import generated_notes_dir
 
 RUN_NAME='NGRIP_MIS6_event_uncertainty_sensitivity'
 OUT_DATA_DIR=PROJECT_ROOT/'data/processed'/RUN_NAME

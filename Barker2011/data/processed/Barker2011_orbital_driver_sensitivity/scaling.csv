@@ -1,4 +1,6 @@
-driver_id,raw_column,scaled_column,units,response_mean,response_min,response_max,response_range,scaling
-ecc,ecc,ecc_scaled,dimensionless,0.029401251349687508,0.004149,0.049952,0.045803,(value - nominal exposure-time mean) / nominal interpolant range
-obl,obl,obl_scaled,degrees,23.340164688360975,22.076178437949643,24.455901344246005,2.3797229062963616,(value - nominal exposure-time mean) / nominal interpolant range
-insol65n,insol65n,insol65n_scaled,W m-2,494.8478857211103,431.793701171875,553.4506225585938,121.65692138671875,(value - nominal exposure-time mean) / nominal interpolant range
+forcing_id,mean,range
+lr04,4.1601104293104711,1.9199999999999995
+co2,225.11322946491629,133.09476786615818
+ecc,0.029401251349687508,0.045803
+obl,23.340164688360975,2.3797229062963616
+insol65n,494.8478857211103,121.65692138671875

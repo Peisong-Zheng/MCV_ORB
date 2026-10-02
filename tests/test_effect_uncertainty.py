@@ -56,6 +56,47 @@ def test_barker_uses_named_phase_coefficients_and_its_own_age_support():
         np.testing.assert_allclose(region["center"], expected)
 
 
+def test_barker_joint_ids_detect_a_missing_whole_chronology():
+    from Barker2011 import Barker2011_effect_uncertainty as barker
+
+    selected = pd.DataFrame(dict(outer_id=[1, 2], age_realization_id=[31, 47],
+                                 response_exposure_kyr=[396., 397.]))
+    rows = [dict(scenario=scenario, outer_id=outer, replicate_id=replicate, seed=25,
+                 response_exposure_kyr=exposure)
+            for scenario, outer, exposure in [("B_sampling", 0, 396.),
+                                               ("C_joint", 1, 396.), ("C_joint", 2, 397.)]
+            for replicate in (1, 2)]
+    replicates = pd.DataFrame(rows)
+    barker.validate_simulation_ids(replicates, selected, 2, 2, 2, 25)
+    with pytest.raises(ValueError, match="selected chronologies"):
+        barker.validate_simulation_ids(replicates.loc[replicates.outer_id.ne(2)],
+                                      selected, 2, 2, 2, 25)
+    with pytest.raises(ValueError, match="inner draws"):
+        barker.validate_simulation_ids(replicates.iloc[:-1], selected, 2, 2, 2, 25)
+
+
+def test_barker_redraw_only_needs_saved_plot_products(tmp_path, monkeypatch):
+    import shutil
+    from Barker2011 import Barker2011_effect_uncertainty as barker
+
+    folder = Path("Barker2011/data/processed") / barker.RUN_NAME
+    destination = tmp_path / folder
+    destination.mkdir(parents=True)
+    for name in ("effect_summary.csv", "phase_response_bands.csv", "coefficient_regions.json"):
+        shutil.copyfile(ROOT / folder / name, destination / name)
+    def unexpected(*args, **kwargs):
+        raise AssertionError("Redraw must not fit or read source ensembles")
+    monkeypatch.setattr(barker.likelihood, "build_barker_context", unexpected)
+    monkeypatch.setattr(barker, "load_age_inputs", unexpected)
+    captured = []
+    monkeypatch.setattr(barker.shared, "plot_results", lambda *args, **kwargs: captured.append(args))
+    monkeypatch.setattr(sys, "argv", ["effect", "--redraw", "--output-root", str(tmp_path)])
+    barker.main()
+    assert len(captured) == 1
+    assert set(captured[0][2]) == set(analysis.SCENARIOS)
+    assert len(list(destination.iterdir())) == 3
+
+
 def test_saved_primary_summaries_reproduce_and_sampling_confidence_is_unchanged():
     context = combined_likelihood.build_context()
     fit = combined_likelihood.fit_catalogue(context.events, context)
@@ -271,24 +312,28 @@ def test_zero_response_draws_keep_gof_sample_but_withhold_effect_region(setup, m
         analysis.summarize_effects(fit, age_results, table)
 
 
-@pytest.mark.parametrize("change", ["generator", "source"])
-def test_redraw_rejects_stale_generator_or_changed_input(setup, tmp_path, change):
-    import hashlib
-    _, context, fit, _, _ = setup
-    source = tmp_path / "ages.csv"
-    source.write_text("original chronological input")
-    saved = pd.DataFrame([dict(zip(analysis.BETA_COLUMNS, fit.full.beta))])
-    saved.to_csv(tmp_path / "point_generator.csv", index=False)
-    pd.DataFrame([dict(parameter="model_version", value=combined_likelihood.MODEL_VERSION),
-                  dict(parameter="history_tau_ka", value=context.history_tau_ka)]).to_csv(
-        tmp_path / "parameters_and_provenance.csv", index=False)
-    pd.DataFrame([dict(path=str(source), sha256=hashlib.sha256(source.read_bytes()).hexdigest())]).to_csv(
-        tmp_path / "input_code_sha256.csv", index=False)
-    analysis.validate_saved_inputs(fit, tmp_path, [source])
-    if change == "generator":
-        saved.iloc[0, 0] += 0.25
-        saved.to_csv(tmp_path / "point_generator.csv", index=False)
-    else:
-        source.write_text("a different chronology")
-    with pytest.raises(ValueError, match="rerun simulations"):
-        analysis.validate_saved_inputs(fit, tmp_path, [source])
+def test_redraw_uses_only_saved_plot_products(tmp_path, monkeypatch):
+    import json
+    import sys
+    output = tmp_path / "data/processed" / analysis.RUN_NAME
+    output.mkdir(parents=True)
+    summary = pd.DataFrame({"point_estimate": [2.0]})
+    curves = pd.DataFrame({"phase_deg": [0.0, 180.0]})
+    regions = {name: {"center": [0.2, 0.3]} for name in analysis.SCENARIOS.values()}
+    summary.to_csv(output / "effect_summary.csv", index=False)
+    curves.to_csv(output / "phase_response_bands.csv", index=False)
+    (output / "coefficient_regions.json").write_text(json.dumps(regions))
+    def fail(*args, **kwargs):
+        raise AssertionError("Redraw must not read/refit current science inputs")
+    monkeypatch.setattr(combined_likelihood, "build_context", fail)
+    monkeypatch.setattr(analysis, "load_age_inputs", fail)
+    captured = []
+    monkeypatch.setattr(analysis, "plot_results", lambda *args: captured.append(args))
+    monkeypatch.setattr(sys, "argv", ["effect", "--redraw", "--no-paper-export", "--output-root", str(tmp_path)])
+    analysis.main()
+    assert len(captured) == 1
+    pd.testing.assert_frame_equal(captured[0][0], summary)
+    pd.testing.assert_frame_equal(captured[0][1], curves)
+    assert captured[0][2] == {key: regions[name] for key, name in analysis.SCENARIOS.items()}
+    assert sorted(p.name for p in output.iterdir()) == [
+        "coefficient_regions.json", "effect_summary.csv", "phase_response_bands.csv"]

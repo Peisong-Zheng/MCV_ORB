@@ -18,10 +18,10 @@ import numpy as np
 import pandas as pd
 
 from toolbox import combined_likelihood
-from toolbox.figure_style import add_panel_label
+from toolbox.plotting import add_panel_label
 from toolbox.model_stats import nested_likelihood_metrics
-from toolbox.project_config import PROJECT_ROOT, LR04_XLSX, CO2_XLSX, PRE_TXT
-from toolbox.workspace_paths import generated_notes_dir
+from toolbox.project_config import PROJECT_ROOT, LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV
+from toolbox.project_config import generated_notes_dir
 
 RUN_NAME = "NGRIP_MIS6_likelihood_design_sensitivity"
 OUT_DATA_DIR = PROJECT_ROOT / "data/processed" / RUN_NAME
@@ -143,10 +143,10 @@ def write_outputs(design, initial_history, pooling, output_dir=OUT_DATA_DIR):
     pd.DataFrame(parameters.items(), columns=["parameter", "value"]).to_csv(
         output_dir / "parameters_and_provenance.csv", index=False)
     inputs = [Path(__file__).resolve(), combined_likelihood.EVENT_CATALOGUE_CSV,
-        combined_likelihood.OBSERVATION_SEGMENTS_CSV, LR04_XLSX, CO2_XLSX, PRE_TXT,
+        combined_likelihood.OBSERVATION_SEGMENTS_CSV, LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV,
         *[PROJECT_ROOT / "toolbox" / filename for filename in (
-            "combined_likelihood.py", "point_process.py", "event_inputs.py", "event_process.py",
-            "orbital_phase.py", "model_stats.py", "project_config.py")]]
+            "combined_likelihood.py", "point_process.py", "event_model.py",
+            "model_stats.py", "project_config.py")]]
     pd.DataFrame([dict(path=str(path.relative_to(PROJECT_ROOT)),
         sha256=hashlib.sha256(path.read_bytes()).hexdigest()) for path in inputs]).to_csv(
             output_dir / "input_code_sha256.csv", index=False)

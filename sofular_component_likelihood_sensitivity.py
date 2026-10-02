@@ -29,7 +29,7 @@ import pandas as pd
 
 import NGRIP_MIS6_event_uncertainty_sensitivity as joint
 from toolbox import age_sensitivity, combined_likelihood, point_process
-from toolbox.project_config import CO2_XLSX, LR04_XLSX, PRE_TXT
+from toolbox.project_config import CO2_CSV, LR04_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV
 
 DEFAULT_MIS6_SOURCE = (
     PROJECT_ROOT / "MIS6/data/processed/MIS6_event_age_uncertainty"
@@ -90,7 +90,7 @@ def run(n_realizations: int, ngrip_source: Path, mis6_source: Path,
         "mis6_source_parameters": mis6_source.parent / "parameters_and_provenance_so57_overlap.csv",
         "event_catalogue": combined_likelihood.EVENT_CATALOGUE_CSV,
         "observation_segments": combined_likelihood.OBSERVATION_SEGMENTS_CSV,
-        "lr04": LR04_XLSX, "co2": CO2_XLSX, "precession": PRE_TXT,
+        "lr04": LR04_CSV, "co2": CO2_CSV, "precession": ORBITAL_CSV, "phase_anchors": PRECESSION_PHASE_CSV,
         "joint_analysis_code": Path(joint.__file__),
         "age_fitting_code": Path(age_sensitivity.__file__),
         "pooled_model_code": Path(combined_likelihood.__file__),

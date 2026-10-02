@@ -21,8 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pandas as pd
 import NGRIP_MIS6_likelihood_bootstrap as bootstrap
 from toolbox import age_sensitivity, combined_likelihood as likelihood
-from toolbox.project_config import PROJECT_ROOT
-from toolbox.workspace_paths import generated_notes_dir
+from toolbox.project_config import PROJECT_ROOT, LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV
+from toolbox.project_config import generated_notes_dir
 
 ROOT = PROJECT_ROOT / "NGRIP"
 RUN_NAME = "ngrip_transition_phase_sensitivity"
@@ -154,10 +154,9 @@ def save_results(result, output_dir=OUT_DIR):
     paths = [EVENT_INPUT, AGE_INPUT, likelihood.OBSERVATION_SEGMENTS_CSV, Path(__file__),
              Path(bootstrap.__file__), Path(likelihood.__file__), Path(age_sensitivity.__file__),
              PROJECT_ROOT / "toolbox/point_process.py", PROJECT_ROOT / "toolbox/model_stats.py",
-             PROJECT_ROOT / "toolbox/orbital_phase.py", PROJECT_ROOT / "toolbox/event_inputs.py",
+             PROJECT_ROOT / "toolbox/event_model.py",
              PROJECT_ROOT / "toolbox/project_config.py",
-             PROJECT_ROOT / "data/raw/lr04.xlsx", PROJECT_ROOT / "data/raw/composite_co2.xlsx",
-             PROJECT_ROOT / "data/raw/pre_1000_60_inter100.txt"]
+             LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV]
     parameters.extend(dict(event_type="both", parameter="sha256:" + str(path.relative_to(PROJECT_ROOT)),
                            value=hashlib.sha256(path.read_bytes()).hexdigest()) for path in paths)
     tables["parameters_and_provenance.csv"] = pd.DataFrame(parameters)

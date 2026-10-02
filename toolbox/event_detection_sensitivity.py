@@ -12,7 +12,7 @@ import time
 
 import numpy as np
 import pandas as pd
-from toolbox.workspace_paths import generated_notes_dir
+from toolbox.project_config import generated_notes_dir
 
 
 EFFECT_METRICS = (
@@ -286,7 +286,7 @@ def run_catalogue_analysis(context, *, scopes, n_replicates=500, seed=20260912,
 def save_results(result, context, output_root, run_name, *, diagnostics_root=None):
     """Write compact research tables, masks for reproducibility and English notes."""
     from toolbox import combined_likelihood as likelihood
-    from toolbox.project_config import PROJECT_ROOT, LR04_XLSX, CO2_XLSX, PRE_TXT
+    from toolbox.project_config import PROJECT_ROOT, LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV
 
     output_root = Path(output_root)
     data_dir = output_root / "data/processed" / run_name
@@ -308,9 +308,8 @@ def save_results(result, context, output_root, run_name, *, diagnostics_root=Non
                         scope=result["replicates"].scope.to_numpy(str),
                         drop_probability=result["replicates"].drop_probability.to_numpy())
     input_paths = [Path(__file__), Path(likelihood.__file__), PROJECT_ROOT / "toolbox/point_process.py",
-                   LR04_XLSX, CO2_XLSX, PRE_TXT]
-    input_paths.append(PROJECT_ROOT / "Barker2011/data/raw/Barker et al-2011-SOM.xls"
-                       if "Barker2011" in context.segments else likelihood.EVENT_CATALOGUE_CSV)
+                   LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV]
+    input_paths.append(likelihood.EVENT_CATALOGUE_CSV)
     pd.DataFrame([dict(path=str(path.relative_to(PROJECT_ROOT)),
                        sha256=hashlib.sha256(path.read_bytes()).hexdigest())
                   for path in input_paths]).to_csv(diagnostics_dir / "input_code_sha256.csv", index=False)

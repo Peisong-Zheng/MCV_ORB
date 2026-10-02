@@ -1,6 +1,0 @@
-parameter,value
-model_version,continuous_exponential_inhibition_2026-09-12
-history_tau_kyr,1.5
-history_coefficient_domain,nonpositive
-source,Barker2011/data/processed/Barker2011_event_age_uncertainty/event_age_realizations.csv
-n_realizations,10000

@@ -198,3 +198,23 @@ def test_event_phase_sampling_uses_bp1950_phase_convention(context):
     minimal_phases = c.sample_event_phases(minimal_events)
     pd.testing.assert_frame_equal(minimal_phases, phases[minimal_phases.columns], check_exact=True)
     pd.testing.assert_frame_equal(minimal_events, original, check_exact=True)
+
+
+def test_analysis_reads_prepared_forcings_without_raw_parsers(monkeypatch):
+    from toolbox import orbital_driver_sensitivity
+    import xarray as xr
+
+    def reject_raw(*args, **kwargs):
+        raise AssertionError("Raw forcing parsing belongs in preprocessing")
+
+    c._source_forcings.cache_clear()
+    monkeypatch.setattr(pd, "read_excel", reject_raw)
+    monkeypatch.setattr(np, "loadtxt", reject_raw)
+    monkeypatch.setattr(xr, "open_dataset", reject_raw)
+    context = c.build_context()
+    context, _, _ = orbital_driver_sensitivity.prepare_drivers(context)
+    phases = c.sample_event_phases(context.events)
+    assert len(phases) == 55
+    assert len(context.forcings["precession_index"][0]) == 10601
+    assert len(context.forcings["insol65n"][0]) == 1001
+    assert context.forcings["precession_index"][0][0] == pytest.approx(-60.05)

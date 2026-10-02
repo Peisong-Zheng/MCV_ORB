@@ -6,6 +6,7 @@ continuous thinning implementation and exact event history are shared.
 import numpy as np
 from scipy.optimize import minimize_scalar
 from toolbox import combined_likelihood
+from toolbox.model_stats import unwrap_phase
 
 PHASE_TERMS = ("pre_phase_sin", "pre_phase_cos")
 PHASE_INDICES = [1 + combined_likelihood.FULL_TERMS.index(term) for term in PHASE_TERMS]
@@ -50,10 +51,6 @@ def phase_and_ratio(coefficients):
     radius = np.hypot(sine, cosine)
     phase = np.where(radius == 0, np.nan, phase)
     return phase, np.exp(2 * radius)
-
-
-def unwrap_phase(phase, center):
-    return center + (np.asarray(phase) - center + 180) % 360 - 180
 
 
 def bootstrap_joint_region(point_coefficients, bootstrap_coefficients, level=0.95):
