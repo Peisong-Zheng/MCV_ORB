@@ -10,3 +10,6 @@ constraints; correlations in accepted ensembles can differ. These diagnostics
 are not inputs to the pooled event-rate fits. The
 [joint age ensembles](../../../data/processed/MIS6_event_age_uncertainty/README.md)
 are saved separately.
+
+Source records and data archives: [Fohlmeister et al. (2023), MF;
+Held et al. (2024), Sofular](../../../README.md#references).

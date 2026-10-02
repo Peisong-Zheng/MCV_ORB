@@ -16,3 +16,6 @@ beyond So-57 coverage.
 Keep each realization's columns together: independent resampling would discard
 chronology dependence. Percentiles describe age sensitivity, not a complete
 chronology posterior or confidence intervals for the fitted phase effect.
+
+Source records and data archives: [Fohlmeister et al. (2023), MF;
+Held et al. (2024), Sofular](../../../README.md#references).

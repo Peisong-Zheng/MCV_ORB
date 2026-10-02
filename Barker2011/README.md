@@ -10,7 +10,9 @@ definitions within one reconstruction, fitted separately from NGRIP–MIS6.
 
 Both catalogues use the [shared continuous-time model](../README.md), which
 compares event rates with and without precession phase after accounting for
-LR04, CO₂ and exponentially decaying event history. Each catalogue's oldest
+LR04 ([Lisiecki and Raymo, 2005](https://doi.org/10.1029/2004pa001071)),
+CO₂ ([Bereiter et al., 2015](https://doi.org/10.1002/2014gl061957)) and exponentially
+decaying event history. Each catalogue's oldest
 event initializes history and sets the start of its fitted interval.
 
 Chronology sensitivity uses the variable-threshold catalogue. Published
@@ -37,3 +39,10 @@ working BP ages; their original reference year remains unverified.
 
 Prepared event CSVs are in `data/processed/`. Analysis tables and figures use
 `data/processed/<script_name>/` and `figures/<script_name>/`.
+
+## References
+
+- Barker, S., et al. (2011). [800,000 years of abrupt climate variability](https://doi.org/10.1126/science.1203580). *Science*, 334, 347–351. Event definitions and chronology controls are in Supplementary Tables S3 and S1.
+
+Shared climate, orbital and statistical references are listed in the
+[project README](../README.md#references).

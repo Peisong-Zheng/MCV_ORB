@@ -1,6 +1,9 @@
 # Curated analysis inputs
 
 These tables define the inputs used by the combined NGRIP–MIS6 analysis.
+Event sources are [Rasmussen et al. (2014)](../../NGRIP/README.md#references),
+[Fohlmeister et al. (2023) and Held et al. (2024)](../../MIS6/README.md#references).
+Orbital inputs use La2004 ([Laskar et al., 2004](../../README.md#references)).
 
 | File | Contents |
 |---|---|
