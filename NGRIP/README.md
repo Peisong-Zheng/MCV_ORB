@@ -1,181 +1,40 @@
-# NGRIP 事件年代与误差
+# NGRIP event ages
 
-这里准备 Rasmussen et al. (2014) 的 69 个事件边界：34 个 GI 增暖起点、
-35 个 GS 降温起点。联合研究只使用 34 个 GI；GS 保留在年代抽样中，
-用于约束整个事件序列的地层顺序，并用于下述冷暖转换方向比较。
+This directory prepares Greenland Interstadial (GI, warming) and Greenland
+Stadial (GS, cooling) starts from
+[Rasmussen et al. (2014), Table 2](https://doi.org/10.1016/j.quascirev.2014.09.007).
+Warming starts enter the joint NGRIP–MIS6 analysis described in the
+[project README](../README.md). Both transition types constrain the ordering
+of sampled chronologies.
 
-## 两步运行
+## Method
 
-在 `NGRIP/` 目录打开并依次运行 `ngrip_data_preparation.ipynb`，然后运行：
+Preparation converts ages from b2k (relative to 2000 CE) to BP1950 by subtracting
+0.05 kyr. The age sampler combines independent Gaussian event-definition
+errors with correlated chronology shifts. These shifts accumulate on a time
+grid and are interpolated to event ages. Proposals that reverse chronology
+nodes or event order are rejected.
 
-```bash
-python ngrip_event_age_uncertainty.py
-```
+Chronology standard deviations use half the GICC05 maximum counting error
+in the counted section and half an assumed envelope in the model extension.
+These are working uncertainty distributions, not hard age bounds. The
+[supplement, Text S3](../orbital_event_paper/SI.tex) describes their construction.
+A separate analysis compares warming and cooling onsets with the shared
+continuous-time event model, bootstrap tests and saved age realizations.
 
-也可以从项目根目录一次执行：
+## Files and use
 
-```bash
-cd NGRIP
-jupyter nbconvert --to notebook --execute --inplace ngrip_data_preparation.ipynb
-python ngrip_event_age_uncertainty.py
-cd ..
-```
-
-路径都直接相对于 `NGRIP/`，不自动寻找项目根目录。Notebook 已保留执行结果，
-便于逐格核验；重跑会覆盖两个处理表。抽样脚本会覆盖自己的结果表和图。
-
-## 数据流
-
-```text
-data/raw/Rasmussen2014_GI_GS_starts_no_subevents_wide.xlsx
-    └─ Notebook：读取 Long_no_subevents，准备事件年代和误差
-        └─ data/processed/ngrip_warming_cooling_starts.csv
-
-data/raw/Rasmussen et al-2022-GICC05_time_scale.txt
-    └─ Notebook：核对 MCE，准备原年代网格
-        └─ data/processed/ngrip_chronology_grid.csv
-
-以上两个 processed 表
-    └─ ngrip_event_age_uncertainty.py：combined 抽样 → 顺序拒绝 → 保存、画图
-```
-
-原始 Excel 和处理后的事件 CSV 已分别移到 `NGRIP/data/raw/` 与
-`NGRIP/data/processed/`；根目录原位置的副本已删除。
-年层 MCE TXT 位于 `NGRIP/data/raw/`，只由 Notebook 读取。
-
-Excel 保留原来的三个工作表。宽表增加 GI/GS 原文标签、定义误差代码和 MCE；
-长表增加原文标签、定义误差代码、原文解释和 PDF 页码。新增字段已核对
-Rasmussen Table 2（本地 PDF 第 10 页、页内编号第 9 页）。原有事件、年代、
-深度及 MCE 数值未改；PDF 提取代码和中间表只放在临时目录。
-没有单独增加定义误差原始补充表。
-
-既定目录不单独计入字母子事件；没有单独母事件行时，以最古老的子事件起点
-代表母事件，例如原文 GI-1e 对应保留标签 GI-1。原文标签保留用于回查。
-
-## Notebook 的四个代码单元
-
-1. 读取 Excel 长表。
-2. 选取需要的列，转换年代零点，准备定义误差和年代包络。
-3. 读取年层 MCE，准备 5 kyr 主网格及已有敏感性实验的 2.5、10 kyr 网格。
-4. 检查事件数、顺序、误差完整性及 44 个表内 MCE，保存两张处理表。
-
-事件 CSV 有九列：
-
-| 列 | 含义 |
+| Entry | Purpose |
 |---|---|
-| `event_label` | 保留的 GI/GS 标签，也是 realization 列名依据 |
-| `source_event_label` | Table 2 原文标签，含必要的子事件字母 |
-| `event_type` | warming / cooling |
-| `age_ka_b2k` | 原始千年 b2k 年代 |
-| `age_ka_bp` | 千年 BP1950 年代，等于上一列减 0.05 |
-| `definition_uncertainty_code` | 原文定义误差代码或明确的 ±4 |
-| `definition_sigma_yr` | 定义误差的工作标准差，年 |
-| `chronology_envelope_yr` | 原文 MCE 或模型延伸段工作包络，年 |
-| `chronology_source` | MCE / model_ext |
+| [ngrip_data_preparation.ipynb](ngrip_data_preparation.ipynb) | Prepare event ages, definition errors and chronology grids. |
+| [ngrip_event_age_uncertainty.py](ngrip_event_age_uncertainty.py) | Sample ordered event-age realizations. |
+| [ngrip_transition_phase_sensitivity.py](ngrip_transition_phase_sensitivity.py) | Compare the two transition directions. |
 
-定义误差仍沿用 a=20、b=50、c=200、d=100、f=30 年的独立高斯标准差。
-b 的原文范围 40–60 年取中点 50，f 的 20–40 年取 30，采用 NGRIP δ18O 的解释。
-明确的 ±4 年条目沿用 σ=4 年；原表没有把这些条目标成 1σ。
-高斯形状、独立性和上述数值化方式都是研究假设。20 年记录分辨率不重复相加。
+Run the preparation notebook and age sampler **from `NGRIP/`**, since their
+input paths are relative to that directory. The transition script also runs
+from the project root. Edit settings near each script’s top.
 
-网格 CSV 有 `knot_spacing_ka`、`knot_age_ka_b2k` 和
-`chronology_envelope_ka` 三列。它是 Notebook 的计算结果，不是新增原始资料。
-
-## 抽样脚本的结构
-
-参数集中在文件开头：10,000 条、seed=20260907、5 kyr 主网格。
-这个 seed 是旧流程 combined 分支的实际 seed。输出位置由 `OUT_DATA_DIR`、
-`OUT_FIG_DIR` 指定，`EXPORT_PAPER` 控制是否同步论文图片。
-
-- `chronology_process_basis`：把准备好的包络除以 2 作为工作 σ，构造累计
-  方差增量，并把节点偏移线性插值到事件处。
-- `sample_age_realizations`：抽取共享的年代增量和各事件独立的定义误差。
-  先排除非单调节点年代映射，再排除 combined 事件交错；不通过排序修复。
-- `realization_table`：将样本排成兼容下游读取的宽表。
-- `plot_uncertainty`：上方面板显示定义误差、年代包络及 GI/GS 事件标签；
-  下方面板显示 combined 曲线、逐点分位范围和中位数。两面板统一为左老右新。
-- `main`：读两张处理表，调用抽样，保存结果和图。
-
-原模型保留精确的年层计数终点 60.202 ka b2k，MCE 为 2.611 kyr；
-其后使用 ±4.5% × b2k 年龄的工作包络，约按 2σ 解释。
-方差增量在年代方向累计，使附近事件的误差相关；节点间的线性插值和
-顺序拒绝均与旧方案相同。事件处包络的一半与插值后实际 σ 可能不同，
-两者在结果摘要中分开列出。
-
-只运行 combined，不再生成 definition-only 或 chronology-only 抽样。
-图中的抽样曲线只显示 combined。采用相同批量、随机调用顺序及 seed 后，新的
-10,000 × 69 个保存年代与旧 combined CSV 逐字节一致。
-
-## 输出与下游读取
-
-```text
-data/processed/ngrip_event_age_uncertainty/
-├── ngrip_event_age_realizations.csv          # 10,000 行，ID + 69 个事件年代
-├── ngrip_event_age_uncertainty_summary.csv   # 误差尺度及 combined 分位数
-└── parameters_and_provenance.csv            # 参数、拒绝计数、输入和代码哈希
-
-figures/ngrip_event_age_uncertainty/
-├── ngrip_event_age_uncertainty.png
-└── ngrip_event_age_uncertainty.pdf
-```
-
-Realizations 列名仍为 `age_ka_bp__GI-1` 等，所有输出年龄均为 kyr BP1950。
-参数表使用 `parameter,value` 两列。主抽样接受率为 96.12%：11,000 个提案中
-427 个因事件交错被拒绝，0 个因节点映射被拒绝；保留 10,000 个，另有
-573 个已接受的尾部样本未使用。
-
-`NGRIP_MIS6_event_uncertainty_sensitivity.py` 读取同一路径的 combined CSV，
-按固定事件标签选择 34 个 GI，与 MIS 6 样本配对。联合目录仍位于
-`data/curated/ngrip_mis6_warming_events.csv`，无需改动。
-已有网格间距筛查脚本已改为读取这两张 processed 表。
-
-本脚本不截断到下游观察窗口。高斯尾部造成的支持范围越界，仍由联合分析
-按原规则处理。工作包络不是硬上下界，MC 分位范围也不是校准过的置信区间。
-模型延伸段不确定性没有官方逐点定量模型；统一 4.5% 是本研究采用的情景，
-Moseley et al. (2020) §5.2 的原文结论是外推到 120 ka 时约达 4.5%。
-原研究对于轨道调谐、系统计数偏差、事件存在性及外部驱动年代误差的
-限制仍适用，详见项目方法说明。
-
-迁移及一致性核验见 [2026-09-07 核验记录](../agent_work/reviews/ngrip-simplification-2026-09-07.md)。
-
-## 暖转冷与冷转暖的岁差相位比较
-
-从项目根目录运行：
-
-```bash
-python NGRIP/ngrip_transition_phase_sensitivity.py
-```
-
-也可在 `NGRIP/` 目录运行 `python ngrip_transition_phase_sensitivity.py`。
-先在脚本开头设置 `N_BOOTSTRAP`、`N_REALIZATIONS`、`SEED`、`N_WORKERS`
-（默认 3），以及独立的输入和输出路径；运行时不再传命令行参数。
-小规模检查时，把输出目录设到临时位置，避免覆盖完整集合。
-一个脚本分别分析 GS 降温和 GI 增暖，复用正文的连续时间拟合、BG 零模型
-bootstrap 及年代敏感性函数。每类使用 9,999 个 bootstrap 序列和已有的
-10,000 条 combined 年代样本，不再生成年代扰动。
-
-两类都使用 12–123 kyr BP 观察范围，各自最老事件作条件起点，因此分别拟合
-34 个降温事件和 33 个增暖事件。历史只包含同方向先前事件；衰减时间为
-1.5 kyr，系数限制为非正。每类名义目录的气候缩放在后续模拟和年代分析中
-保持固定。年龄越界样本保留记录但不参与拟合，不截断或补抽。
-
-`data/processed/ngrip_transition_phase_sensitivity/` 保存：
-
-- `summary.csv`：名义 G、峰值、LR p、bootstrap p 及模拟计数。
-- `age_summary.csv`：有效样本数、越界数、名义 p<0.05 的比例和年代敏感性范围。
-- `bootstrap_replicates.csv`、`age_realizations.csv`：各次拟合结果；后者的
-  `realization_id` 对应原始年代样本，没有复制事件年代矩阵。
-- `nominal_events.csv`、`nominal_coefficients.csv`：事件角色和拟合系数。
-- `parameters_and_provenance.csv`：窗口、缩放、参数、随机种子和输入哈希。
-
-方法和结果见
-[`experiment_note/ngrip_transition_phase_sensitivity_Methods_and_results.txt`](../archive/experiment_notes_2026-09-28/NGRIP/experiment_note/ngrip_transition_phase_sensitivity_Methods_and_results.txt)。
-年代敏感性比例使用有效样本作分母，所比较的是**名义 LR p**，不是对每条
-年代样本再做 bootstrap。冷暖事件来自同一记录并交替发生，相似相位不能当作
-两份独立验证。旧分箱分析继续保留在 `archive/standalone_and_proxy_pi_2026-09-05/`。
-
-## 主要来源
-
-- [Rasmussen et al. (2014), Table 2](https://doi.org/10.1016/j.quascirev.2014.09.007)
-- [Rasmussen et al. (2022), GICC05 年层 MCE](https://doi.org/10.1594/PANGAEA.943193)
-- [Moseley et al. (2020), §5.2](https://doi.org/10.5194/cp-16-29-2020)
+Prepared inputs are in `data/processed/`. The age ensemble is
+[`ngrip_event_age_realizations.csv`](data/processed/ngrip_event_age_uncertainty/ngrip_event_age_realizations.csv);
+its event-age columns use kyr BP1950. Analysis tables and figures are stored
+under `data/processed/<script_name>/` and `figures/<script_name>/`.

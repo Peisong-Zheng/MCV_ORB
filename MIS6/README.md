@@ -1,118 +1,32 @@
-# MIS 6 speleothem event record
+# MIS 6 speleothem events
 
-This directory contains the MIS 6 source analyses, inputs and outputs used by
-the pooled NGRIP–MIS 6 study. The record combines 16 MF transitions and five
-Sofular transitions into a 21-event catalogue. All output ages are kyr BP1950.
+This subproject combines warming onsets from the Melchsee–Frutt (MF)
+oxygen-isotope stack ([Fohlmeister et al., 2023](https://doi.org/10.1038/s43247-023-00908-0))
+and an older continuation from the Sofular carbon-isotope record
+([Held et al., 2024](https://doi.org/10.1038/s41467-024-45507-5)). Overlapping
+features identify corresponding events without retuning either chronology.
 
-## Workflow
+Published event identities are retained. Onset ages are assigned from the
+steepest proxy change in the expected direction near each published label,
+after Gaussian smoothing. Nine smoothing/search-window combinations test onset
+placement, with one setting applied to each record within a realization.
 
-Starting from the project root:
+Chronology uncertainty uses a shared Gaussian factor for MF, with standard
+deviations derived from its published age bounds, and interpolated U–Th control
+errors for Sofular. Whole proposals are rejected if chronology or event order reverses.
+The MF dependence is assumed; the Sofular procedure transfers analytical errors
+through published curves without reconstructing the full stack chronology
+posterior. These are age-sensitivity ensembles, not complete uncertainty estimates.
 
-```bash
-cd MIS6
-jupyter nbconvert --to notebook --execute --inplace Speleothem_published_event_plot.ipynb
-jupyter nbconvert --to notebook --execute --inplace MIS6_composite_event_record.ipynb
-jupyter nbconvert --to notebook --execute --inplace MIS6_event_age_uncertainty.ipynb
-cd ..
-```
+Start with these notebooks, using `MIS6/` as the working directory:
 
-All three notebooks can also be run cell by cell in the IDE, with `MIS6/` as
-the working directory. They use explicit relative paths and English Markdown
-describing the scientific choices and intermediate results.
+- [Published records](Speleothem_published_event_plot.ipynb): compare the source
+  series and event correspondences.
+- [Composite catalogue](MIS6_composite_event_record.ipynb): assign onset ages.
+- [Age uncertainty](MIS6_event_age_uncertainty.ipynb): generate joint age
+  realizations for the pooled analysis.
 
-1. `Speleothem_published_event_plot.ipynb` plots the published speleothem records,
-   literature labels and the MF–Sofular correspondence. Its six code cells cover
-   settings, data preparation, small plotting helpers, the overview, the focused
-   comparison, and export. The notebook replaces the former plotting script.
-2. `MIS6_composite_event_record.ipynb` estimates numerical event ages from local
-   proxy gradients and saves the 21-event composite catalogue and figure.
-   Its seven code cells cover settings, input preparation, nominal and
-   sensitivity picks, QC, small figure helpers, plotting, and export.
-   `event_detection.py` supplies the shared record definitions, preparation
-   and gradient-picking functions used by this notebook and the uncertainty
-   notebook; it does not produce outputs or import a notebook.
-3. `MIS6_event_age_uncertainty.ipynb` propagates event-definition and chronology
-   uncertainty, saving the primary 10,000-member ensemble and the So-57 overlap
-   alternative. `sofular_chronology.py` supplies the local age–depth calculations.
-   Its nine code cells cover settings, source inputs, event picking and error
-   scales, control weights, the two MC ensembles, summaries, the primary figure,
-   export, and the component comparison. Reading, picking, checks and export
-   run directly in those cells; four reused functions handle MF interpolation,
-   control-weight preparation, joint sampling and event summaries.
-   The notebook replaces the former `.py` entry point. It no longer reads the
-   legacy U–Th display subset, which remains an input to the composite figure.
-   Detailed control/projection/covariance exports use `sofular_chronology.save_diagnostics`.
-   Each 25-row parameter table retains the run counts, seed, source files and
-   error assumptions. Repeated explanatory text is kept in the notebook's
-   Markdown rather than duplicated across many metadata rows.
-4. `Sofular_chronology_comparison.py` compares the So-4/So-57 dated controls and
-   the saved MC age ranges for the five Sofular events. The uncertainty notebook
-   calls its plotting functions after saving both schemes; it can also run independently to redraw
-   the comparison without repeating the sampling or pooled likelihood fits.
-
-## Inputs and outputs
-
-```text
-MIS6/
-├── Speleothem_published_event_plot.ipynb
-├── MIS6_composite_event_record.ipynb
-├── MIS6_event_age_uncertainty.ipynb
-├── Sofular_chronology_comparison.py
-├── event_detection.py
-├── sofular_chronology.py
-├── data/
-│   ├── raw/          # Proxy workbook, MF stack and original Held2024 files
-│   ├── curated/      # Published label anchors, record matches and U–Th display subset
-│   └── processed/
-│       ├── MIS6_composite_event_record/
-│       └── MIS6_event_age_uncertainty/
-├── figures/
-│   ├── Speleothem_published_event_plot/
-│   ├── MIS6_composite_event_record/
-│   ├── MIS6_event_age_uncertainty/
-│   └── Sofular_chronology_comparison/
-└── tests/
-    └── diagnostics/MIS6_event_age_uncertainty/ # Full intermediate calculations
-```
-
-The source and curated inputs are retained files, not generated by these
-analyses. `data/raw/MIS6_speleothem_records.xlsx` is a mixed-source workbook:
-MF is from Fohlmeister et al. (2023), Sofular from Held et al. (2024), and
-the supporting Sanbao and Huagapo series retain their worksheet source labels.
-The legacy U–Th subset supplies figure annotations; the full raw
-dated-depth tables supply the current Sofular chronology calculation.
-Rerunning the workflows replaces their respective processed outputs and figures.
-
-The uncertainty output directory keeps six research CSVs: two MC ensembles,
-two compact event summaries and two parameter/provenance tables. Each summary
-has 10 columns: event identity, nominal age, definition range, working chronology
-sigma, and the combined MC median and 95% range. The ensembles retain all 21
-event columns so their joint dependence remains available to downstream analyses.
-Detailed dated-control residuals, projection weights, covariances, detector runs
-and full summaries are under `tests/diagnostics/MIS6_event_age_uncertainty/`.
-Previous methods, results and figure-caption notes are preserved in
-`../archive/experiment_notes_2026-09-28/MIS6/experiment_note/`.
-Local design records have moved to `../agent_work/plans/MIS6/`.
-See the [output guide](data/processed/MIS6_event_age_uncertainty/README.md)
-for column definitions and the role of the So-57 alternative.
-
-## Connection to the pooled study
-
-The fixed pooled catalogue remains at
-`../data/curated/ngrip_mis6_warming_events.csv`. The root-level
-`NGRIP_MIS6_event_uncertainty_sensitivity.py` reads the saved MIS 6 ensemble
-from `MIS6/data/processed/MIS6_event_age_uncertainty/`. Pooled analyses, their
-results, and shared climate/orbital inputs remain at project level.
-
-Run the source-specific tests from the project root with:
-
-```bash
-python -m pytest MIS6/tests -q
-```
-
-The 2026-09-08 relocation preserves the existing data and figures byte for
-byte. Source-specific scripts and tests were updated for their new locations.
-Earlier output manifests and design records retain the paths used at the time
-of their original runs; they are historical provenance, not current run
-instructions. The move map is recorded in
-[`docs/relocation-2026-09-08.md`](../agent_work/reviews/MIS6-relocation-2026-09-08.md).
+Results and figures are under `data/processed/` and `figures/`, in directories
+named after each notebook. Ages are kyr before 1950 CE. See the
+[ensemble guide](data/processed/MIS6_event_age_uncertainty/README.md) for the
+saved files and alternative Sofular chronology scheme.
