@@ -15,7 +15,6 @@ from matplotlib.patches import Patch
 from matplotlib.ticker import MultipleLocator
 import numpy as np
 import pandas as pd
-import argparse
 from toolbox import event_model, project_config
 
 from paper_figure_export import copy_pdf_to_paper
@@ -26,6 +25,7 @@ from toolbox.plotting import format_phase_response_axis, mark_preferred_phase
 PROJECT = Path(__file__).resolve().parent
 RESULT_ROOT = PROJECT
 FIGURES = PROJECT / "figures/paper_summary"
+EXPORT_PAPER = True
 PRIMARY = Path("data/processed/NGRIP_MIS6_event_phase_analysis")
 BARKER = Path("Barker2011/data/processed/Barker2011_event_phase_analysis")
 PRIMARY_BOOTSTRAP = Path("data/processed/NGRIP_MIS6_likelihood_bootstrap")
@@ -55,7 +55,8 @@ def save_figure(figure, name):
     pdf = FIGURES / f"{name}.pdf"
     figure.savefig(pdf, facecolor="white")
     figure.savefig(FIGURES / f"{name}.png", dpi=400, facecolor="white")
-    copy_pdf_to_paper(pdf)
+    if EXPORT_PAPER:
+        copy_pdf_to_paper(pdf)
     plt.close(figure)
 
 
@@ -359,12 +360,6 @@ def plot_orbital_comparison():
 
 
 def main():
-    global RESULT_ROOT, FIGURES
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-root", type=Path, default=PROJECT)
-    args = parser.parse_args()
-    RESULT_ROOT = args.output_root.resolve()
-    FIGURES = RESULT_ROOT / "figures/paper_summary"
     INPUTS.add(PROJECT / "toolbox/plotting.py")
     INPUTS.add(PROJECT / "toolbox/project_config.py")
     plt.rcParams.update({"font.family": "sans-serif", "font.sans-serif": ["Arial", "DejaVu Sans"],
@@ -374,7 +369,7 @@ def main():
     save_figure(plot_data_overview(), "data_overview")
     save_figure(plot_phase_comparison(), "phase_comparison")
     save_figure(plot_orbital_comparison(), "orbital_comparison")
-    inputs = [dict(source=path.relative_to(PROJECT).as_posix(),
+    inputs = [dict(source=(path.relative_to(PROJECT).as_posix() if path.is_relative_to(PROJECT) else path.as_posix()),
                    sha256=hashlib.sha256(path.read_bytes()).hexdigest()) for path in sorted(INPUTS)]
     inputs.append(dict(source=Path(__file__).name,
                        sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest()))

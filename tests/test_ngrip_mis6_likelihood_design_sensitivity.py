@@ -5,17 +5,16 @@ import pandas as pd
 import pytest
 
 import NGRIP_MIS6_likelihood_design_sensitivity as sensitivity
-from toolbox import combined_likelihood
+import NGRIP_MIS6_event_phase_analysis as nominal
 
 
 @pytest.fixture(scope="module")
 def results():
-    return (sensitivity.run_design_sensitivity(), sensitivity.run_initial_history_sensitivity(),
-            sensitivity.run_pooling_diagnostic())
+    return sensitivity.run_analysis()
 
 
 def test_decay_and_initial_history_grids_are_prespecified(results):
-    design, initial, _ = results
+    design, initial = results["design"], results["initial_history"]
     assert design.history_tau_kyr.tolist() == [1., 1.5, 2., 3., 5.]
     assert initial.initial_unobserved_history.tolist() == [0., 0.5, 1.]
     assert initial.history_tau_kyr.eq(1.5).all()
@@ -31,8 +30,8 @@ def test_decay_and_initial_history_grids_are_prespecified(results):
 
 
 def test_primary_scenario_matches_continuous_main(results):
-    main = combined_likelihood.fit_point_catalogue().summary
-    for frame in results[:2]:
+    main = nominal.run_analysis()["statistics"]
+    for frame in (results["design"], results["initial_history"]):
         row = frame.loc[frame.is_primary_design].iloc[0]
         for field in ("gain_bits_per_event", "LR_statistic", "pre_phase_preferred_deg",
                       "pre_phase_rate_ratio_max_vs_min"):
@@ -40,7 +39,7 @@ def test_primary_scenario_matches_continuous_main(results):
 
 
 def test_pooling_adds_two_segment_phase_terms(results):
-    row = results[2].iloc[0]
+    row = results["pooling"].iloc[0]
     assert row.df == 2 and row.n_events == 53
     assert row.both_models_converged and row.likelihood_nesting_ok
     assert row.response_exposure_kyr == pytest.approx(165.058)
@@ -51,7 +50,7 @@ def test_pooling_adds_two_segment_phase_terms(results):
 
 
 def test_written_outputs_have_continuous_support(results, tmp_path):
-    sensitivity.write_outputs(*results, output_dir=tmp_path)
+    sensitivity.write_outputs(results, output_dir=tmp_path)
     design = pd.read_csv(tmp_path / "design_sensitivity.csv")
     initial = pd.read_csv(tmp_path / "initial_history_sensitivity.csv")
     support = pd.read_csv(tmp_path / "support.csv")

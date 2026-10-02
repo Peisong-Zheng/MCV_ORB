@@ -1,148 +1,248 @@
-"""Process, interval geometry and integration checks for full-model effects."""
-
+"""Full-model generation, joint-region geometry and saved-product redraw."""
 from dataclasses import replace
 from pathlib import Path
-import sys
-
+import json
 import numpy as np
 import pandas as pd
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
 import NGRIP_MIS6_effect_uncertainty as analysis
-from toolbox import combined_likelihood
-from toolbox import effect_uncertainty as effect
-from toolbox.project_config import BARKER_EVENT_CSVS
+import NGRIP_MIS6_likelihood_bootstrap as primary
+from Barker2011 import Barker2011_likelihood_bootstrap as barker_phase
+from Barker2011 import Barker2011_effect_uncertainty as barker
+from toolbox import event_model, model_stats as effect, sampling
+from toolbox.point_process import fit_point_process
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def make_generators(point, draws, results, *, n_outer=3, seed=7, age_columns=None, source_ids=()):
+    columns = age_columns or [f'age_kyr_bp__{x}' for x in point['events'].event_id]
+    return sampling.effect_generators(point['events'], point['observations'], point['windows'],
+        point['forcings'], point['phase_anchors'], point['scaling'], point['full'], draws, results, columns,
+        reduced_terms=point['reduced'].terms, full_terms=point['full'].terms,
+        n_outer=n_outer, seed=seed, source_id_columns=source_ids)
+
+
+def sample(point, generators, n_point, n_inner, seed, workers=1):
+    return sampling.sample_effect(generators, point['forcings'], point['phase_anchors'], point['scaling'],
+        reduced_terms=point['reduced'].terms, full_terms=point['full'].terms,
+        n_point=n_point, n_inner=n_inner, seed=seed, workers=workers, show_progress=False)
+
+
+def nominal_generator(point, model=None):
+    return dict(model=point['full'] if model is None else model,
+                events=point['events'].copy(), windows=point['windows'].copy())
+
+
+@pytest.fixture(scope='module')
+def setup():
+    point = primary.run_analysis(n_bootstrap=1, seed=91)
+    draws = pd.read_csv(analysis.AGE_DRAWS)
+    columns = [f'age_kyr_bp__{x}' for x in point['events'].event_id]
+    rows, results = [], []
+    for _, row in draws.iterrows():
+        events = point['events'].copy()
+        events['event_age_kyr_bp'] = row[columns].to_numpy(float)
+        try:
+            windows = event_model.response_windows(events, point['observations'])
+        except ValueError:
+            continue
+        event_x, integral_x = event_model.build_design(events, windows, point['forcings'],
+            point['phase_anchors'], point['scaling'])
+        for frame in (event_x, integral_x):
+            frame['mis6_segment'] = frame.segment_id.eq('MIS6').astype(float)
+        reduced_terms, full_terms = point['reduced'].terms, point['full'].terms
+        reduced = fit_point_process(event_x[list(reduced_terms)], integral_x[list(reduced_terms)],
+                                    integral_x.weight, reduced_terms)
+        full = fit_point_process(event_x[list(full_terms)], integral_x[list(full_terms)], integral_x.weight,
+                                 full_terms, start_beta=np.r_[reduced.beta, 0., 0.])
+        summary = effect.fit_summary(reduced, full, event_x, windows, n_source_events=len(events),
+                                     catalogue_id='ngrip_warming_plus_mis6')
+        sine, cosine = effect.phase_coefficients(full)
+        rows.append(row)
+        results.append(dict(fit_valid=True, invalid_reason='', **summary,
+                            beta_pre_phase_sin=sine, beta_pre_phase_cos=cosine))
+        if len(rows) == 20:
+            break
+    return point, pd.DataFrame(rows).reset_index(drop=True), pd.DataFrame(results)
 
 
 def test_barker_uses_named_phase_coefficients_and_its_own_age_support():
-    from Barker2011 import Barker2011_effect_uncertainty as barker
-
-    events = pd.read_csv(BARKER_EVENT_CSVS["variable_threshold"], float_precision="round_trip")
-    context = combined_likelihood.build_barker_context(events)
-    fit = combined_likelihood.fit_catalogue(context.events, context)
-    assert "mis6_segment" not in fit.full.terms
-    expected = [fit.full.beta[fit.full.terms.index(term)] for term in effect.PHASE_TERMS]
-    np.testing.assert_array_equal(effect.phase_coefficients(fit.full), expected)
-    reordered = replace(fit.full, terms=fit.full.terms[::-1], beta=fit.full.beta[::-1])
-    np.testing.assert_array_equal(effect.phase_coefficients(reordered), expected)
-
-    draws, age_results, columns = barker.load_age_inputs(context.events)
-    generators, selected = analysis.build_generators(
-        context.events, context, fit, draws, age_results, 2, 25,
-        age_columns=columns, source_id_columns=())
-    assert selected.age_realization_id.is_unique
-    assert "beta__mis6_segment" not in selected
-    first = analysis.run_simulations(context, generators, 24, 10, 25, 1, False)
-    parallel = analysis.run_simulations(context, generators, 24, 10, 25, 2, False)
-    pd.testing.assert_frame_equal(first, parallel)
-    assert first.fit_valid.all()
-    assert "beta__mis6_segment" not in first
+    point = barker_phase.run_analysis(n_bootstrap=1, seed=91)
+    full = point['full']
+    assert 'mis6_segment' not in full.terms
+    expected = [full.beta[full.terms.index(term)] for term in effect.PHASE_TERMS]
+    np.testing.assert_array_equal(effect.phase_coefficients(full), expected)
+    np.testing.assert_array_equal(effect.phase_coefficients(
+        replace(full, terms=full.terms[::-1], beta=full.beta[::-1])), expected)
+    draws, age_results, columns = barker.load_age_inputs(point['events'])
+    generators, selected = make_generators(point, draws, age_results, n_outer=2, seed=25, age_columns=columns)
+    assert selected.age_realization_id.is_unique and 'beta__mis6_segment' not in selected
+    first = sample(point, generators, 24, 10, 25)
+    pd.testing.assert_frame_equal(first, sample(point, generators, 24, 10, 25, 2))
+    assert first.fit_valid.all() and 'beta__mis6_segment' not in first
     assert first.n_response_events.nunique() > 1
-    for outer_id in (1, 2):
-        local = combined_likelihood.condition_context(context, generators[outer_id]["events"])
-        assert local.scaling == context.scaling
-        segment = local.segments["Barker2011"]
-        assert segment.response_start_kyr_bp == 0
-        assert segment.anchor_age_kyr_bp == generators[outer_id]["events"][combined_likelihood.EVENT_AGE_COLUMN].max()
-        np.testing.assert_allclose(first.loc[first.outer_id.eq(outer_id), "response_exposure_kyr"],
-                                   local.response_exposure_kyr)
-    summary, regions = analysis.summarize_effects(fit, age_results, first)
-    assert set(summary.loc[summary.scenario.eq("A_chronology"), "n"]) == {10000}
+    for outer in (1, 2):
+        windows = generators[outer]['windows']
+        assert windows.response_start_kyr_bp.item() == 0
+        assert windows.anchor_age_kyr_bp.item() == generators[outer]['events'].event_age_kyr_bp.max()
+        np.testing.assert_allclose(first.loc[first.outer_id.eq(outer), 'response_exposure_kyr'],
+                                   windows.response_end_kyr_bp.item())
+    summary, regions = effect.summarize_effects(full, age_results, first)
+    assert set(summary.loc[summary.scenario.eq('A_chronology'), 'n']) == {10000}
     for region in regions.values():
-        np.testing.assert_allclose(region["center"], expected)
+        np.testing.assert_allclose(region['center'], expected)
 
 
-def test_barker_joint_ids_detect_a_missing_whole_chronology():
-    from Barker2011 import Barker2011_effect_uncertainty as barker
-
-    selected = pd.DataFrame(dict(outer_id=[1, 2], age_realization_id=[31, 47],
-                                 response_exposure_kyr=[396., 397.]))
-    rows = [dict(scenario=scenario, outer_id=outer, replicate_id=replicate, seed=25,
-                 response_exposure_kyr=exposure)
-            for scenario, outer, exposure in [("B_sampling", 0, 396.),
-                                               ("C_joint", 1, 396.), ("C_joint", 2, 397.)]
-            for replicate in (1, 2)]
-    replicates = pd.DataFrame(rows)
-    barker.validate_simulation_ids(replicates, selected, 2, 2, 2, 25)
-    with pytest.raises(ValueError, match="selected chronologies"):
-        barker.validate_simulation_ids(replicates.loc[replicates.outer_id.ne(2)],
-                                      selected, 2, 2, 2, 25)
-    with pytest.raises(ValueError, match="inner draws"):
-        barker.validate_simulation_ids(replicates.iloc[:-1], selected, 2, 2, 2, 25)
-
-
-def test_barker_redraw_only_needs_saved_plot_products(tmp_path, monkeypatch):
-    import shutil
-    from Barker2011 import Barker2011_effect_uncertainty as barker
-
-    folder = Path("Barker2011/data/processed") / barker.RUN_NAME
-    destination = tmp_path / folder
-    destination.mkdir(parents=True)
-    for name in ("effect_summary.csv", "phase_response_bands.csv", "coefficient_regions.json"):
-        shutil.copyfile(ROOT / folder / name, destination / name)
-    def unexpected(*args, **kwargs):
-        raise AssertionError("Redraw must not fit or read source ensembles")
-    monkeypatch.setattr(barker.likelihood, "build_barker_context", unexpected)
-    monkeypatch.setattr(barker, "load_age_inputs", unexpected)
-    captured = []
-    monkeypatch.setattr(barker.shared, "plot_results", lambda *args, **kwargs: captured.append(args))
-    monkeypatch.setattr(sys, "argv", ["effect", "--redraw", "--output-root", str(tmp_path)])
-    barker.main()
-    assert len(captured) == 1
-    assert set(captured[0][2]) == set(analysis.SCENARIOS)
-    assert len(list(destination.iterdir())) == 3
-
-
-def test_saved_primary_summaries_reproduce_and_sampling_confidence_is_unchanged():
-    context = combined_likelihood.build_context()
-    fit = combined_likelihood.fit_catalogue(context.events, context)
+def test_saved_primary_summaries_reproduce_and_sampling_confidence_is_unchanged(setup):
+    full = setup[0]['full']
     ages = pd.read_csv(analysis.AGE_RESULTS)
-    replicates = pd.read_csv(analysis.OUTPUT_DIR / "effect_replicates.csv")
-    summary, regions = analysis.summarize_effects(fit, ages, replicates)
-    saved = pd.read_csv(analysis.OUTPUT_DIR / "effect_summary.csv")
-    # Cached CSVs and fresh optimizer fits differ slightly in numerical precision.
-    pd.testing.assert_frame_equal(summary, saved, check_dtype=False, rtol=1e-7, atol=1e-7)
-    curves = analysis.build_curve_table(fit, regions)
-    pd.testing.assert_frame_equal(curves, pd.read_csv(analysis.OUTPUT_DIR / "phase_response_bands.csv"),
+    output_dir = ROOT / 'data/processed' / analysis.RUN_NAME
+    replicates = pd.read_csv(output_dir / 'effect_replicates.csv')
+    summary, regions = effect.summarize_effects(full, ages, replicates)
+    pd.testing.assert_frame_equal(summary, pd.read_csv(output_dir / 'effect_summary.csv'),
                                   check_dtype=False, rtol=1e-7, atol=1e-7)
-    sampling = summary.loc[summary.scenario.eq("B_sampling")].set_index("quantity")
-    np.testing.assert_allclose(sampling.loc["preferred_phase_deg", ["low", "high"]].to_numpy(float),
+    curves = effect.build_curve_table(full, regions)
+    pd.testing.assert_frame_equal(curves, pd.read_csv(output_dir / 'phase_response_bands.csv'),
+                                  check_dtype=False, rtol=1e-7, atol=1e-7)
+    nominal = summary.loc[summary.scenario.eq('B_sampling')].set_index('quantity')
+    np.testing.assert_allclose(nominal.loc['preferred_phase_deg', ['low', 'high']].to_numpy(float),
                                [287.83101837, 370.22635637], rtol=1e-7)
-    np.testing.assert_allclose(sampling.loc["max_min_rate_ratio", ["low", "high"]].to_numpy(float),
+    np.testing.assert_allclose(nominal.loc['max_min_rate_ratio', ['low', 'high']].to_numpy(float),
                                [1.72826337, 29.87573929], rtol=1e-7)
-    age_coefficients = ages.loc[ages.fit_valid, ["beta_pre_phase_sin", "beta_pre_phase_cos"]]
-    assert regions["A_chronology"]["n"] == 9982
-    np.testing.assert_allclose(regions["A_chronology"]["covariance"], np.cov(age_coefficients, rowvar=False))
-    # All curve envelopes must enclose every curve from the corresponding ellipse.
-    radians = np.deg2rad(curves.phase_deg)
-    directions = np.column_stack((np.sin(radians), np.cos(radians)))
-    for scenario, name in analysis.SCENARIOS.items():
-        boundary = effect.ellipse_boundary(regions[scenario], np.linspace(0, 2*np.pi, 1000))
-        response = np.exp(boundary @ directions.T)
-        assert np.all(response >= curves[f"{name}_low"].to_numpy() - 1e-12)
-        assert np.all(response <= curves[f"{name}_high"].to_numpy() + 1e-12)
+    assert regions['A_chronology']['n'] == 9982
+    np.testing.assert_allclose(regions['A_chronology']['covariance'], np.cov(
+        ages.loc[ages.fit_valid, ['beta_pre_phase_sin', 'beta_pre_phase_cos']], rowvar=False))
+    directions = np.column_stack((np.sin(np.deg2rad(curves.phase_deg)), np.cos(np.deg2rad(curves.phase_deg))))
+    for scenario, name in effect.SCENARIOS.items():
+        coefficients = effect.ellipse_boundary(regions[scenario], np.linspace(0, 2 * np.pi, 1000))
+        response = np.exp(coefficients @ directions.T)
+        assert np.all(response >= curves[f'{name}_low'].to_numpy() - 1e-12)
+        assert np.all(response <= curves[f'{name}_high'].to_numpy() + 1e-12)
 
 
 def test_zero_phase_full_simulator_matches_reduced_continuous_process(setup):
-    _, context, fit, _, _ = setup
-    model = replace(fit.full, beta=np.r_[fit.reduced.beta, 0., 0.])
-    first = combined_likelihood.simulate_reduced_model_events(context, fit.reduced, np.random.default_rng(15))
-    second = effect.simulate_full_model_events(context, model, np.random.default_rng(15))
+    point = setup[0]
+    model = replace(point['full'], beta=np.r_[point['reduced'].beta, 0., 0.])
+    args = [point[key] for key in ('events', 'windows', 'forcings', 'phase_anchors', 'scaling')]
+    first = event_model.simulate_prepared_events(event_model.prepare_model_simulation(*args, point['reduced']),
+                                              np.random.default_rng(15))
+    second = event_model.simulate_prepared_events(event_model.prepare_model_simulation(*args, model),
+                                               np.random.default_rng(15))
     pd.testing.assert_frame_equal(first, second)
 
 
 def test_full_generator_checks_terms_and_nonpositive_history(setup):
-    _, context, fit, _, _ = setup
-    with pytest.raises(ValueError, match="full model"):
-        effect.prepare_full_simulation(context, fit.reduced)
-    beta = fit.full.beta.copy()
-    beta[fit.full.terms.index(combined_likelihood.HISTORY_TERM)] = 0.1
-    with pytest.raises(ValueError, match="Positive feedback"):
-        effect.prepare_full_simulation(context, replace(fit.full, beta=beta))
+    point = setup[0]
+    with pytest.raises(ValueError, match='full model'):
+        sample(point, {0: nominal_generator(point, point['reduced'])}, 2, 2, 5)
+    beta = point['full'].beta.copy()
+    beta[point['full'].terms.index(sampling.HISTORY_TERM)] = .1
+    with pytest.raises(ValueError, match='Positive feedback'):
+        sample(point, {0: nominal_generator(point, replace(point['full'], beta=beta))}, 2, 2, 5)
+
+
+def test_outer_selection_is_reproducible_uniform_rule_and_preserves_source_ids(setup):
+    point, draws, results = setup
+    generators, table = make_generators(*setup, source_ids=('ngrip_realization_id', 'mis6_realization_id'))
+    _, repeat = make_generators(*setup, source_ids=('ngrip_realization_id', 'mis6_realization_id'))
+    pd.testing.assert_frame_equal(table, repeat)
+    indices = np.random.default_rng(np.random.SeedSequence([7, 100])).choice(np.flatnonzero(results.fit_valid), 3, replace=False)
+    np.testing.assert_array_equal(table.source_row_index, indices)
+    assert table.age_realization_id.is_unique and set(generators) == {0, 1, 2, 3}
+    np.testing.assert_array_equal(generators[0]['model'].beta, point['full'].beta)
+    assert table.age_realization_id.tolist() == draws.iloc[indices].realization_id.tolist()
+    for key in ('ngrip_realization_id', 'mis6_realization_id'):
+        np.testing.assert_array_equal(table[key], draws.iloc[indices][key])
+
+
+def test_parallel_replicates_are_reproducible_and_do_not_freeze_event_count(setup):
+    point = setup[0]
+    generators = {i: nominal_generator(point) for i in (0, 1)}
+    first = sample(point, generators, 20, 3, 9)
+    pd.testing.assert_frame_equal(first, sample(point, generators, 20, 3, 9, 2))
+    assert first.fit_valid.all() and first.n_response_events.nunique() > 1
+    assert first.groupby('scenario').size().to_dict() == {'B_sampling': 20, 'C_joint': 3}
+
+
+def test_failed_simulations_are_retained_without_retries(setup, monkeypatch):
+    point = setup[0]
+    def fail(*args, **kwargs): raise sampling.InvalidEffectSimulation('diagnosed numerical failure')
+    monkeypatch.setattr(event_model, 'simulate_prepared_events', fail)
+    table = sample(point, {i: nominal_generator(point) for i in (0, 1)}, 2, 2, 1)
+    assert len(table) == 4 and not table.fit_valid.any() and table.invalid_reason.str.len().gt(0).all()
+    with pytest.raises(RuntimeError, match='failures'):
+        effect.summarize_effects(point['full'], setup[-1], table)
+
+
+def test_small_analysis_summaries_keep_interval_meanings_and_equal_weights(setup):
+    point = setup[0]
+    table = sample(point, {i: nominal_generator(point) for i in range(3)}, 30, 15, 10)
+    summary, regions = effect.summarize_effects(point['full'], setup[-1], table)
+    assert len(summary) == 6
+    assert summary.loc[summary.scenario.eq('B_sampling'), 'interval_type'].str.contains('confidence').all()
+    assert summary.loc[summary.scenario.eq('C_joint'), 'interval_type'].str.contains('working').all()
+    with pytest.raises(ValueError, match='equal weight'):
+        effect.summarize_effects(point['full'], setup[-1], table.iloc[:-1])
+    curves = effect.build_curve_table(point['full'], regions)
+    for name in effect.SCENARIOS.values():
+        assert (curves[f'{name}_low'] <= curves.point_multiplier).all()
+        assert (curves[f'{name}_high'] >= curves.point_multiplier).all()
+
+
+def test_age_generators_simulate_with_their_own_exact_anchors_and_support(setup):
+    point = setup[0]
+    generators, selected = make_generators(*setup)
+    table = sample(point, generators, 2, 1, 77)
+    for outer in range(1, 4):
+        generator = generators[outer]
+        windows = generator['windows']
+        expected = event_model.response_windows(generator['events'], point['observations'])
+        pd.testing.assert_frame_equal(windows, expected)
+        exposure = float((windows.response_end_kyr_bp - windows.response_start_kyr_bp).sum())
+        assert table.loc[table.outer_id.eq(outer), 'response_exposure_kyr'].item() == pytest.approx(exposure)
+        assert selected.loc[selected.outer_id.eq(outer), 'response_exposure_kyr'].item() == pytest.approx(exposure)
+        prepared = event_model.prepare_model_simulation(generator['events'], windows, point['forcings'],
+            point['phase_anchors'], point['scaling'], generator['model'])
+        events = event_model.simulate_prepared_events(prepared, np.random.default_rng(77))
+        for window in windows.itertuples(index=False):
+            ages = events.loc[events.segment_id.eq(window.segment_id), 'event_age_kyr_bp']
+            assert ages.max() == window.anchor_age_kyr_bp and ages.min() >= window.response_start_kyr_bp
+
+
+def test_zero_response_draws_keep_gof_sample_but_withhold_effect_region(setup, monkeypatch):
+    point = setup[0]
+    anchors = point['events'].sort_values('event_age_kyr_bp').groupby('segment_id').tail(1)
+    monkeypatch.setattr(event_model, 'simulate_prepared_events', lambda *args: anchors.copy())
+    table = sample(point, {i: nominal_generator(point) for i in (0, 1)}, 2, 2, 1)
+    assert table.fit_valid.all() and table.n_response_events.eq(0).all()
+    assert not table.effect_identified.any() and table[effect.PHASE_COLUMNS].isna().all().all()
+    nominal = table.loc[table.scenario.eq('B_sampling')]
+    assert nominal.ks_uniform.eq(0).all() and nominal.adjacent_dependence.eq(0).all()
+    assert nominal.residual_status.eq('no_response_events').all()
+    with pytest.raises(RuntimeError, match='Unidentified effect'):
+        effect.summarize_effects(point['full'], setup[-1], table)
+
+
+@pytest.mark.parametrize('module,folder', [(analysis, 'data/processed'), (barker, 'Barker2011/data/processed')])
+def test_redraw_uses_only_saved_plot_products(module, folder, tmp_path, monkeypatch):
+    import shutil
+    target = tmp_path / folder / module.RUN_NAME
+    target.mkdir(parents=True)
+    for name in ('effect_summary.csv', 'phase_response_bands.csv', 'coefficient_regions.json'):
+        shutil.copyfile(ROOT / folder / module.RUN_NAME / name, target / name)
+    def fail(*args, **kwargs): raise AssertionError('Redraw must not read/refit current science inputs')
+    monkeypatch.setattr(event_model, 'response_windows', fail)
+    monkeypatch.setattr(module, 'load_age_inputs', fail)
+    captured = []
+    monkeypatch.setattr(module, 'save_figure', lambda *args, **kwargs: captured.append(args))
+    monkeypatch.setattr(module, 'REDRAW', True)
+    monkeypatch.setattr(module, 'EXPORT_PAPER', False)
+    monkeypatch.setattr(module, 'OUTPUT_ROOT', tmp_path)
+    module.main()
+    assert len(captured) == 1 and set(captured[0][2]) == set(effect.SCENARIOS)
+    assert len(list(target.iterdir())) == 3
 
 
 def circle_region(center, radius):
@@ -192,148 +292,20 @@ def test_bootstrap_region_uses_errors_about_generator_and_retains_bias():
     np.testing.assert_allclose(region["bootstrap_bias"], errors.mean(axis=0))
 
 
-@pytest.fixture(scope="module")
-def setup():
-    events = combined_likelihood.load_event_catalogue()
-    context = combined_likelihood.build_context()
-    fit = combined_likelihood.fit_catalogue(events, context)
-    # Refit a small saved chronology sample, independent of stale output tables.
-    saved = pd.read_csv(analysis.AGE_DRAWS)
-    columns = [f"age_kyr_bp__{event_id}" for event_id in events.event_id]
-    rows, results = [], []
-    for _, row in saved.iterrows():
-        local_events = events.copy()
-        local_events[combined_likelihood.EVENT_AGE_COLUMN] = row[columns].to_numpy(float)
-        try:
-            local_fit = combined_likelihood.fit_catalogue(local_events, context)
-        except ValueError:
-            continue
-        rows.append(row)
-        sine, cosine = effect.phase_coefficients(local_fit.full)
-        results.append({"fit_valid": True, "invalid_reason": "", **local_fit.summary,
-                        "beta_pre_phase_sin": sine, "beta_pre_phase_cos": cosine})
-        if len(rows) == 20:
-            break
-    return events, context, fit, pd.DataFrame(rows).reset_index(drop=True), pd.DataFrame(results)
+def test_barker_joint_ids_detect_a_missing_whole_chronology():
+    from Barker2011 import Barker2011_effect_uncertainty as barker
 
-
-def generator(model, context):
-    return {"model": model, "events": context.events.copy()}
-
-
-def test_outer_selection_is_reproducible_uniform_rule_and_preserves_source_ids(setup):
-    events, context, fit, draws, results = setup
-    generators, table = analysis.build_generators(*setup, n_outer=3, seed=7)
-    _, repeat = analysis.build_generators(*setup, n_outer=3, seed=7)
-    pd.testing.assert_frame_equal(table, repeat)
-    eligible = np.flatnonzero(results.fit_valid)
-    expected = np.random.default_rng(np.random.SeedSequence([7, 100])).choice(eligible, 3, replace=False)
-    np.testing.assert_array_equal(table.source_row_index, expected)
-    assert table.age_realization_id.is_unique
-    assert set(generators) == {0, 1, 2, 3}
-    np.testing.assert_array_equal(generators[0]["model"].beta, fit.full.beta)
-    assert table.age_realization_id.tolist() == draws.iloc[expected].realization_id.tolist()
-
-
-def test_parallel_replicates_are_reproducible_and_do_not_freeze_event_count(setup):
-    _, context, fit, _, _ = setup
-    generators = {0: generator(fit.full, context), 1: generator(fit.full, context)}
-    first = analysis.run_simulations(context, generators, 20, 3, 9, workers=1, show_progress=False)
-    second = analysis.run_simulations(context, generators, 20, 3, 9, workers=2, show_progress=False)
-    pd.testing.assert_frame_equal(first, second)
-    assert first.fit_valid.all()
-    assert first.n_response_events.nunique() > 1
-    assert first.groupby("scenario").size().to_dict() == {"B_sampling": 20, "C_joint": 3}
-
-
-def test_failed_simulations_are_retained_without_retries(setup, monkeypatch):
-    _, context, fit, _, _ = setup
-    def fail(*args, **kwargs):
-        raise effect.InvalidEffectSimulation("diagnosed numerical failure")
-    monkeypatch.setattr(effect, "simulate_prepared_full_events", fail)
-    generators = {i: generator(fit.full, context) for i in (0, 1)}
-    table = analysis.run_simulations(context, generators, 2, 2, 1, show_progress=False)
-    assert len(table) == 4
-    assert not table.fit_valid.any()
-    assert table.invalid_reason.str.len().gt(0).all()
-    with pytest.raises(RuntimeError, match="failures"):
-        analysis.summarize_effects(fit, setup[-1], table)
-
-
-def test_small_analysis_summaries_keep_interval_meanings_and_equal_weights(setup):
-    _, context, fit, _, age_results = setup
-    generators = {i: generator(fit.full, context) for i in range(3)}
-    table = analysis.run_simulations(context, generators, 30, 15, 10, show_progress=False)
-    summary, regions = analysis.summarize_effects(fit, age_results, table)
-    assert len(summary) == 6
-    assert summary.loc[summary.scenario.eq("B_sampling"), "interval_type"].str.contains("confidence").all()
-    assert summary.loc[summary.scenario.eq("C_joint"), "interval_type"].str.contains("working").all()
-    with pytest.raises(ValueError, match="equal weight"):
-        analysis.summarize_effects(fit, age_results, table.iloc[:-1])
-    curves = analysis.build_curve_table(fit, regions)
-    for name in analysis.SCENARIOS.values():
-        assert (curves[f"{name}_low"] <= curves.point_multiplier).all()
-        assert (curves[f"{name}_high"] >= curves.point_multiplier).all()
-
-
-def test_age_generators_simulate_with_their_own_exact_anchors_and_support(setup):
-    _, context, _, _, _ = setup
-    generators, selected = analysis.build_generators(*setup, n_outer=3, seed=7)
-    analysis._initialize_worker(context, generators)
-    for outer_id in range(1, 4):
-        row = analysis._simulate_one((2, outer_id, 1, 77))
-        local_context, prepared = analysis._PREPARED[outer_id]
-        expected = combined_likelihood.condition_context(context, generators[outer_id]["events"])
-        assert row["fit_valid"]
-        assert row["response_exposure_kyr"] == pytest.approx(expected.response_exposure_kyr)
-        assert selected.loc[selected.outer_id.eq(outer_id), "response_exposure_kyr"].iloc[0] == pytest.approx(expected.response_exposure_kyr)
-        simulated = effect.simulate_prepared_full_events(prepared, np.random.default_rng(77))
-        for name, segment in local_context.segments.items():
-            assert segment == expected.segments[name]
-            ages = simulated.loc[simulated.segment_id.eq(name), combined_likelihood.EVENT_AGE_COLUMN]
-            assert ages.max() == segment.anchor_age_kyr_bp
-            assert ages.min() >= segment.response_start_kyr_bp
-        assert local_context.scaling == context.scaling
-
-
-def test_zero_response_draws_keep_gof_sample_but_withhold_effect_region(setup, monkeypatch):
-    _, context, fit, _, age_results = setup
-    anchors = context.events.sort_values(combined_likelihood.EVENT_AGE_COLUMN).groupby('segment_id').tail(1)
-    monkeypatch.setattr(effect, 'simulate_prepared_full_events', lambda *args: anchors.copy())
-    generators = {i: generator(fit.full, context) for i in (0, 1)}
-    table = analysis.run_simulations(context, generators, 2, 2, 1, show_progress=False)
-    assert table.fit_valid.all() and table.n_response_events.eq(0).all()
-    assert not table.effect_identified.any()
-    assert table[analysis.PHASE_COLUMNS].isna().all().all()
-    nominal = table.loc[table.scenario.eq('B_sampling')]
-    assert nominal.ks_uniform.eq(0).all() and nominal.adjacent_dependence.eq(0).all()
-    assert nominal.residual_status.eq('no_response_events').all()
-    with pytest.raises(RuntimeError, match='Unidentified effect'):
-        analysis.summarize_effects(fit, age_results, table)
-
-
-def test_redraw_uses_only_saved_plot_products(tmp_path, monkeypatch):
-    import json
-    import sys
-    output = tmp_path / "data/processed" / analysis.RUN_NAME
-    output.mkdir(parents=True)
-    summary = pd.DataFrame({"point_estimate": [2.0]})
-    curves = pd.DataFrame({"phase_deg": [0.0, 180.0]})
-    regions = {name: {"center": [0.2, 0.3]} for name in analysis.SCENARIOS.values()}
-    summary.to_csv(output / "effect_summary.csv", index=False)
-    curves.to_csv(output / "phase_response_bands.csv", index=False)
-    (output / "coefficient_regions.json").write_text(json.dumps(regions))
-    def fail(*args, **kwargs):
-        raise AssertionError("Redraw must not read/refit current science inputs")
-    monkeypatch.setattr(combined_likelihood, "build_context", fail)
-    monkeypatch.setattr(analysis, "load_age_inputs", fail)
-    captured = []
-    monkeypatch.setattr(analysis, "plot_results", lambda *args: captured.append(args))
-    monkeypatch.setattr(sys, "argv", ["effect", "--redraw", "--no-paper-export", "--output-root", str(tmp_path)])
-    analysis.main()
-    assert len(captured) == 1
-    pd.testing.assert_frame_equal(captured[0][0], summary)
-    pd.testing.assert_frame_equal(captured[0][1], curves)
-    assert captured[0][2] == {key: regions[name] for key, name in analysis.SCENARIOS.items()}
-    assert sorted(p.name for p in output.iterdir()) == [
-        "coefficient_regions.json", "effect_summary.csv", "phase_response_bands.csv"]
+    selected = pd.DataFrame(dict(outer_id=[1, 2], age_realization_id=[31, 47],
+                                 response_exposure_kyr=[396., 397.]))
+    rows = [dict(scenario=scenario, outer_id=outer, replicate_id=replicate, seed=25,
+                 response_exposure_kyr=exposure)
+            for scenario, outer, exposure in [("B_sampling", 0, 396.),
+                                               ("C_joint", 1, 396.), ("C_joint", 2, 397.)]
+            for replicate in (1, 2)]
+    replicates = pd.DataFrame(rows)
+    barker.validate_simulation_ids(replicates, selected, 2, 2, 2, 25)
+    with pytest.raises(ValueError, match="selected chronologies"):
+        barker.validate_simulation_ids(replicates.loc[replicates.outer_id.ne(2)],
+                                      selected, 2, 2, 2, 25)
+    with pytest.raises(ValueError, match="inner draws"):
+        barker.validate_simulation_ids(replicates.iloc[:-1], selected, 2, 2, 2, 25)

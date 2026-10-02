@@ -27,6 +27,7 @@ OUT_FIG_DIR = Path("figures/ngrip_event_age_uncertainty")
 N_REALIZATIONS = 10_000
 RANDOM_SEED = 20260907  # Previous combined seed, not the old base seed 20260905.
 KNOT_SPACING_KA = 5.0
+EXPORT_PAPER = True
 
 
 def chronology_process_basis(events, grid, knot_spacing_ka=KNOT_SPACING_KA):
@@ -78,15 +79,16 @@ def sample_age_realizations(events, grid, n_realizations=N_REALIZATIONS,
         knot_ages = knots + innovations @ knot_basis.T
         map_ok = np.all(np.diff(knot_ages, axis=1) > 0, axis=1)
         proposals = np.broadcast_to(ages, (batch_size, len(ages))).copy()
-        proposals += offsets
-        proposals += rng.normal(0.0, sigma, size=proposals.shape)
+        proposals = proposals + offsets
+        definition_offsets = rng.normal(0.0, sigma, size=proposals.shape)
+        proposals = proposals + definition_offsets
         ordered = np.all(np.diff(proposals, axis=1) > 0, axis=1)
         keep = map_ok & ordered
         accepted.append(proposals[keep])
-        n_accepted += int(keep.sum())
-        n_proposed += batch_size
-        n_map_rejected += int((~map_ok).sum())
-        n_crossed += int((map_ok & ~ordered).sum())
+        n_accepted = n_accepted + int(keep.sum())
+        n_proposed = n_proposed + batch_size
+        n_map_rejected = n_map_rejected + int((~map_ok).sum())
+        n_crossed = n_crossed + int((map_ok & ~ordered).sum())
         if n_proposed > max(100_000, 100 * n_realizations):
             raise RuntimeError("Too few ordered age proposals were accepted")
     diagnostics = {
@@ -140,7 +142,8 @@ def plot_uncertainty(events, draws):
         label_x = x.copy()
         for i in range(1, len(label_x)):
             label_x[i] = max(label_x[i], label_x[i - 1] + 1.7)
-        label_x -= np.mean(label_x - x)
+        mean_label_shift = np.mean(label_x - x)
+        label_x = label_x - mean_label_shift
         for point_x, point_y, text_x, label in zip(
                 x, y, label_x, events.loc[selected, "event_label"]):
             # Separate the two label bands where definition scales overlap.
@@ -195,14 +198,17 @@ def plot_uncertainty(events, draws):
 def main():
     events = pd.read_csv(EVENTS_CSV)
     grid = pd.read_csv(GRID_CSV, float_precision="round_trip")
-    draws, diagnostics = sample_age_realizations(events, grid)
+    draws, diagnostics = sample_age_realizations(
+        events, grid, n_realizations=N_REALIZATIONS, seed=RANDOM_SEED,
+        knot_spacing_ka=KNOT_SPACING_KA,
+    )
     OUT_DATA_DIR.mkdir(parents=True, exist_ok=True)
     realization_table(events, draws).to_csv(
         OUT_DATA_DIR / "ngrip_event_age_realizations.csv", index=False, float_format="%.6f"
     )
 
     # Distinguish nominal envelope/2 from the interpolated, pre-rejection SD.
-    basis, _, _ = chronology_process_basis(events, grid)
+    basis, _, _ = chronology_process_basis(events, grid, KNOT_SPACING_KA)
     low, median, high = np.quantile(draws, [0.025, 0.5, 0.975], axis=0)
     summary = events[["event_label", "event_type", "age_ka_bp",
                       "definition_uncertainty_code", "definition_sigma_yr"]].rename(
@@ -239,7 +245,8 @@ def main():
     OUT_FIG_DIR.mkdir(parents=True, exist_ok=True)
     for extension in ("png", "pdf"):
         fig.savefig(OUT_FIG_DIR / f"ngrip_event_age_uncertainty.{extension}", dpi=600)
-    copy_pdf_to_paper(OUT_FIG_DIR / "ngrip_event_age_uncertainty.pdf")
+    if EXPORT_PAPER:
+        copy_pdf_to_paper(OUT_FIG_DIR / "ngrip_event_age_uncertainty.pdf")
     plt.close(fig)
     print(f"Saved {len(draws):,} combined chronologies; acceptance {diagnostics['acceptance_fraction']:.2%}")
 

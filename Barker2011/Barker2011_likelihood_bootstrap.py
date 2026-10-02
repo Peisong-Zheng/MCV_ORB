@@ -5,7 +5,6 @@ The common driver generates exact event times, conditions on the observed
 oldest event, and refits both models. Each event definition has its own fitted
 background model and response interval. Chronology is fixed in this experiment.
 """
-import argparse
 import os
 from pathlib import Path
 import sys
@@ -21,19 +20,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.stats import chi2
-import NGRIP_MIS6_likelihood_bootstrap as bootstrap
-from NGRIP_MIS6_likelihood_bootstrap import empirical_p_value, clopper_pearson_interval
-from toolbox import combined_likelihood
 from toolbox.project_config import PROJECT_ROOT, BARKER_EVENT_CSVS, CATALOGUE_COLORS
 
-ROOT = PROJECT_ROOT / "Barker2011"
+from toolbox import event_model, model_stats, sampling
+from toolbox.point_process import fit_point_process
+from toolbox.project_config import (MODEL_VERSION,
+    LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV)
+
 RUN_NAME = "Barker2011_likelihood_bootstrap"
-OUT_DATA_DIR = ROOT / "data/processed" / RUN_NAME
-OUT_FIG_DIR = ROOT / "figures" / RUN_NAME
-DEFAULT_N_BOOTSTRAP = 9_999
-DEFAULT_SEED = 20260909
-DEFAULT_N_WORKERS = 3
-EVENT_DEFINITIONS = ("variable_threshold", "fixed_threshold")
+N_BOOTSTRAP = 9_999
+RANDOM_SEED = 20260909
+N_WORKERS = 3
+OUTPUT_ROOT = PROJECT_ROOT
+EVENT_DEFINITION = "variable_threshold"
+EXPORT_PAPER = True
 
 REPLICATE_COLUMNS = [
     "bootstrap_id", "n_events_response", "fit_valid", "status", "solver_attempts", "failure_reason",
@@ -49,29 +49,55 @@ SUMMARY_COLUMNS = [
 ]
 
 
-def run_analysis(*, n_bootstrap=DEFAULT_N_BOOTSTRAP, seed=DEFAULT_SEED,
-                 n_workers=1, show_progress=False, event_definition="variable_threshold"):
-    if event_definition not in EVENT_DEFINITIONS:
-        raise ValueError(f"Unknown event definition: {event_definition}")
+HISTORY_TERM = "same_type_exponential_history"
+
+def run_analysis(*, n_bootstrap=N_BOOTSTRAP, seed=RANDOM_SEED,
+                 n_workers=1, show_progress=False, event_definition="variable_threshold",
+                 quadrature_order=4):
     events = pd.read_csv(BARKER_EVENT_CSVS[event_definition], float_precision="round_trip")
-    context = combined_likelihood.build_barker_context(events, event_definition=event_definition)
-    result = bootstrap.run_analysis(context=context, n_bootstrap=n_bootstrap, seed=seed,
-                                    n_workers=n_workers, show_progress=show_progress)
-    result["summary"]["event_definition"] = event_definition
-    result["parameters"].loc[len(result["parameters"])] = ["event_definition", event_definition]
-    result["parameters"].loc[len(result["parameters"])] = [
-        "event_input_csv", str(BARKER_EVENT_CSVS[event_definition].relative_to(PROJECT_ROOT))]
-    support = combined_likelihood.support_table(context).iloc[0]
-    for name, value in dict(
-        history_tau_kyr=context.history_tau_ka,
-        initial_unobserved_history=context.initial_history,
-        quadrature_order=context.quadrature_order,
+    if (len(events) != {"variable_threshold": 70, "fixed_threshold": 59}[event_definition]
+            or events.event_id.isna().any() or not events.event_id.is_unique
+            or not np.all(np.diff(events.event_age_kyr_bp) > 0)):
+        raise ValueError("Check prepared Barker event count, identities and increasing ages")
+    events["segment_id"] = "Barker2011"
+    observations = pd.DataFrame([dict(segment_id="Barker2011", observation_start_kyr_bp=0.,
+                                      observation_end_kyr_bp=400.)])
+    catalogue_id = f"barker_{event_definition}_speleo_0_400"
+    lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
+    co2 = pd.read_csv(CO2_CSV, float_precision="round_trip")
+    orbital = pd.read_csv(ORBITAL_CSV, float_precision="round_trip")
+    anchors = pd.read_csv(PRECESSION_PHASE_CSV, float_precision="round_trip")
+    forcings = {"lr04": (lr04.age_kyr_bp.to_numpy(), lr04.lr04.to_numpy()),
+                "co2": (co2.age_kyr_bp.to_numpy(), co2.co2_ppm.to_numpy()),
+                "precession_index": (orbital.age_kyr_bp.to_numpy(), orbital.precession_index.to_numpy())}
+    phase_anchors = (anchors.age_kyr_bp.to_numpy(), anchors.phase_unwrapped_rad.to_numpy())
+    windows = event_model.response_windows(events, observations)
+    scaling = event_model.nominal_scaling({name: forcings[name] for name in ("lr04", "co2")}, windows)
+    event_x, integral_x = event_model.build_design(events, windows, forcings, phase_anchors, scaling,
+                                                  quadrature_order=quadrature_order)
+    reduced_terms = ("intercept", HISTORY_TERM, "lr04_scaled", "co2_scaled")
+    full_terms = reduced_terms + ("pre_phase_sin", "pre_phase_cos")
+    reduced = fit_point_process(event_x[list(reduced_terms)], integral_x[list(reduced_terms)],
+        integral_x.weight, reduced_terms, nonpositive_terms=(HISTORY_TERM,))
+    full = fit_point_process(event_x[list(full_terms)], integral_x[list(full_terms)],
+        integral_x.weight, full_terms, nonpositive_terms=(HISTORY_TERM,), start_beta=np.r_[reduced.beta, 0., 0.])
+    point_summary = model_stats.fit_summary(reduced, full, event_x, windows,
+        n_source_events=len(events), catalogue_id=catalogue_id)
+    replicates, failures = sampling.phase_bootstrap(events, windows, forcings, phase_anchors,
+        scaling, reduced, full, reduced_terms=reduced_terms, full_terms=full_terms,
+        quadrature_order=quadrature_order, n_bootstrap=n_bootstrap, seed=seed,
+        workers=n_workers, show_progress=show_progress)
+    summary = model_stats.phase_bootstrap_summary(point_summary, replicates, failures)
+    for name, value in dict(seed=seed, event_definition=event_definition, history_tau_kyr=1.5,
+        initial_unobserved_history=0., quadrature_order=quadrature_order,
         event_input_csv=str(BARKER_EVENT_CSVS[event_definition].relative_to(PROJECT_ROOT)),
-        response_start_kyr_bp=support.response_start_kyr_bp,
-        response_end_kyr_bp=support.response_end_kyr_bp,
-    ).items():
-        result["summary"][name] = value
-    return result
+        response_start_kyr_bp=windows.response_start_kyr_bp.item(),
+        response_end_kyr_bp=windows.response_end_kyr_bp.item()).items():
+        summary[name] = value
+    return dict(events=events, windows=windows, scaling=scaling, reduced=reduced, full=full,
+        event_features=event_x, integration_features=integral_x, forcings=forcings,
+        phase_anchors=phase_anchors, observations=observations, replicates=replicates,
+        summary=summary, rejected_reasons=failures)
 
 
 def output_directories(output_root, event_definition):
@@ -95,7 +121,7 @@ def save_tables(result, output_dir):
         output_dir / "summary.csv", index=False, float_format="%.12g")
 
 
-def save_figure(replicates, summary, output_dir=OUT_FIG_DIR, *, paper_export=False):
+def save_figure(replicates, summary, output_dir, *, paper_export=False):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True,exist_ok=True)
     fig = plot_null_distribution(replicates,summary)
@@ -131,25 +157,17 @@ def plot_null_distribution(replicates, summary):
     fig.tight_layout(pad=1.1)
     return fig
 
-def main(argv=None):
-    parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--n-bootstrap",type=int,default=DEFAULT_N_BOOTSTRAP)
-    parser.add_argument("--seed",type=int,default=DEFAULT_SEED)
-    parser.add_argument("--workers",type=int,default=DEFAULT_N_WORKERS)
-    parser.add_argument("--event-definition", choices=EVENT_DEFINITIONS, default="variable_threshold")
-    parser.add_argument("--output-root",type=Path,default=PROJECT_ROOT)
-    parser.add_argument("--no-paper-export",action="store_true")
-    args=parser.parse_args(argv)
-    result=run_analysis(n_bootstrap=args.n_bootstrap,seed=args.seed,n_workers=args.workers,
-                        show_progress=True,event_definition=args.event_definition)
-    data_dir, figure_dir = output_directories(args.output_root, args.event_definition)
-    save_tables(result,data_dir)
+def main():
+    result = run_analysis(n_bootstrap=N_BOOTSTRAP, seed=RANDOM_SEED, n_workers=N_WORKERS,
+                          show_progress=True, event_definition=EVENT_DEFINITION)
+    data_dir, figure_dir = output_directories(OUTPUT_ROOT, EVENT_DEFINITION)
+    save_tables(result, data_dir)
     if result["summary"].iloc[0].n_failed_replicates:
         raise RuntimeError("Unresolved bootstrap fits saved; p value and figure publication withheld")
-    save_figure(result["replicates"],result["summary"],figure_dir,
-                paper_export=not args.no_paper_export and args.output_root.resolve()==PROJECT_ROOT.resolve())
-    print(result["summary"][["LR_statistic","empirical_p_plus_one","n_failed_replicates"]].to_string(index=False))
+    save_figure(result["replicates"], result["summary"], figure_dir,
+                paper_export=EXPORT_PAPER and OUTPUT_ROOT.resolve() == PROJECT_ROOT.resolve())
+    print(result["summary"][["LR_statistic", "empirical_p_plus_one", "n_failed_replicates"]].to_string(index=False))
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()

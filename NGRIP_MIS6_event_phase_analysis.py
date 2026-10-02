@@ -7,7 +7,6 @@ history (tau = 1.5 kyr), and a segment intercept. Rayleigh statistics use all
 55 inventory events; likelihood comparisons use 53 response events.
 """
 
-import argparse
 from pathlib import Path
 
 import matplotlib
@@ -17,7 +16,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from toolbox import combined_likelihood, event_model
+from toolbox import model_stats, event_model
+from toolbox.point_process import fit_point_process
+from toolbox.project_config import EVENT_CATALOGUE_CSV, OBSERVATION_SEGMENTS_CSV, MODEL_VERSION
 from toolbox.model_stats import rayleigh_rbar_threshold, rayleigh_test
 from toolbox.plotting import format_phase_response_axis, mark_preferred_phase
 from toolbox.project_config import (
@@ -34,68 +35,88 @@ from toolbox.project_config import (
 from toolbox.project_config import generated_notes_dir
 
 RUN_NAME = "NGRIP_MIS6_event_phase_analysis"
-OUT_DATA_DIR = PROJECT_ROOT / "data/processed" / RUN_NAME
-OUT_FIG_DIR = PROJECT_ROOT / "figures" / RUN_NAME
+OUTPUT_ROOT = PROJECT_ROOT
+EXPORT_PAPER = True
 CATALOGUE_LABEL = "NGRIP warming + MIS 6 transitions"
 EVENT_TYPE = "warming_transition"
-HISTORY_TAU_KYR = combined_likelihood.DEFAULT_HISTORY_TAU_KA
+HISTORY_TAU_KYR = 1.5
+HISTORY_TERM = "same_type_exponential_history"
+CATALOGUE_ID = "ngrip_warming_plus_mis6"
 RESOLUTION_COVARIATE_INCLUDED = False
 
 
-def run_analysis():
-    """Fit event occurrence at nominal ages; return tables for inspection and plotting."""
-    events = combined_likelihood.load_event_catalogue()
-    observation_segments = combined_likelihood.load_observation_segments()
-    context = combined_likelihood.build_context(
-        observation_segments,
-        events=events,
-        history_tau_ka=HISTORY_TAU_KYR,
-    )
-
-    # Both models use the same exact anchors, exposure and nominal climate scaling.
-    # The full model adds precession sine/cosine to history, LR04, CO2 and segment.
-    fit = combined_likelihood.fit_catalogue(events, context)
-    events = fit.design.all_events
-
-    # Phase concentration describes all inventory events, including the anchors.
-    event_phases = combined_likelihood.sample_event_phases(events)
-    rayleigh = rayleigh_test(event_phases.pre_phase_rad.to_numpy(float))
-    fitted_rates = combined_likelihood.fitted_rate_table(fit)
-
-    result = {
-        "events": events,
-        "context": fit.context,
-        "fit": fit,
-        "event_phases": event_phases,
-        "rayleigh": rayleigh,
-        "fitted_rates": fitted_rates,
+def run_analysis(*, quadrature_order=4):
+    """Fit the pooled event catalogue using explicit response and integral matrices."""
+    events = pd.read_csv(EVENT_CATALOGUE_CSV)
+    if events.event_id.isna().any() or not events.event_id.is_unique:
+        raise ValueError("Prepared event identities must be unique and nonempty")
+    observations = pd.read_csv(OBSERVATION_SEGMENTS_CSV)
+    lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
+    co2 = pd.read_csv(CO2_CSV, float_precision="round_trip")
+    orbital = pd.read_csv(ORBITAL_CSV, float_precision="round_trip")
+    anchors = pd.read_csv(PRECESSION_PHASE_CSV, float_precision="round_trip")
+    forcings = {
+        "lr04": (lr04.age_kyr_bp.to_numpy(), lr04.lr04.to_numpy()),
+        "co2": (co2.age_kyr_bp.to_numpy(), co2.co2_ppm.to_numpy()),
+        "precession_index": (orbital.age_kyr_bp.to_numpy(), orbital.precession_index.to_numpy()),
     }
+    phase_anchors = (anchors.age_kyr_bp.to_numpy(), anchors.phase_unwrapped_rad.to_numpy())
+    windows = event_model.response_windows(events, observations)
+    scaling = event_model.nominal_scaling({name: forcings[name] for name in ("lr04", "co2")}, windows)
+    event_x, integral_x = event_model.build_design(
+        events, windows, forcings, phase_anchors, scaling,
+        tau=HISTORY_TAU_KYR, quadrature_order=quadrature_order,
+    )
+    for frame in (event_x, integral_x):
+        frame["mis6_segment"] = frame.segment_id.eq("MIS6").astype(float)
+    background = ["intercept", HISTORY_TERM, "lr04_scaled", "co2_scaled", "mis6_segment"]
+    with_phase = background + ["pre_phase_sin", "pre_phase_cos"]
+    reduced = fit_point_process(event_x[background], integral_x[background], integral_x.weight,
+                                background, nonpositive_terms=(HISTORY_TERM,))
+    full = fit_point_process(event_x[with_phase], integral_x[with_phase], integral_x.weight,
+                             with_phase, start_beta=np.r_[reduced.beta, 0., 0.],
+                             nonpositive_terms=(HISTORY_TERM,))
+    statistics = model_stats.fit_summary(
+        reduced, full, event_x, windows, n_source_events=len(events),
+        catalogue_id=CATALOGUE_ID, tau=HISTORY_TAU_KYR,
+    )
+    events = event_model.mark_event_roles(events, windows)
+    event_phases = event_model.sample_event_phases(events, forcings["precession_index"], phase_anchors)
+    rayleigh = rayleigh_test(event_phases.pre_phase_rad.to_numpy(float))
+    fitted_rates = event_model.fitted_rate_table(
+        events, windows, forcings, phase_anchors, scaling, {"reduced": reduced, "full": full},
+        tau=HISTORY_TAU_KYR,
+    )
+    result = dict(events=events, observations=observations, windows=windows, forcings=forcings,
+                  phase_anchors=phase_anchors, scaling=scaling, event_features=event_x,
+                  integration_features=integral_x, reduced=reduced, full=full,
+                  statistics=statistics, event_phases=event_phases, rayleigh=rayleigh,
+                  fitted_rates=fitted_rates)
     result["summary"] = build_analysis_summary(result)
-    result.update(model_tables(fit))
+    result.update(model_tables(result))
     _validate_results(result)
     return result
 
 
 def _validate_results(result):
     events = result["events"]
-    fit = result["fit"]
     if events.groupby("segment_id").size().to_dict() != {"MIS6": 21, "NGRIP": 34}:
         raise RuntimeError("The pooled inventory must contain 34 NGRIP and 21 MIS6 events")
     if events.event_role.value_counts().to_dict() != {"response": 53, "conditioning": 2}:
         raise RuntimeError("Exactly one oldest event per segment must condition the fit")
     if result["event_phases"].pre_phase_extrapolated.any():
         raise RuntimeError("An inventory event has an extrapolated precession phase")
-    if not fit.summary["all_models_converged"] or not fit.summary["likelihood_nesting_ok"]:
+    if not result["statistics"]["all_models_converged"] or not result["statistics"]["likelihood_nesting_ok"]:
         raise RuntimeError("Inspect finite-MLE convergence and nested likelihoods")
-    for model in (fit.reduced, fit.full):
+    for model in (result["reduced"], result["full"]):
         coefficients = dict(zip(model.terms, model.beta))
-        if coefficients[combined_likelihood.HISTORY_TERM] > 0:
+        if coefficients[HISTORY_TERM] > 0:
             raise RuntimeError("The history coefficient violates the inhibitory domain")
 
 
 def model_tables(fit):
     """Summarize the two fits using response events as the sample size."""
-    models = {"reduced": fit.reduced, "full": fit.full}
+    models = {"reduced": fit["reduced"], "full": fit["full"]}
     rows = []
     for name, model in models.items():
         rows.append({
@@ -108,26 +129,27 @@ def model_tables(fit):
         })
 
     comparison = {
-        "dataset_id": fit.context.catalogue_id,
+        "dataset_id": CATALOGUE_ID,
         "comparison_id": "phase_after_climate",
         "reduced_model_id": "reduced",
         "full_model_id": "full",
     }
     for name in ("df", "LR_statistic", "LR_p_value", "gain_bits_per_event",
                  "delta_AIC_full_minus_reduced"):
-        comparison[name] = fit.summary[name]
+        comparison[name] = fit["statistics"][name]
 
     return {
         "models": models,
         "model_summary": pd.DataFrame(rows),
         "likelihood_tests": pd.DataFrame([comparison]),
-        "coefficients": combined_likelihood.coefficient_table(fit),
-        "scaling": combined_likelihood.scaling_table(fit.context),
     }
 
 
 def build_coefficients(fit):
-    table = combined_likelihood.coefficient_table(fit)
+    table = pd.DataFrame([
+        dict(model_id=name, term=term, beta=beta, rate_ratio_per_unit=np.exp(beta))
+        for name in ("reduced", "full") for term, beta in zip(fit[name].terms, fit[name].beta)
+    ])
     notes = {
         "intercept": "conditional log rate per kyr",
         "same_type_exponential_history": "strictly older events weighted by exp(-age difference / 1.5 kyr); coefficient <= 0",
@@ -142,15 +164,14 @@ def build_coefficients(fit):
 
 
 def build_parameters(result):
-    context = result["context"]
     rows = [
-        ("model_version", combined_likelihood.MODEL_VERSION, "", "continuous conditional intensity"),
+        ("model_version", MODEL_VERSION, "", "continuous conditional intensity"),
         ("age_unit", "kyr BP", "BP1950", "events and astronomical forcing"),
-        ("history_tau", context.history_tau_ka, "kyr", "fixed exponential decay time"),
+        ("history_tau", HISTORY_TAU_KYR, "kyr", "fixed exponential decay time"),
         ("history_coefficient_domain", "beta_H <= 0", "", "inhibition or no history effect"),
-        ("initial_unobserved_history", context.initial_history, "weighted events", "boundary approximation"),
+        ("initial_unobserved_history", 0.0, "weighted events", "boundary approximation"),
         ("conditioning", "exact oldest event per segment", "", "anchor is excluded from the event likelihood term"),
-        ("response_exposure", context.response_exposure_kyr, "kyr", "younger event-free tails retained; record gap excluded"),
+        ("response_exposure", result["statistics"]["response_exposure_kyr"], "kyr", "younger event-free tails retained; record gap excluded"),
         ("segment_indicator", "MIS6=1; NGRIP=0", "", "conditional baseline contrast"),
         ("likelihood", "event log intensity minus integrated intensity", "", "actual event ages"),
         ("nominal_p", "chi-square reference, df=2", "", "bootstrap calibration is a separate experiment"),
@@ -160,8 +181,8 @@ def build_parameters(result):
         ("orbital_age_offset_to_BP1950", ORBITAL_AGE_OFFSET_TO_BP1950_KA, "kyr", "applied before interpolation"),
     ]
     inputs = {
-        "event_catalogue": combined_likelihood.EVENT_CATALOGUE_CSV,
-        "observation_segments": combined_likelihood.OBSERVATION_SEGMENTS_CSV,
+        "event_catalogue": EVENT_CATALOGUE_CSV,
+        "observation_segments": OBSERVATION_SEGMENTS_CSV,
         "lr04_input": LR04_CSV,
         "co2_input": CO2_CSV,
         "precession_input": ORBITAL_CSV,
@@ -176,10 +197,9 @@ def build_analysis_summary(result: dict) -> pd.DataFrame:
     """Collect the point-age results used in the paper workflow."""
 
     events = result["events"]
-    fit = result["fit"]
     rayleigh = result["rayleigh"]
     row = {
-        **fit.summary,
+        **result["statistics"],
         "catalogue_label": CATALOGUE_LABEL,
         "n_ngrip_events": int(events["segment_id"].eq("NGRIP").sum()),
         "n_mis6_events": int(events["segment_id"].eq("MIS6").sum()),
@@ -257,7 +277,7 @@ def _plot_segment_timeline(axis, segment, event_phases, precession_source):
         zorder=1,
     )
     axis.scatter(
-        phases[combined_likelihood.EVENT_AGE_COLUMN],
+        phases["event_age_kyr_bp"],
         phases["precession_index"],
         s=21,
         color=color,
@@ -349,17 +369,14 @@ def _plot_rayleigh(axis, phases, rayleigh):
     )
 
 
-def _plot_phase_response(axis: plt.Axes, fit: combined_likelihood.CombinedLikelihoodFit) -> None:
+def _plot_phase_response(axis: plt.Axes, fit) -> None:
     """Plot the fitted multiplicative contribution of precession phase."""
 
-    beta = dict(zip(fit.full.terms, fit.full.beta))
+    beta = dict(zip(fit["full"].terms, fit["full"].beta))
     phase_deg = np.linspace(0.0, 360.0, 721)
-    multiplier = combined_likelihood.phase_rate_multiplier(
-        phase_deg,
-        beta["pre_phase_sin"],
-        beta["pre_phase_cos"],
-    )
-    preferred = float(fit.summary["pre_phase_preferred_deg"])
+    phase = np.deg2rad(phase_deg)
+    multiplier = np.exp(beta["pre_phase_sin"] * np.sin(phase) + beta["pre_phase_cos"] * np.cos(phase))
+    preferred = float(fit["statistics"]["pre_phase_preferred_deg"])
 
     axis.plot(phase_deg, multiplier, color=CATALOGUE_COLORS["primary"], lw=2.0)
     axis.axhline(1.0, color="#777777", lw=0.9, ls=":")
@@ -368,11 +385,11 @@ def _plot_phase_response(axis: plt.Axes, fit: combined_likelihood.CombinedLikeli
         0.04,
         0.96,
         (
-            f"G = {fit.summary['gain_bits_per_event']:.3f} bits event$^{{-1}}$\n"
-            f"LR = {fit.summary['LR_statistic']:.2f}; "
-            f"nominal p = {fit.summary['nominal_LR_p']:.3g}\n"
+            f"G = {fit['statistics']['gain_bits_per_event']:.3f} bits event$^{{-1}}$\n"
+            f"LR = {fit['statistics']['LR_statistic']:.2f}; "
+            f"nominal p = {fit['statistics']['nominal_LR_p']:.3g}\n"
             f"Preferred phase = {preferred:.1f}°\n"
-            f"Max/min rate ratio = {fit.summary['pre_phase_rate_ratio_max_vs_min']:.2f}"
+            f"Max/min rate ratio = {fit['statistics']['pre_phase_rate_ratio_max_vs_min']:.2f}"
         ),
         transform=axis.transAxes,
         ha="left",
@@ -384,7 +401,7 @@ def _plot_phase_response(axis: plt.Axes, fit: combined_likelihood.CombinedLikeli
     # Leave room for the fitted-summary label above the curve.
     axis.set_ylim(0, max(4.1, np.max(multiplier) * 1.4))
     mark_preferred_phase(
-        axis, preferred, fit.summary["pre_phase_rate_ratio_max_vs_min"],
+        axis, preferred, fit["statistics"]["pre_phase_rate_ratio_max_vs_min"],
         CATALOGUE_COLORS["primary"],
     )
     axis.set_title("Fitted warming-event rate")
@@ -416,15 +433,14 @@ def plot_results(result):
     rayleigh_axis = fig.add_subplot(grid[1, 0], projection="polar")
     response_axis = fig.add_subplot(grid[1, 1])
 
-    context = result["context"]
     event_phases = result["event_phases"]
-    precession_source = context.forcings["precession_index"]
-    _plot_segment_timeline(ngrip_axis, context.segments["NGRIP"], event_phases, precession_source)
-    _plot_segment_timeline(mis6_axis, context.segments["MIS6"], event_phases, precession_source)
+    precession_source = result["forcings"]["precession_index"]
+    _plot_segment_timeline(ngrip_axis, result["windows"].set_index("segment_id", drop=False).loc["NGRIP"], event_phases, precession_source)
+    _plot_segment_timeline(mis6_axis, result["windows"].set_index("segment_id", drop=False).loc["MIS6"], event_phases, precession_source)
     mis6_axis.set_ylabel("Precession index")
     _mark_discontinuous_axis(mis6_axis, ngrip_axis)
     _plot_rayleigh(rayleigh_axis, event_phases.pre_phase_rad.to_numpy(float), result["rayleigh"])
-    _plot_phase_response(response_axis, result["fit"])
+    _plot_phase_response(response_axis, result)
 
     _add_panel_label(mis6_axis, "a", x=-0.14)
     _add_panel_label(rayleigh_axis, "b", x=-0.21)
@@ -432,29 +448,29 @@ def plot_results(result):
     return fig
 
 
-def write_outputs(result, output_dir=OUT_DATA_DIR):
+def write_outputs(result, output_dir):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     tables = {
         "analysis_summary.csv": result["summary"],
         "event_catalogue_used.csv": result["events"],
         "event_precession_phases.csv": result["event_phases"],
-        "model_coefficients.csv": build_coefficients(result["fit"]),
+        "model_coefficients.csv": build_coefficients(result),
         "model_summary.csv": result["model_summary"],
         "likelihood_tests.csv": result["likelihood_tests"],
         "fitted_rates.csv": result["fitted_rates"],
-        "phase_sector_fit.csv": combined_likelihood.phase_sector_observed_expected(
-            result["fit"], n_sectors=18
+        "phase_sector_fit.csv": model_stats.phase_sector_observed_expected(
+            result["event_features"], result["integration_features"], result["models"], n_sectors=18,
         ),
-        "predictor_scaling.csv": result["scaling"],
-        "support.csv": combined_likelihood.support_table(result["context"]),
+        "predictor_scaling.csv": result["scaling"].reset_index().assign(weighting="nominal response time"),
+        "support.csv": result["windows"],
         "parameters_and_provenance.csv": build_parameters(result),
     }
     for name, table in tables.items():
         table.to_csv(output_dir / name, index=False, float_format="%.12g")
 
 
-def save_figure(fig, output_dir=OUT_FIG_DIR, *, paper_export=False):
+def save_figure(fig, output_dir, *, paper_export=False):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     png = output_dir / f"{RUN_NAME}.png"
@@ -474,7 +490,6 @@ def write_notes(result, notes_dir):
     notes_dir = Path(notes_dir)
     notes_dir.mkdir(parents=True, exist_ok=True)
     summary = result["summary"].iloc[0]
-    context = result["context"]
     caption = f"""NGRIP--MIS6 warming events and their conditional precession-phase association.
 
 (a) All {summary.n_source_events} inventory events on the La2004 precession index.
@@ -486,7 +501,7 @@ and dashed Rayleigh reference are scaled by the largest sector count.
 (c) Conditional phase multiplier exp(beta_sin sin(phi) + beta_cos cos(phi)).
 The models use {summary.n_response_events} response events over
 {summary.response_exposure_kyr:.3f} kyr, conditional on each record's oldest event.
-Both include inhibitory history (tau={context.history_tau_ka:g} kyr), LR04, CO2
+Both include inhibitory history (tau={HISTORY_TAU_KYR:g} kyr), LR04, CO2
 and a segment intercept; the full model adds the two phase terms. Unity denotes
 zero phase contribution. G is the in-sample gain per response event; LR p is
 nominal. Bootstrap calibration and chronology sensitivity are separate analyses.
@@ -512,27 +527,20 @@ nominal. Bootstrap calibration and chronology sensitivity are separate analyses.
     (notes_dir / f"{RUN_NAME}_Methods_and_results.txt").write_text(methods)
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--output-root", type=Path, default=PROJECT_ROOT,
-        help="Project-shaped root for result tables, figures and notes",
-    )
-    parser.add_argument("--no-paper-export", action="store_true")
-    args = parser.parse_args(argv)
+def main():
 
-    data_dir = args.output_root / "data/processed" / RUN_NAME
-    figure_dir = args.output_root / "figures" / RUN_NAME
+    data_dir = OUTPUT_ROOT / "data/processed" / RUN_NAME
+    figure_dir = OUTPUT_ROOT / "figures" / RUN_NAME
     paper_export = (
-        not args.no_paper_export
-        and args.output_root.resolve() == PROJECT_ROOT.resolve()
+        EXPORT_PAPER
+        and OUTPUT_ROOT.resolve() == PROJECT_ROOT.resolve()
     )
 
     result = run_analysis()
     write_outputs(result, data_dir)
     fig = plot_results(result)
     save_figure(fig, figure_dir, paper_export=paper_export)
-    write_notes(result, generated_notes_dir(args.output_root))
+    write_notes(result, generated_notes_dir(OUTPUT_ROOT))
 
     summary = result["summary"].iloc[0]
     print(

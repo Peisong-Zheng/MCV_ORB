@@ -5,9 +5,9 @@ import pandas as pd
 import pytest
 
 import forcing_data_pre_processing as preparation
-from toolbox import combined_likelihood, event_model
+from toolbox import event_model
 from toolbox.project_config import (
-    B2K_TO_BP1950_KA, CO2_XLSX, FORCING_DIR, LR04_XLSX, OBL_TXT,
+    PROJECT_ROOT, EVENT_CATALOGUE_CSV, B2K_TO_BP1950_KA, CO2_XLSX, FORCING_DIR, LR04_XLSX, OBL_TXT,
     ORBITAL_AGE_OFFSET_TO_BP1950_KA, PRE_TXT,
 )
 
@@ -51,20 +51,17 @@ def test_local_raw_orbital_knots_match_official_j2000_solution(prepared, path, c
 
 
 def test_prepared_and_event_phase_paths_apply_the_same_single_epoch_shift(prepared):
-    context = combined_likelihood.build_context(
-        lr04_path=prepared / "lr04.csv", co2_path=prepared / "co2.csv",
-        precession_path=prepared / "orbital.csv", phase_path=prepared / "precession_phase_anchors.csv",
-    )
     anchors = pd.read_csv(prepared / "precession_phase_anchors.csv", float_precision="round_trip")
-    np.testing.assert_array_equal(context.phase_extrema[0], anchors.age_kyr_bp)
-    np.testing.assert_array_equal(context.phase_extrema[1], anchors.phase_unwrapped_rad)
+    orbital = pd.read_csv(prepared / "orbital.csv", float_precision="round_trip")
+    phase_anchors = (anchors.age_kyr_bp.to_numpy(), anchors.phase_unwrapped_rad.to_numpy())
     ages = np.array([14.642, 50.0, 150.0, 194.238])
-    phase, extrapolated = event_model.interpolate_unwrapped_phase(ages, *context.phase_extrema)
+    phase, extrapolated = event_model.interpolate_unwrapped_phase(ages, *phase_anchors)
     expected = np.interp(ages, anchors.age_kyr_bp, anchors.phase_unwrapped_rad)
     np.testing.assert_array_equal(phase, expected)
     assert not extrapolated.any()
     events = pd.DataFrame(dict(event_id=["a", "b", "c", "d"], event_age_kyr_bp=ages))
-    actual = combined_likelihood.sample_event_phases(events)
+    actual = event_model.sample_event_phases(events,
+        (orbital.age_kyr_bp.to_numpy(), orbital.precession_index.to_numpy()), phase_anchors)
     np.testing.assert_array_equal(actual.pre_phase_unwrapped_rad, phase)
     assert ORBITAL_AGE_OFFSET_TO_BP1950_KA == B2K_TO_BP1950_KA == -0.05
 
@@ -97,10 +94,10 @@ def test_bp1950_climate_covariates_are_not_shifted(prepared):
 
 
 def test_curated_ngrip_and_pooled_ages_have_exactly_one_b2k_conversion():
-    source = pd.read_csv(combined_likelihood.PROJECT_ROOT / "NGRIP/data/processed/ngrip_warming_cooling_starts.csv")
+    source = pd.read_csv(PROJECT_ROOT / "NGRIP/data/processed/ngrip_warming_cooling_starts.csv")
     np.testing.assert_allclose(source.age_ka_bp, source.age_ka_b2k-0.05,
                                atol=1e-10, rtol=0)
-    pooled = combined_likelihood.load_event_catalogue().query("segment_id == 'NGRIP'")
+    pooled = pd.read_csv(EVENT_CATALOGUE_CSV).query("segment_id == 'NGRIP'")
     merged = pooled.merge(source[["event_label", "age_ka_bp"]], on="event_label",
                           validate="one_to_one")
     assert len(merged) == 34

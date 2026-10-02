@@ -84,7 +84,8 @@ b 的原文范围 40–60 年取中点 50，f 的 20–40 年取 30，采用 NGR
 ## 抽样脚本的结构
 
 参数集中在文件开头：10,000 条、seed=20260907、5 kyr 主网格。
-这个 seed 是旧流程 combined 分支的实际 seed。
+这个 seed 是旧流程 combined 分支的实际 seed。输出位置由 `OUT_DATA_DIR`、
+`OUT_FIG_DIR` 指定，`EXPORT_PAPER` 控制是否同步论文图片。
 
 - `chronology_process_basis`：把准备好的包络除以 2 作为工作 σ，构造累计
   方差增量，并把节点偏移线性插值到事件处。
@@ -142,10 +143,13 @@ Moseley et al. (2020) §5.2 的原文结论是外推到 120 ka 时约达 4.5%。
 从项目根目录运行：
 
 ```bash
-python NGRIP/ngrip_transition_phase_sensitivity.py --workers 3
+python NGRIP/ngrip_transition_phase_sensitivity.py
 ```
 
 也可在 `NGRIP/` 目录运行 `python ngrip_transition_phase_sensitivity.py`。
+先在脚本开头设置 `N_BOOTSTRAP`、`N_REALIZATIONS`、`SEED`、`N_WORKERS`
+（默认 3），以及独立的输入和输出路径；运行时不再传命令行参数。
+小规模检查时，把输出目录设到临时位置，避免覆盖完整集合。
 一个脚本分别分析 GS 降温和 GI 增暖，复用正文的连续时间拟合、BG 零模型
 bootstrap 及年代敏感性函数。每类使用 9,999 个 bootstrap 序列和已有的
 10,000 条 combined 年代样本，不再生成年代扰动。

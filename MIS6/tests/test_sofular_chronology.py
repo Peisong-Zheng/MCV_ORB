@@ -101,7 +101,7 @@ class FixedErrors:
         self.calls = 0
 
     def normal(self, loc, scale):
-        self.calls += 1
+        self.calls = self.calls + 1
         return self.errors.copy()
 
 

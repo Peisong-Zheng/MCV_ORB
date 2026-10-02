@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 
 import NGRIP_MIS6_likelihood_model_sensitivity as sensitivity
-from toolbox import combined_likelihood
+from toolbox import event_model
+import NGRIP_MIS6_event_phase_analysis as nominal
 
 
 @pytest.fixture(scope="module")
@@ -24,7 +25,7 @@ def test_all_nine_forms_share_exact_support(analysis):
 
 
 def test_primary_reference_is_reproduced_in_both_experiments(analysis):
-    main = combined_likelihood.fit_point_catalogue().summary
+    main = nominal.run_analysis()["statistics"]
     for variant in ("frozen_linear", "exponential"):
         row = analysis["summary"].set_index("variant").loc[variant]
         assert row.gain_bits_per_event == pytest.approx(main["gain_bits_per_event"], abs=1e-7)
@@ -32,22 +33,22 @@ def test_primary_reference_is_reproduced_in_both_experiments(analysis):
         assert row.delta_AIC_full_vs_same_support_reference == 0
 
 
-def test_polynomial_products_are_the_same_at_events_and_integral_nodes():
-    context = combined_likelihood.build_context()
-    design = sensitivity.prepare_predictors(context.events, context)
-    for frame in (design.event_frame, design.integration_frame):
+def test_polynomial_products_are_the_same_at_events_and_integral_nodes(analysis):
+    for frame in (analysis["event_inputs"], analysis["integration_features"]):
         np.testing.assert_allclose(frame.lr04_squared, frame.lr04_scaled**2)
         np.testing.assert_allclose(frame.co2_squared, frame.co2_scaled**2)
         np.testing.assert_allclose(frame.lr04_co2, frame.lr04_scaled * frame.co2_scaled)
-    assert design.context.scaling == context.scaling
 
 
 def test_elapsed_and_rectangular_histories_use_actual_events():
-    context = combined_likelihood.build_context()
-    ages = context.events.loc[context.events.segment_id.eq("NGRIP"), combined_likelihood.EVENT_AGE_COLUMN].to_numpy()
+    result = nominal.run_analysis()
+    events = result["events"]
+    ages = events.loc[events.segment_id.eq("NGRIP"), "event_age_kyr_bp"].to_numpy()
     anchor = ages[-1]
     query = np.array([anchor-1.5+1e-7, anchor-1.5-1e-7, ages[-2]])
-    frame = combined_likelihood.evaluate_features(context, query, "NGRIP", ages)
+    window = result["windows"].set_index("segment_id", drop=False).loc["NGRIP"]
+    frame = event_model.evaluate_features(query, ages, window, result["forcings"],
+        result["phase_anchors"], result["scaling"], history_variants=True)
     np.testing.assert_allclose(frame.rectangular_history_count.iloc[:2], [1., 0.])
     np.testing.assert_allclose(frame[sensitivity.ELAPSED_TERM], anchor-query)
     np.testing.assert_allclose(frame[sensitivity.LOG_ELAPSED_TERM], np.log1p(anchor-query))

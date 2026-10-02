@@ -1,71 +1,61 @@
 """Scientific checks for the separate NGRIP cooling and warming experiments."""
 from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import pytest
-
 from NGRIP import ngrip_transition_phase_sensitivity as analysis
-from toolbox import combined_likelihood as likelihood
-
+from toolbox import event_model
 
 NGRIP_DIR = Path(__file__).resolve().parents[1]
 EXPECTED = {
     "cooling": dict(count=35, anchor="GS-26", age=119.09, valid=9263,
-                    gain=0.135703244352517, p=0.04083895305343282,
-                    phase=340.0846153057898),
+                    gain=0.135703244352517, p=0.04083895305343282, phase=340.0846153057898),
     "warming": dict(count=34, anchor="GI-25", age=115.32, valid=9982,
-                    gain=0.19356196333138304, p=0.01194420970146628,
-                    phase=327.1265794732237),
+                    gain=0.19356196333138304, p=0.01194420970146628, phase=327.1265794732237),
 }
 
 
 @pytest.fixture(scope="module")
-def contexts():
-    return {kind: analysis.load_catalogue(kind) for kind in EXPECTED}
+def catalogues():
+    source = pd.read_csv(analysis.EVENT_INPUT)
+    return {kind: analysis.select_catalogue(source, kind) for kind in EXPECTED}
 
 
 @pytest.fixture(scope="module")
 def source_draws():
-    return pd.read_csv(
-        NGRIP_DIR / "data/processed/ngrip_event_age_uncertainty/ngrip_event_age_realizations.csv",
-        float_precision="round_trip",
-    )
+    return pd.read_csv(analysis.AGE_INPUT, float_precision="round_trip")
 
 
 @pytest.mark.parametrize("kind", EXPECTED)
-def test_catalogue_anchor_exposure_and_model_match_main_method(contexts, kind):
-    context, expected = contexts[kind], EXPECTED[kind]
-    events = context.events
-    assert len(events) == expected["count"]
-    assert events.event_id.is_unique
+def test_catalogue_anchor_exposure_and_model_match_main_method(catalogues, small_run, kind):
+    events, expected = catalogues[kind], EXPECTED[kind]
+    assert len(events) == expected["count"] and events.event_id.is_unique
     assert set(events.segment_id) == {"NGRIP"}
     assert events.event_age_kyr_bp.is_monotonic_increasing
     assert events.event_label.str.startswith("GS-" if kind == "cooling" else "GI-").all()
     assert events.iloc[-1].event_label == expected["anchor"]
-    segment = context.segments["NGRIP"]
-    assert segment.observation_start_kyr_bp == 12.0
-    assert segment.observation_end_kyr_bp == 123.0
-    assert segment.anchor_age_kyr_bp == pytest.approx(expected["age"])
-    assert context.response_exposure_kyr == pytest.approx(expected["age"] - 12)
-    assert context.history_tau_ka == 1.5 and context.initial_history == 0
-    assert context.reduced_terms == (likelihood.HISTORY_TERM, "lr04_scaled", "co2_scaled")
-    assert context.full_terms == context.reduced_terms + ("pre_phase_sin", "pre_phase_cos")
-
-    fit = likelihood.fit_catalogue(events, context)
-    assert fit.summary["n_response_events"] == expected["count"] - 1
-    assert fit.summary["gain_bits_per_event"] == pytest.approx(expected["gain"], abs=1e-8)
-    assert fit.summary["nominal_LR_p"] == pytest.approx(expected["p"], abs=1e-8)
-    assert fit.summary["pre_phase_preferred_deg"] == pytest.approx(expected["phase"], abs=1e-5)
-    assert fit.summary["beta_history"] <= 0
+    result, _ = small_run
+    window = result["nominal_windows"].set_index("event_type").loc[kind]
+    assert window.observation_start_kyr_bp == 12.0
+    assert window.observation_end_kyr_bp == 123.0
+    assert window.anchor_age_kyr_bp == pytest.approx(expected["age"])
+    assert analysis.HISTORY_TAU_KYR == 1.5
+    assert analysis.REDUCED_TERMS == ["intercept", analysis.HISTORY_TERM, "lr04_scaled", "co2_scaled"]
+    assert analysis.FULL_TERMS == analysis.REDUCED_TERMS + ["pre_phase_sin", "pre_phase_cos"]
+    summary = result["summary"].set_index("event_type").loc[kind]
+    assert summary.n_response_events == expected["count"] - 1
+    assert summary.response_exposure_kyr == pytest.approx(expected["age"] - 12)
+    assert summary.gain_bits_per_event == pytest.approx(expected["gain"], abs=1e-8)
+    assert summary.nominal_LR_p == pytest.approx(expected["p"], abs=1e-8)
+    assert summary.pre_phase_preferred_deg == pytest.approx(expected["phase"], abs=1e-5)
+    assert summary.beta_history <= 0
 
 
 @pytest.mark.parametrize("kind", EXPECTED)
-def test_saved_realizations_keep_label_alignment_order_and_outside_support(contexts, source_draws, kind):
-    context = contexts[kind]
-    draws, columns = analysis.load_age_realizations(context, n_realizations=10000)
-    # GS/GI labels identify the age columns; source labels may have extra suffixes.
-    expected_columns = ["age_ka_bp__" + label for label in context.events.event_label]
+def test_saved_realizations_keep_label_alignment_order_and_outside_support(catalogues, source_draws, kind):
+    events = catalogues[kind]
+    draws, columns = analysis.select_age_realizations(source_draws, events, n_realizations=10000)
+    expected_columns = ["age_ka_bp__" + label for label in events.event_label]
     assert columns == expected_columns
     assert len(draws) == 10000 and draws.realization_id.is_unique
     pd.testing.assert_series_equal(draws.realization_id, source_draws.realization_id)
@@ -75,34 +65,23 @@ def test_saved_realizations_keep_label_alignment_order_and_outside_support(conte
     valid = (ages.min(axis=1) >= 12) & (ages.max(axis=1) <= 123)
     assert valid.sum() == EXPECTED[kind]["valid"]
     assert (ages.min(axis=1) < 12).sum() == 0
-    # Unsupported rows remain present for downstream flagging, not redrawing.
     assert (~valid).sum() == 10000 - EXPECTED[kind]["valid"]
 
 
 @pytest.fixture(scope="module")
 def small_run():
-    fitted = likelihood.fit_catalogue
+    build = event_model.build_design
     calls = []
-
-    def inspect_refit(events, context, **kwargs):
-        fit = fitted(events, context, **kwargs)
-        # Check the actual refits, including simulated and age-perturbed events.
-        assert fit.context.scaling == context.scaling
+    def inspect(events, windows, forcings, anchors, scaling, **kwargs):
+        event_x, integral_x = build(events, windows, forcings, anchors, scaling, **kwargs)
         ages = events.event_age_kyr_bp.to_numpy(float)
-        frame = fit.design.event_frame
-        expected_history = [np.exp(-(ages[ages > age] - age) / 1.5).sum()
-                            for age in frame.age_kyr_bp]
-        np.testing.assert_allclose(frame[likelihood.HISTORY_TERM], expected_history, atol=1e-13)
-        assert fit.design.weights.sum() == pytest.approx(ages.max() - 12)
-        calls.append(dict(catalogue_id=context.catalogue_id,
-                          fixed_support=kwargs.get("fixed_support", False),
-                          scaling={name: scale.copy() for name, scale in context.scaling.items()},
-                          nominal_anchor=context.segments["NGRIP"].anchor_age_kyr_bp,
-                          fitted_anchor=fit.context.segments["NGRIP"].anchor_age_kyr_bp))
-        return fit
-
+        expected_history = [np.exp(-(ages[ages > age] - age) / 1.5).sum() for age in event_x.age_kyr_bp]
+        np.testing.assert_allclose(event_x[analysis.HISTORY_TERM], expected_history, atol=1e-13)
+        assert integral_x.weight.sum() == pytest.approx(windows.response_end_kyr_bp.item() - 12)
+        calls.append((windows.copy(), scaling.copy()))
+        return event_x, integral_x
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(likelihood, "fit_catalogue", inspect_refit)
+        patch.setattr(event_model, "build_design", inspect)
         result = analysis.run_analysis(n_bootstrap=2, n_realizations=3,
                                        seed=20260921, n_workers=1, show_progress=False)
     return result, calls
@@ -121,20 +100,14 @@ def test_small_analysis_uses_plus_one_p_valid_age_denominators_and_fixed_scaling
         assert len(age) == 3 and age.fit_valid.all()
         exceedances = (bootstrap.LR_statistic >= summary.LR_statistic).sum()
         assert summary.empirical_p_plus_one == pytest.approx((1 + exceedances) / 3)
-        assert summary.n_failed_replicates == 0
-        assert age_summary.n_valid == 3
-        assert age_summary.fraction_nominal_p_below_0p05 == pytest.approx(
-            age.loc[age.fit_valid, "nominal_LR_p"].lt(.05).mean())
-
-        context = result["contexts"][kind]
-        refits = [call for call in calls if call["catalogue_id"] == context.catalogue_id]
-        assert all(call["scaling"] == context.scaling for call in refits)
-        simulations = [call for call in refits if call["fixed_support"]]
-        assert len(simulations) == 2
-        assert all(call["fitted_anchor"] == call["nominal_anchor"] for call in simulations)
-        # Age perturbations move the anchor and exposure, while scaling is fixed.
-        assert sum(call["fitted_anchor"] != call["nominal_anchor"] for call in refits) == 3
-        assert result["fits"][kind].context.scaling == context.scaling
+        assert summary.n_failed_replicates == 0 and age_summary.n_valid == 3
+        assert age_summary.fraction_nominal_p_below_0p05 == pytest.approx(age.nominal_LR_p.lt(.05).mean())
+        scaling = result["nominal_scaling"].query("event_type == @kind").drop(columns="event_type").set_index("forcing_id")
+        selected = [window for window, scales in calls if scales.equals(scaling)]
+        assert len(selected) == 6  # One nominal, two BG simulations, three chronological refits.
+        anchors = np.array([window.anchor_age_kyr_bp.item() for window in selected])
+        assert (anchors == EXPECTED[kind]["age"]).sum() == 3
+        assert (anchors != EXPECTED[kind]["age"]).sum() == 3
 
 
 def test_small_analysis_reproduces_across_worker_counts(small_run):

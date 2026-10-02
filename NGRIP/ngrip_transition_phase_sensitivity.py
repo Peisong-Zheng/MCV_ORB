@@ -6,7 +6,6 @@ Reuses the main continuous-time likelihood, BG bootstrap and saved combined
 chronology ensemble. GI and GS are fitted separately, not as independent data.
 Source: Rasmussen et al. (2014), doi:10.1016/j.quascirev.2014.09.007.
 """
-import argparse
 import hashlib
 import os
 from pathlib import Path
@@ -18,10 +17,14 @@ os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "mcv_orb
 for variable in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
     os.environ[variable] = "1"
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import numpy as np
 import pandas as pd
-import NGRIP_MIS6_likelihood_bootstrap as bootstrap
-from toolbox import age_sensitivity, combined_likelihood as likelihood
-from toolbox.project_config import PROJECT_ROOT, LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV
+from toolbox import age_sensitivity, event_model, model_stats, sampling
+from toolbox.point_process import fit_point_process
+from toolbox.project_config import (
+    PROJECT_ROOT, LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV,
+    OBSERVATION_SEGMENTS_CSV, MODEL_VERSION,
+)
 from toolbox.project_config import generated_notes_dir
 
 ROOT = PROJECT_ROOT / "NGRIP"
@@ -34,30 +37,32 @@ EVENT_TYPES = ("cooling", "warming")
 N_BOOTSTRAP = 9_999
 N_REALIZATIONS = 10_000
 SEED = 20260921
+N_WORKERS = 3
+HISTORY_TAU_KYR = 1.5
+HISTORY_TERM = "same_type_exponential_history"
+REDUCED_TERMS = ["intercept", HISTORY_TERM, "lr04_scaled", "co2_scaled"]
+FULL_TERMS = REDUCED_TERMS + ["pre_phase_sin", "pre_phase_cos"]
 
 
-def load_catalogue(event_type):
-    """Use the main NGRIP support, conditioning on this type's oldest event."""
+def select_catalogue(raw, event_type):
+    """Keep one transition type and its original BP1950 ages."""
     if event_type not in EVENT_TYPES:
         raise ValueError("event_type must be cooling or warming")
-    raw = pd.read_csv(EVENT_INPUT)
     events = raw.loc[raw.event_type.eq(event_type)].sort_values("age_ka_bp").reset_index(drop=True)
     if len(events) != {"cooling": 35, "warming": 34}[event_type] or events.event_label.duplicated().any():
         raise ValueError("Unexpected NGRIP event count or duplicate labels")
     # These ages are already BP1950. The common core explicitly uses u=anchor-age.
-    events[likelihood.EVENT_AGE_COLUMN] = events.age_ka_bp
+    events["event_age_kyr_bp"] = events.age_ka_bp
     events["event_id"] = "NGRIP:" + events.event_label
     events["segment_id"] = "NGRIP"
-    support = likelihood.load_observation_segments().query("segment_id == 'NGRIP'").copy()
-    return likelihood.build_context(support, events=events, catalogue_id=f"ngrip_{event_type}")
+    return events
 
 
-def load_age_realizations(context, n_realizations=N_REALIZATIONS):
+def select_age_realizations(source, events, n_realizations=N_REALIZATIONS):
     """Keep original IDs and label correspondence; never sort perturbed ages."""
-    source = pd.read_csv(AGE_INPUT)
     if not 1 <= n_realizations <= len(source):
         raise ValueError("Requested age realizations exceed the available ensemble")
-    columns = [f"age_ka_bp__{label}" for label in context.events.event_label]
+    columns = [f"age_ka_bp__{label}" for label in events.event_label]
     draws = source.loc[:, ["realization_id", *columns]].iloc[:n_realizations].copy()
     if draws.realization_id.isna().any() or draws.realization_id.duplicated().any():
         raise ValueError("Age realizations must have unique, nonmissing IDs")
@@ -66,44 +71,81 @@ def load_age_realizations(context, n_realizations=N_REALIZATIONS):
 
 def run_analysis(*, n_bootstrap=N_BOOTSTRAP, n_realizations=N_REALIZATIONS,
                  seed=SEED, n_workers=3, show_progress=True):
+    raw = pd.read_csv(EVENT_INPUT)
+    source_ages = pd.read_csv(AGE_INPUT)
+    observations = pd.read_csv(OBSERVATION_SEGMENTS_CSV).query("segment_id == 'NGRIP'").copy()
+    lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
+    co2 = pd.read_csv(CO2_CSV, float_precision="round_trip")
+    orbital = pd.read_csv(ORBITAL_CSV, float_precision="round_trip")
+    anchors = pd.read_csv(PRECESSION_PHASE_CSV, float_precision="round_trip")
+    forcings = {"lr04": (lr04.age_kyr_bp.to_numpy(), lr04.lr04.to_numpy()),
+                "co2": (co2.age_kyr_bp.to_numpy(), co2.co2_ppm.to_numpy()),
+                "precession_index": (orbital.age_kyr_bp.to_numpy(), orbital.precession_index.to_numpy())}
+    phase_anchors = (anchors.age_kyr_bp.to_numpy(), anchors.phase_unwrapped_rad.to_numpy())
     summaries, age_summaries, boot_tables, age_tables = [], [], [], []
-    fits, contexts = {}, {}
+    nominal_events, nominal_coefficients, nominal_windows, nominal_scaling = [], [], [], []
     for index, event_type in enumerate(EVENT_TYPES):
-        context = load_catalogue(event_type)
-        point = likelihood.fit_catalogue(context.events, context)
-        if not point.summary["all_models_converged"] or not point.summary["likelihood_nesting_ok"]:
+        events = select_catalogue(raw, event_type)
+        windows = event_model.response_windows(events, observations)
+        scaling = event_model.nominal_scaling({name: forcings[name] for name in ("lr04", "co2")}, windows)
+        event_x, integral_x = event_model.build_design(
+            events, windows, forcings, phase_anchors, scaling, tau=HISTORY_TAU_KYR,
+        )
+        reduced = fit_point_process(event_x[REDUCED_TERMS], integral_x[REDUCED_TERMS],
+                                    integral_x.weight, REDUCED_TERMS, nonpositive_terms=(HISTORY_TERM,))
+        full = fit_point_process(event_x[FULL_TERMS], integral_x[FULL_TERMS],
+                                 integral_x.weight, FULL_TERMS, nonpositive_terms=(HISTORY_TERM,),
+                                 start_beta=np.r_[reduced.beta, 0., 0.])
+        point = model_stats.fit_summary(reduced, full, event_x, windows, n_source_events=len(events),
+                                        catalogue_id=f"ngrip_{event_type}", tau=HISTORY_TAU_KYR)
+        if not point["all_models_converged"] or not point["likelihood_nesting_ok"]:
             raise RuntimeError(f"Invalid nominal {event_type} fit")
         if show_progress:
-            print(f"\nNGRIP {event_type}: nominal p={point.summary['nominal_LR_p']:.6g}, "
-                  f"phase={point.summary['pre_phase_preferred_deg']:.2f} deg", flush=True)
+            print(f"\nNGRIP {event_type}: nominal p={point['nominal_LR_p']:.6g}, "
+                  f"phase={point['pre_phase_preferred_deg']:.2f} deg", flush=True)
 
-        # Simulate the fitted BG model at nominal ages, exactly as in the paper.
-        replicates, failures = bootstrap.run_bootstrap(
-            point, context, n_bootstrap=n_bootstrap, seed=seed + index,
-            n_workers=n_workers, show_progress=show_progress)
-        summary = bootstrap.build_summary(point, replicates, failures)
+        # BG simulations retain nominal anchors, endpoints and scaling.
+        replicates, failures = sampling.phase_bootstrap(
+            events, windows, forcings, phase_anchors, scaling, reduced, full,
+            reduced_terms=REDUCED_TERMS, full_terms=FULL_TERMS, tau=HISTORY_TAU_KYR,
+            n_bootstrap=n_bootstrap, seed=seed + index, workers=n_workers, show_progress=show_progress)
+        summary = model_stats.phase_bootstrap_summary(point, replicates, failures)
         summary.insert(0, "event_type", event_type)
         summary["seed"] = seed + index
         summaries.append(summary)
         boot_tables.append(replicates.assign(event_type=event_type))
 
-        # Each direction uses the same source rows, including all invalid draws.
-        # Shared scaling remains nominal; each age draw rebuilds anchor/history.
-        draws, columns = load_age_realizations(context, n_realizations)
+        # Each age row moves its own anchor; unsupported rows are retained.
+        draws, columns = select_age_realizations(source_ages, events, n_realizations)
         age_results, diagnostics = age_sensitivity.fit_realizations(
-            context, draws, columns, n_workers=n_workers, show_progress=show_progress)
-        age_summary = age_sensitivity.summarize(age_results, point.summary)
+            events, observations, forcings, phase_anchors, scaling, REDUCED_TERMS, FULL_TERMS,
+            draws, columns, catalogue_id=f"ngrip_{event_type}", tau=HISTORY_TAU_KYR,
+            n_workers=n_workers, show_progress=show_progress)
+        age_summary = age_sensitivity.summarize(age_results, point)
         age_summary.insert(0, "event_type", event_type)
         age_summary["n_outside_support"] = age_results.invalid_reason.str.startswith("outside_").sum()
         age_summary["n_numerical_failures"] = diagnostics["n_numerical_failures"]
         age_summaries.append(age_summary)
         age_tables.append(age_sensitivity.compact_results(age_results).assign(event_type=event_type))
-        fits[event_type], contexts[event_type] = point, context
+        events["event_role"] = np.where(events.event_age_kyr_bp.eq(windows.anchor_age_kyr_bp.item()),
+                                        "conditioning", "response")
+        nominal_events.append(events[["event_label", "source_event_label", "event_age_kyr_bp",
+                                       "event_role", "event_type"]])
+        nominal_coefficients.append(pd.DataFrame([
+            dict(model_id=name, term=term, beta=beta, rate_ratio_per_unit=np.exp(beta), event_type=event_type)
+            for name, model in (("reduced", reduced), ("full", full))
+            for term, beta in zip(model.terms, model.beta)
+        ]))
+        nominal_windows.append(windows.assign(event_type=event_type))
+        nominal_scaling.append(scaling.reset_index().assign(event_type=event_type))
     return dict(summary=pd.concat(summaries, ignore_index=True),
                 age_summary=pd.concat(age_summaries, ignore_index=True),
                 bootstrap_replicates=pd.concat(boot_tables, ignore_index=True),
                 age_realizations=pd.concat(age_tables, ignore_index=True),
-                fits=fits, contexts=contexts, n_workers=n_workers)
+                nominal_events=pd.concat(nominal_events, ignore_index=True),
+                nominal_coefficients=pd.concat(nominal_coefficients, ignore_index=True),
+                nominal_windows=pd.concat(nominal_windows, ignore_index=True),
+                nominal_scaling=pd.concat(nominal_scaling, ignore_index=True), n_workers=n_workers)
 
 
 def save_results(result, output_dir=OUT_DIR):
@@ -127,32 +169,28 @@ def save_results(result, output_dir=OUT_DIR):
             "invalid_reason", "n_response_events", "response_exposure_kyr", "gain_bits_per_event",
             "LR_statistic", "nominal_LR_p", "pre_phase_preferred_deg",
             "pre_phase_rate_ratio_max_vs_min", "beta_history"]],
-        "nominal_coefficients.csv": pd.concat([
-            likelihood.coefficient_table(fit).assign(event_type=kind)
-            for kind, fit in result["fits"].items()], ignore_index=True),
-        "nominal_events.csv": pd.concat([
-            fit.design.all_events[["event_label", "source_event_label", likelihood.EVENT_AGE_COLUMN,
-                                   "event_role", "event_type"]]
-            for fit in result["fits"].values()], ignore_index=True),
+        "nominal_coefficients.csv": result["nominal_coefficients"],
+        "nominal_events.csv": result["nominal_events"],
     }
     parameters = []
-    for kind, context in result["contexts"].items():
+    for kind in EVENT_TYPES:
         row = result["summary"].set_index("event_type").loc[kind]
-        values = dict(model_version=likelihood.MODEL_VERSION, age_epoch="BP1950",
-            history_tau_kyr=context.history_tau_ka, history_domain="beta_H <= 0",
-            history_events="same transition type only", initial_unobserved_history=context.initial_history,
-            quadrature_order=context.quadrature_order, seed=int(row.seed), n_bootstrap=int(row.n_bootstrap),
+        values = dict(model_version=MODEL_VERSION, age_epoch="BP1950",
+            history_tau_kyr=HISTORY_TAU_KYR, history_domain="beta_H <= 0",
+            history_events="same transition type only", initial_unobserved_history=0.,
+            quadrature_order=4, seed=int(row.seed), n_bootstrap=int(row.n_bootstrap),
             n_workers=result["n_workers"],
             n_age_realizations=len(result["age_realizations"].query("event_type == @kind")),
-            reduced_terms=" + ".join(context.reduced_terms), full_terms=" + ".join(context.full_terms),
+            reduced_terms=" + ".join(REDUCED_TERMS[1:]), full_terms=" + ".join(FULL_TERMS[1:]),
             age_rejections="outside observation support; no truncation or replacement",
             p_rule="bootstrap: (1+exceedances)/(B+1); age fraction: nominal LR p<0.05 among valid fits")
-        values.update(vars(context.segments["NGRIP"]))
-        for forcing, scaling in context.scaling.items():
-            values.update({f"{forcing}_{key}": value for key, value in scaling.items()})
+        values.update(result["nominal_windows"].set_index("event_type").loc[kind].to_dict())
+        scales = result["nominal_scaling"].query("event_type == @kind").set_index("forcing_id")
+        for forcing, scale in scales.drop(columns="event_type").iterrows():
+            values.update({f"{forcing}_{key}": value for key, value in scale.items()})
         parameters.extend(dict(event_type=kind, parameter=key, value=value) for key, value in values.items())
-    paths = [EVENT_INPUT, AGE_INPUT, likelihood.OBSERVATION_SEGMENTS_CSV, Path(__file__),
-             Path(bootstrap.__file__), Path(likelihood.__file__), Path(age_sensitivity.__file__),
+    paths = [EVENT_INPUT, AGE_INPUT, OBSERVATION_SEGMENTS_CSV, Path(__file__),
+             Path(sampling.__file__), Path(age_sensitivity.__file__),
              PROJECT_ROOT / "toolbox/point_process.py", PROJECT_ROOT / "toolbox/model_stats.py",
              PROJECT_ROOT / "toolbox/event_model.py",
              PROJECT_ROOT / "toolbox/project_config.py",
@@ -174,8 +212,8 @@ def write_notes(result, notes_dir=NOTE_DIR):
     for kind in EVENT_TYPES:
         s = result["summary"].set_index("event_type").loc[kind]
         a = result["age_summary"].set_index("event_type").loc[kind]
-        anchor = result["contexts"][kind].segments["NGRIP"].anchor_age_kyr_bp
-        lines += [kind.upper(),
+        anchor = result["nominal_windows"].set_index("event_type").loc[kind, "anchor_age_kyr_bp"]
+        lines = lines + [kind.upper(),
             f"Inventory={int(s.n_source_events)}; fitted={int(s.n_response_events)}; anchor={anchor:.3f} kyr BP; response duration={s.response_exposure_kyr:.3f} kyr.",
             f"G={s.gain_bits_per_event:.6f} bits/event; LR={s.LR_statistic:.6f}; nominal p={s.nominal_LR_p:.6g}; preferred phase={s.pre_phase_preferred_deg:.2f} deg; phase rate ratio={s.pre_phase_rate_ratio_max_vs_min:.3f}.",
             f"Bootstrap B={int(s.n_bootstrap)}; exceedances={s.n_bootstrap_exceeding_or_equal_observed:g}; p={s.empirical_p_plus_one:.6g}; 95% Monte Carlo interval=[{s.empirical_p_ci95_low:.6g}, {s.empirical_p_ci95_high:.6g}]; failed={int(s.n_failed_replicates)}; seed={int(s.seed)}.",
@@ -186,20 +224,12 @@ def write_notes(result, notes_dir=NOTE_DIR):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--n-bootstrap", type=int, default=N_BOOTSTRAP)
-    parser.add_argument("--n-realizations", type=int, default=N_REALIZATIONS)
-    parser.add_argument("--seed", type=int, default=SEED)
-    parser.add_argument("--workers", type=int, default=3)
-    parser.add_argument("--output-dir", type=Path, default=OUT_DIR)
-    parser.add_argument("--notes-dir", type=Path, default=NOTE_DIR)
-    args = parser.parse_args()
-    result = run_analysis(n_bootstrap=args.n_bootstrap, n_realizations=args.n_realizations,
-                          seed=args.seed, n_workers=args.workers)
-    save_results(result, args.output_dir)
+    result = run_analysis(n_bootstrap=N_BOOTSTRAP, n_realizations=N_REALIZATIONS,
+                          seed=SEED, n_workers=N_WORKERS)
+    save_results(result, OUT_DIR)
     if result["summary"].n_failed_replicates.any() or result["age_summary"].n_numerical_failures.any():
         raise RuntimeError("Unresolved numerical fits saved for inspection; final notes withheld")
-    write_notes(result, args.notes_dir)
+    write_notes(result, NOTE_DIR)
     print(result["summary"][["event_type", "gain_bits_per_event", "pre_phase_preferred_deg",
                                "nominal_LR_p", "empirical_p_plus_one"]].to_string(index=False))
     print(result["age_summary"][["event_type", "n_valid", "fraction_nominal_p_below_0p05"]].to_string(index=False))

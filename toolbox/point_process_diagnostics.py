@@ -6,16 +6,10 @@ ordinary KS reference p values are deliberately not used here. See Gerhard &
 Gerstner (2010), NeurIPS, on point-process model checking by time rescaling.
 """
 
-from concurrent.futures import ProcessPoolExecutor
-import hashlib
-import multiprocessing as mp
-from pathlib import Path
-import time
 
 import numpy as np
 import pandas as pd
 from scipy.stats import beta as beta_distribution
-from toolbox.project_config import generated_notes_dir
 
 
 GOF_STATISTICS = ("ks_uniform", "adjacent_dependence")
@@ -62,8 +56,8 @@ def residual_statistics(events_by_segment, cumulative_at_events_by_segment,
         uniform_samples.append(uniform)
         local_sum = float(np.sum((uniform[:-1] - 0.5) * (uniform[1:] - 0.5)))
         local_pairs = max(len(uniform) - 1, 0)
-        adjacent_sum += local_sum
-        n_pairs += local_pairs
+        adjacent_sum = adjacent_sum + local_sum
+        n_pairs = n_pairs + local_pairs
 
         tail = np.nan if tail_integrals is None else float(tail_integrals[segment_id])
         if tail_integrals is not None and (not np.isfinite(tail) or tail < 0):
@@ -171,197 +165,22 @@ def bootstrap_summary(observed, replicates, statistics=GOF_STATISTICS, adjust_ho
     return summary
 
 
-def run_refit_bootstrap(simulate, fit, statistics, *, n_replicates, seed,
-                        statistic_names=GOF_STATISTICS):
-    """Run simulate(rng), fit(events), statistics(events, fit) for every draw.
+def select_sampling_gof_replicates(draws, settings, saved_generator, full_model, *,
+                                   response_exposure_kyr, tau=1.5, quadrature_order=4):
+    """Check the saved nominal generator and keep all B_sampling rows, including failures."""
+    from toolbox.project_config import MODEL_VERSION
 
-    Callbacks close over a fixed generator, conditioning events and support.
-    Known numerical failures may raise DiagnosticFailure; programming/input
-    errors propagate. Each replicate has its own seed and is never replaced.
-    A legal empty catalogue must be handled by fit/statistics, not raised as a
-    numerical failure. Use statistic_names=("LR_history",) for a history test.
-    """
-    if not isinstance(n_replicates, (int, np.integer)) or n_replicates < 1:
-        raise ValueError("n_replicates must be a positive integer")
-    if not isinstance(seed, (int, np.integer)) or seed < 0:
-        raise ValueError("seed must be a nonnegative integer")
-    rows = []
-    for replicate in range(n_replicates):
-        rng = np.random.default_rng(np.random.SeedSequence([seed, replicate]))
-        row = dict(replicate_id=replicate + 1, seed=int(seed), fit_valid=True, invalid_reason="")
-        try:
-            events = simulate(rng)
-            fitted = fit(events)
-            values = statistics(events, fitted)
-            for name in statistic_names:
-                value = float(values[name])
-                if not np.isfinite(value) or value < 0:
-                    raise DiagnosticFailure(f"Invalid diagnostic statistic: {name}")
-                row[name] = value
-            if "status" in values:
-                row["residual_status"] = str(values["status"])
-        except DiagnosticFailure as error:
-            row.update(fit_valid=False, invalid_reason=str(error))
-            row.update({name: np.nan for name in statistic_names})
-        rows.append(row)
-    return pd.DataFrame(rows)
-
-
-def _history_pair(design):
-    from toolbox import combined_likelihood as likelihood
-
-    full_terms = design.context.full_terms
-    no_history_terms = tuple(term for term in full_terms if term != likelihood.HISTORY_TERM)
-    if len(no_history_terms) != len(full_terms) - 1:
-        raise ValueError("History comparison must remove exactly one fixed-tau term")
-    no_history = likelihood.fit_terms(design, no_history_terms)
-    start = np.zeros(len(full_terms) + 1)
-    if np.isfinite(no_history.beta).all():
-        for term, coefficient in zip(no_history.terms, no_history.beta):
-            start[("intercept", *full_terms).index(term)] = coefficient
-    full = likelihood.fit_terms(design, full_terms, start_beta=start)
-    return no_history, full
-
-
-_CONTEXT = _PREPARED = _KIND = None
-
-
-def _initialize_model_bootstrap(context, generator, kind):
-    from toolbox import combined_likelihood as likelihood
-
-    global _CONTEXT, _PREPARED, _KIND
-    _CONTEXT, _KIND = context, kind
-    _PREPARED = likelihood.prepare_model_simulation(context, generator)
-
-
-def _model_bootstrap_replicate(task):
-    from toolbox import combined_likelihood as likelihood
-    from toolbox.point_process import PointProcessFitError
-
-    replicate, seed = task
-    rng = np.random.default_rng(np.random.SeedSequence([seed, int(_KIND == "gof"), replicate]))
-    row = dict(replicate_id=replicate + 1, seed=seed, fit_valid=True, invalid_reason="")
-    names = ("LR_history",) if _KIND == "history" else GOF_STATISTICS
-    try:
-        events = likelihood.simulate_prepared_events(_PREPARED, rng)
-        design = likelihood.prepare_catalogue(events, _CONTEXT, fixed_support=True)
-        row["n_response_events"] = len(design.event_frame)
-        if _KIND == "history":
-            no_history, full = _history_pair(design)
-            row["LR_history"] = likelihood_ratio(full.log_likelihood, no_history.log_likelihood)
-            row["beta_history"] = dict(zip(full.terms, full.beta))[likelihood.HISTORY_TERM]
-            row["response_status"] = full.status
-        else:
-            full = likelihood.fit_terms(design, _CONTEXT.full_terms)
-            result = residual_statistics(*likelihood.rescaled_event_intervals(design, full))
-            row.update(result["statistics"])
-            row.update(n_intervals=result["n_intervals"], n_adjacent_pairs=result["n_adjacent_pairs"],
-                       residual_status=result["status"])
-    except (PointProcessFitError, DiagnosticFailure) as error:
-        row.update(fit_valid=False, invalid_reason=str(error))
-        row.update({name: np.nan for name in names})
-    return row
-
-
-def run_model_bootstrap(context, generator, kind, *, n_replicates, seed, workers=1,
-                         show_progress=True):
-    """Calibrate the history LR or two full-model diagnostics with refits.
-
-    The history generator has no history term; the GOF generator is the full
-    point fit. Context, anchors and support are immutable during simulations.
-    Failed seeds stay in the output; changing worker count does not change the
-    data generated for any replicate. No full-model GOF is simulated implicitly.
-    """
-    from toolbox import combined_likelihood as likelihood
-
-    if kind not in ("history", "gof"):
-        raise ValueError("Bootstrap kind must be history or gof")
-    if not isinstance(n_replicates, (int, np.integer)) or n_replicates < 1:
-        raise ValueError("n_replicates must be a positive integer")
-    if not isinstance(workers, (int, np.integer)) or workers < 1 or seed < 0:
-        raise ValueError("Require a positive worker count and nonnegative seed")
-    expected = set(("intercept", *context.full_terms))
-    if kind == "history":
-        expected.remove(likelihood.HISTORY_TERM)
-    if set(generator.terms) != expected:
-        raise ValueError("Bootstrap generator does not represent the requested null")
-    tasks = [(replicate, seed) for replicate in range(n_replicates)]
-    started = time.perf_counter()
-    rows = []
-
-    def collect(iterator):
-        for row in iterator:
-            rows.append(row)
-            if show_progress and (len(rows) % 500 == 0 or len(rows) == n_replicates):
-                print(f"{context.catalogue_id}: {kind} bootstrap {len(rows):,}/{n_replicates:,} "
-                      f"({time.perf_counter() - started:.0f} s)", flush=True)
-
-    if workers == 1:
-        _initialize_model_bootstrap(context, generator, kind)
-        collect(map(_model_bootstrap_replicate, tasks))
-    else:
-        with ProcessPoolExecutor(max_workers=workers, mp_context=mp.get_context("spawn"),
-                                 initializer=_initialize_model_bootstrap,
-                                 initargs=(context, generator, kind)) as pool:
-            collect(pool.map(_model_bootstrap_replicate, tasks, chunksize=20))
-    return pd.DataFrame(rows)
-
-
-def run_history_test(context, *, n_bootstrap=4999, seed=20260914, workers=1,
-                     show_progress=True):
-    """Test beta_H=0 after retaining phase and background on identical support."""
-    from toolbox import combined_likelihood as likelihood
-
-    design = likelihood.prepare_catalogue(context.events, context, fixed_support=True)
-    no_history, full = _history_pair(design)
-    observed = {"LR_history": likelihood_ratio(full.log_likelihood, no_history.log_likelihood)}
-    replicates = run_model_bootstrap(context, no_history, "history", n_replicates=n_bootstrap,
-                                     seed=seed, workers=workers, show_progress=show_progress)
-    summary = bootstrap_summary(observed, replicates, statistics=("LR_history",), adjust_holm=False)
-    beta = dict(zip(full.terms, full.beta))[likelihood.HISTORY_TERM]
-    summary = summary.assign(catalogue_id=context.catalogue_id, beta_history=beta,
-                             history_rate_multiplier=np.exp(beta),
-                             loglik_no_history=no_history.log_likelihood,
-                             loglik_full=full.log_likelihood, n_response_events=len(design.event_frame),
-                             response_exposure_kyr=context.response_exposure_kyr,
-                             null_model="background + phase, no history",
-                             parameter_domain="beta_H <= 0; zero is a boundary")
-    coefficients = pd.DataFrame([dict(model_id=name, term=term, beta=coefficient)
-        for name, model in (("no_history", no_history), ("full", full))
-        for term, coefficient in zip(model.terms, model.beta)])
-    return dict(history_test=summary, history_replicates=replicates, history_coefficients=coefficients)
-
-
-def load_sampling_gof_replicates(source, context, *, full_model=None):
-    """Reuse all nominal-age sampling refits from the S4 effect experiment.
-
-    Select by scenario, never by fit success. Combined chronology/sampling
-    draws have different generators and cannot calibrate nominal-model fit.
-    """
-    from toolbox import combined_likelihood as likelihood
-
-    source = Path(source)
-    settings = pd.read_csv(source.parent / "parameters_and_provenance.csv").set_index("parameter").value
-    tau = settings.get("history_tau_ka", settings.get("history_tau_kyr"))
-    if (settings["model_version"] != likelihood.MODEL_VERSION or
-            float(tau) != context.history_tau_ka or
-            int(settings.get("quadrature_order", 4)) != context.quadrature_order):
-        raise ValueError("S4 model settings differ from the diagnostic context")
-
-    if full_model is None:
-        design = likelihood.prepare_catalogue(context.events, context, fixed_support=True)
-        full_model = likelihood.fit_terms(design, context.full_terms)
-    saved = pd.read_csv(source.parent / "point_generator.csv").rename(
-        columns=lambda name: name.removeprefix("beta__"))
+    saved_tau = settings.get("history_tau_ka", settings.get("history_tau_kyr"))
+    if (settings["model_version"] != MODEL_VERSION or float(saved_tau) != tau
+            or int(settings.get("quadrature_order", 4)) != quadrature_order):
+        raise ValueError("S4 model settings differ from the diagnostic model")
+    saved = saved_generator.rename(columns=lambda name: name.removeprefix("beta__"))
     if len(saved) != 1 or set(saved.columns) != set(full_model.terms):
         raise ValueError("S4 generator does not contain the current full-model terms")
     np.testing.assert_allclose(saved.loc[0, list(full_model.terms)].to_numpy(float), full_model.beta,
-                               rtol=1e-7, atol=1e-8,
-                               err_msg="S4 generator differs from the current nominal fit")
-
+        rtol=1e-7, atol=1e-8, err_msg="S4 generator differs from the current nominal fit")
     columns = ["replicate_id", "scenario", "outer_id", "seed", "fit_valid", "invalid_reason",
                "response_exposure_kyr", "n_response_events", *GOF_STATISTICS, "residual_status"]
-    draws = pd.read_csv(source, usecols=columns)
     sampling = draws.loc[draws.scenario.eq("B_sampling"), columns].reset_index(drop=True)
     if not sampling.fit_valid.isin([True, False]).all():
         raise ValueError("S4 nominal sampling draws need an explicit fit status")
@@ -370,119 +189,22 @@ def load_sampling_gof_replicates(source, context, *, full_model=None):
         raise ValueError("S4 nominal sampling ensemble is incomplete or has duplicate IDs")
     if not sampling.outer_id.eq(0).all() or not sampling.seed.eq(int(settings["seed"])).all():
         raise ValueError("S4 nominal sampling draws have inconsistent generators or seeds")
-    np.testing.assert_allclose(sampling.response_exposure_kyr, context.response_exposure_kyr,
-                               rtol=1e-10, atol=1e-10,
-                               err_msg="S4 sampling draws use different response exposure")
-    provenance = dict(gof_source=str(source),
-                      gof_bootstrap_replicates=len(sampling), gof_seed=int(settings["seed"]),
-                      gof_source_role="S4 nominal B_sampling full-model refits only")
-    return sampling, provenance
+    np.testing.assert_allclose(sampling.response_exposure_kyr, response_exposure_kyr,
+        rtol=1e-10, atol=1e-10, err_msg="S4 sampling draws use different response exposure")
+    return sampling
 
 
-def run_gof(context, *, replicates=None, n_bootstrap=1999, seed=20260915, workers=1,
-            show_progress=True, full_model=None):
-    """Assess full-model fit, or summarize diagnostics saved during full refits.
+def gof_results(event_features, integration_features, windows, full_model, replicates, *, catalogue_id):
+    """Summarize observed residuals against nominal full-model refits."""
+    from toolbox.event_model import rescaled_event_intervals
 
-    Supplying replicates reuses a single nominal full-model experiment. Age
-    ensembles, reduced-model simulations and mixed chronology generators must
-    not be passed as that calibration sample.
-    """
-    from toolbox import combined_likelihood as likelihood
-
-    design = likelihood.prepare_catalogue(context.events, context, fixed_support=True)
-    if full_model is None:
-        full_model = likelihood.fit_terms(design, context.full_terms)
-    observed = residual_statistics(*likelihood.rescaled_event_intervals(design, full_model))
-    if replicates is None:
-        replicates = run_model_bootstrap(context, full_model, "gof", n_replicates=n_bootstrap,
-                                         seed=seed, workers=workers, show_progress=show_progress)
     if "scenario" in replicates and not replicates.scenario.eq("B_sampling").all():
         raise ValueError("GOF calibration must contain only nominal B_sampling full refits")
+    observed = residual_statistics(*rescaled_event_intervals(
+        event_features, integration_features, windows, full_model))
     summary = bootstrap_summary(observed["statistics"], replicates)
-    summary = summary.assign(catalogue_id=context.catalogue_id,
-                             n_response_events=len(design.event_frame),
-                             response_exposure_kyr=context.response_exposure_kyr,
-                             calibration="simulate nominal full model, refit full, recompute statistics")
+    summary = summary.assign(catalogue_id=catalogue_id, n_response_events=len(event_features),
+        response_exposure_kyr=float((windows.response_end_kyr_bp-windows.response_start_kyr_bp).sum()),
+        calibration="simulate nominal full model, refit full, recompute statistics")
     return dict(gof_summary=summary, gof_replicates=replicates,
                 rescaled_intervals=observed["intervals"], residual_segments=observed["segments"])
-
-
-def save_results(result, context, output_root, run_name, parameters, *, diagnostics_root=None):
-    """Write model checks as CSV and prose without introducing default figures."""
-    from toolbox import combined_likelihood as likelihood
-    from toolbox.project_config import (PROJECT_ROOT, LR04_CSV, CO2_CSV, ORBITAL_CSV,
-                                        PRECESSION_PHASE_CSV)
-
-    # The primary entry still saves its existing provenance; Barker writes its
-    # four scientific result tables directly and does not call this writer.
-    parameters = dict(parameters)
-    if "gof_source" in parameters:
-        parameters["gof_source_sha256"] = hashlib.sha256(
-            Path(parameters["gof_source"]).read_bytes()).hexdigest()
-    output_root = Path(output_root)
-    data_dir = output_root / "data/processed" / run_name
-    notes_dir = generated_notes_dir(output_root)
-    diagnostic_dir = (output_root / "tests/diagnostics" / run_name if diagnostics_root is None
-                      else Path(diagnostics_root) / run_name)
-    for directory in (data_dir, notes_dir, diagnostic_dir):
-        directory.mkdir(parents=True, exist_ok=True)
-    for name, frame in result.items():
-        frame.to_csv(data_dir / f"{name}.csv", index=False, float_format="%.12g")
-    likelihood.support_table(context).to_csv(data_dir / "support.csv", index=False)
-    metadata = dict(catalogue_id=context.catalogue_id, model_version=likelihood.MODEL_VERSION,
-                    history_tau_kyr=context.history_tau_ka, initial_history=context.initial_history,
-                    history_coefficient_domain="beta_H <= 0", quadrature_order=context.quadrature_order,
-                    conditioning="original oldest observed event per segment, excluded from response",
-                    fixed_response_exposure_kyr=context.response_exposure_kyr, **parameters)
-    pd.DataFrame([dict(parameter=key, value=value) for key, value in metadata.items()]).to_csv(
-        data_dir / "parameters_and_provenance.csv", index=False)
-    inputs = [Path(__file__), Path(likelihood.__file__), PROJECT_ROOT / "toolbox/point_process.py",
-              LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV]
-    inputs.append(likelihood.EVENT_CATALOGUE_CSV)
-    pd.DataFrame([dict(path=str(path.relative_to(PROJECT_ROOT)),
-                       sha256=hashlib.sha256(path.read_bytes()).hexdigest()) for path in inputs]).to_csv(
-        diagnostic_dir / "input_code_sha256.csv", index=False)
-    history_path, gof_path = data_dir / "history_test.csv", data_dir / "gof_summary.csv"
-    sections = [f"Conditional model checks: {context.catalogue_id}",
-        "\nThe history test compares background+phase with background+phase+history,",
-        f"fixing the exponential decay time at {context.history_tau_ka:g} kyr.",
-        "The null has beta_H=0; the alternative constrains beta_H<=0. The likelihood-ratio",
-        "statistic is calibrated by simulating the null and refitting both models.",
-        "An ordinary chi-square_1 reference is inappropriate at this parameter boundary.",
-        "Every simulation retains the original oldest event and response interval in each segment."]
-    if history_path.exists():
-        history = pd.read_csv(history_path)
-        columns = ["beta_history", "history_rate_multiplier", "observed", "bootstrap_p",
-                   "n_bootstrap", "n_invalid"]
-        sections.extend(["\nHistory result (observed = likelihood-ratio statistic):",
-                         history.loc[:, columns].to_string(index=False, float_format=lambda x: f"{x:.6g}")])
-    sections.extend(["\nFull-model goodness of fit uses two prespecified discrepancies:",
-        "the KS distance of completed rescaled intervals to Uniform(0,1), and the absolute",
-        "sum of adjacent (U-0.5) products divided by sqrt(max(1, number of within-segment pairs)).",
-        "No adjacent pairs cross record gaps. A zero-response simulation has both statistics zero",
-        "and remains in the reference distribution. Terminal no-event intervals are censored:",
-        "their intensity integrals enter endpoint residuals but not the completed-interval CDF.",
-        "Calibration simulates the nominal full model, refits it, then recomputes each statistic.",
-        "Holm adjustment covers these two diagnostics within the catalogue. This is approximate",
-        "parametric bootstrap calibration, not proof that the entire event model is correct."])
-    if "gof_source" in parameters:
-        sections.extend([
-            f"\nGOF reuses all {parameters['gof_bootstrap_replicates']:,} nominal-age sampling refits "
-            f"from S4 (seed {parameters['gof_seed']}); combined chronology/sampling draws are excluded.",
-            f"Source: {parameters['gof_source']}",
-            f"Source SHA256: {parameters['gof_source_sha256']}"])
-    if gof_path.exists():
-        gof = pd.read_csv(gof_path)
-        columns = ["statistic", "observed", "bootstrap_p", "bootstrap_p_holm", "n_bootstrap", "n_invalid"]
-        sections.extend(["\nFull-model diagnostic results:",
-                         gof.loc[:, columns].to_string(index=False, float_format=lambda x: f"{x:.6g}")])
-    else:
-        sections.append("\nFull-model diagnostics are pending the nominal full-model refit ensemble.")
-    sections.extend(["\nPlus-one p=(1+exceedances)/(B+1). Failed simulations/refits are not replaced",
-        "or treated as zero discrepancies. If failures remain, p is unresolved and its bounds",
-        "show the range of unknown exceedance contributions. Finite-bootstrap intervals quantify",
-        "simulation precision of the exceedance probability, not uncertainty of effect estimates.",
-        "No chronology Monte Carlo or mixed chronology generator is included in this calibration.",
-        "Results are supplied as CSV and prose; no figure is generated by this workflow."])
-    (notes_dir / f"{run_name}_Methods_and_results.txt").write_text("\n".join(sections) + "\n", encoding="utf-8")
-    return data_dir

@@ -6,8 +6,6 @@ forcing scales. Exponential/rectangular histories have nonpositive coefficients;
 elapsed-time and log-elapsed coefficients are unrestricted on the finite support.
 """
 
-import argparse
-from dataclasses import replace
 import hashlib
 from pathlib import Path
 
@@ -18,18 +16,24 @@ from matplotlib.ticker import MaxNLocator
 import numpy as np
 import pandas as pd
 
-from toolbox import combined_likelihood
+from toolbox import event_model
+from toolbox.point_process import fit_point_process
+from toolbox.model_stats import fit_summary
+from toolbox.project_config import EVENT_CATALOGUE_CSV, OBSERVATION_SEGMENTS_CSV, MODEL_VERSION
 from toolbox.plotting import add_panel_label
 from toolbox.project_config import CO2_CSV, LR04_CSV, ORBITAL_CSV, PROJECT_ROOT, PRECESSION_PHASE_CSV
 from toolbox.project_config import generated_notes_dir
 
 RUN_NAME = "NGRIP_MIS6_likelihood_model_sensitivity"
-OUT_DATA_DIR = PROJECT_ROOT / "data/processed" / RUN_NAME
-OUT_FIG_DIR = PROJECT_ROOT / "figures" / RUN_NAME
+OUTPUT_ROOT = PROJECT_ROOT
+EXPORT_PAPER = True
 ELAPSED_TERM = "time_since_last_event_kyr"
 LOG_ELAPSED_TERM = "log_time_since_last_event"
 ELAPSED_SCALE_KYR = 1.0
 PHASE_TERMS = ("pre_phase_sin", "pre_phase_cos")
+HISTORY_TERM = "same_type_exponential_history"
+BACKGROUND = ("intercept", HISTORY_TERM, "lr04_scaled", "co2_scaled", "mis6_segment")
+CATALOGUE_ID = "ngrip_warming_plus_mis6"
 
 # Post-audit sensitivity set; report every variant without selecting by p.
 CLIMATE_VARIANTS = {
@@ -40,7 +44,7 @@ CLIMATE_VARIANTS = {
     "quadratic_with_interaction": ("lr04_squared", "co2_squared", "lr04_co2"),
 }
 HISTORY_VARIANTS = {
-    "exponential": combined_likelihood.REDUCED_TERMS[0],
+    "exponential": HISTORY_TERM,
     "count_matched_support": "rectangular_history_count",
     "elapsed_time": ELAPSED_TERM,
     "log_elapsed_time": LOG_ELAPSED_TERM,
@@ -69,50 +73,69 @@ VARIANT_COLORS = {
 }
 
 
-def prepare_predictors(events, context):
-    """Register climate products before evaluating exact event/integral features."""
-    derived = dict(context.derived_terms or {})
-    derived.update(lr04_squared=("lr04_scaled", "lr04_scaled"),
-                   co2_squared=("co2_scaled", "co2_scaled"),
-                   lr04_co2=("lr04_scaled", "co2_scaled"))
-    context = replace(context, derived_terms=derived)
-    design = combined_likelihood.prepare_catalogue(events, context, fixed_support=True)
-    return design
-
-
-def fit_variant(design, terms, *, experiment, variant, support_id="exact_nominal"):
-    """Refit a continuous nested pair with the appropriate history parameter domain."""
-    context = replace(design.context, reduced_terms=tuple(terms), full_terms=tuple(terms) + PHASE_TERMS)
-    fitted = combined_likelihood.fit_catalogue(context.events, context, fixed_support=True)
-    if not fitted.reduced.converged or not fitted.full.converged:
+def fit_variant(event_x, integral_x, windows, terms, *, n_source_events,
+                experiment, variant, support_id="exact_nominal"):
+    """Fit the selected columns on the already prepared common design."""
+    terms = tuple(terms)
+    full_terms = terms + PHASE_TERMS
+    reduced = fit_point_process(event_x.loc[:, terms], integral_x.loc[:, terms],
+                                integral_x.weight, terms)
+    full = fit_point_process(event_x.loc[:, full_terms], integral_x.loc[:, full_terms],
+                             integral_x.weight, full_terms, start_beta=np.r_[reduced.beta, 0., 0.])
+    if not reduced.converged or not full.converged:
         raise RuntimeError(f"{variant}: continuous fit did not converge")
-    count_history = terms[0] in (combined_likelihood.HISTORY_TERM, "rectangular_history_count")
-    summary = dict(fitted.summary)
+    history_term = terms[1]
+    count_history = history_term in (HISTORY_TERM, "rectangular_history_count")
+    summary = fit_summary(reduced, full, event_x, windows, n_source_events=n_source_events,
+                          catalogue_id=CATALOGUE_ID)
     summary.update(history_coefficient_domain="nonpositive" if count_history else "unrestricted",
-        history_kernel=terms[0], history_tau_kyr=context.history_tau_ka if count_history else np.nan,
-        beta_history=dict(zip(fitted.full.terms, fitted.full.beta))[terms[0]])
+        history_kernel=history_term, history_tau_kyr=1.5 if count_history else np.nan,
+        beta_history=dict(zip(full.terms, full.beta))[history_term])
     row = dict(experiment=experiment, variant=variant, variant_label=VARIANT_LABELS[variant],
-        support_id=support_id, reduced_terms=";".join(terms), **summary,
-        n_params_reduced=len(fitted.reduced.beta), n_params_full=len(fitted.full.beta),
-        reduced_aic=fitted.reduced.aic, full_aic=fitted.full.aic, history_term=terms[0])
+        support_id=support_id, reduced_terms=";".join(terms[1:]), **summary,
+        n_params_reduced=len(reduced.beta), n_params_full=len(full.beta),
+        reduced_aic=reduced.aic, full_aic=full.aic, history_term=history_term)
     coefficients = [dict(experiment=experiment, variant=variant, support_id=support_id,
-        model_id=model_id, term=term, beta=float(beta))
-        for model_id, model in (("reduced", fitted.reduced), ("full", fitted.full))
+        model_id=name, term=term, beta=float(beta))
+        for name, model in (("reduced", reduced), ("full", full))
         for term, beta in zip(model.terms, model.beta)]
     return row, coefficients
 
 
 def run_analysis():
-    context = combined_likelihood.build_context()
-    design = prepare_predictors(context.events, context)
+    events = pd.read_csv(EVENT_CATALOGUE_CSV)
+    observations = pd.read_csv(OBSERVATION_SEGMENTS_CSV)
+    lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
+    co2 = pd.read_csv(CO2_CSV, float_precision="round_trip")
+    orbital = pd.read_csv(ORBITAL_CSV, float_precision="round_trip")
+    anchors = pd.read_csv(PRECESSION_PHASE_CSV, float_precision="round_trip")
+    forcings = {
+        "lr04": (lr04.age_kyr_bp.to_numpy(), lr04.lr04.to_numpy()),
+        "co2": (co2.age_kyr_bp.to_numpy(), co2.co2_ppm.to_numpy()),
+        "precession_index": (orbital.age_kyr_bp.to_numpy(), orbital.precession_index.to_numpy()),
+    }
+    phase_anchors = (anchors.age_kyr_bp.to_numpy(), anchors.phase_unwrapped_rad.to_numpy())
+    windows = event_model.response_windows(events, observations)
+    scaling = event_model.nominal_scaling({name: forcings[name] for name in ("lr04", "co2")}, windows)
+    event_x, integral_x = event_model.build_design(
+        events, windows, forcings, phase_anchors, scaling, history_variants=True,
+    )
+    for frame in (event_x, integral_x):
+        frame["mis6_segment"] = frame.segment_id.eq("MIS6").astype(float)
+        frame["lr04_squared"] = frame.lr04_scaled ** 2
+        frame["co2_squared"] = frame.co2_scaled ** 2
+        frame["lr04_co2"] = frame.lr04_scaled * frame.co2_scaled
+    # Keep the established saved event-input column order.
+    event_ids = event_x.pop("event_id")
+    event_x["event_id"] = event_ids
     rows, coefficients = [], []
     for variant, extra in CLIMATE_VARIANTS.items():
-        row, coeffs = fit_variant(design, context.reduced_terms + extra,
+        row, coeffs = fit_variant(event_x, integral_x, windows, BACKGROUND + extra, n_source_events=len(events),
                                   experiment="climate", variant=variant)
         rows.append(row)
         coefficients.extend(coeffs)
     for variant, term in HISTORY_VARIANTS.items():
-        row, coeffs = fit_variant(design, (term, *context.reduced_terms[1:]),
+        row, coeffs = fit_variant(event_x, integral_x, windows, ("intercept", term, *BACKGROUND[2:]), n_source_events=len(events),
                                   experiment="history", variant=variant)
         rows.append(row)
         coefficients.extend(coeffs)
@@ -131,9 +154,9 @@ def run_analysis():
         curves.append(pd.DataFrame(dict(experiment=row.experiment, variant=row.variant, phase_deg=phase,
             relative_rate=np.exp(beta[PHASE_TERMS[0]] * np.sin(np.deg2rad(phase))
                                + beta[PHASE_TERMS[1]] * np.cos(np.deg2rad(phase))))))
-    return dict(summary=summary, coefficients=coefficient_table, event_inputs=design.event_frame,
-        segment_support=combined_likelihood.support_table(design.context), event_roles=design.all_events,
-        forcing_scaling=combined_likelihood.scaling_table(context),
+    return dict(summary=summary, coefficients=coefficient_table, event_inputs=event_x, integration_features=integral_x,
+        segment_support=windows, event_roles=event_model.mark_event_roles(events, windows),
+        forcing_scaling=scaling.reset_index().assign(weighting="nominal response time"),
         phase_curves=pd.concat(curves, ignore_index=True))
 
 
@@ -187,7 +210,7 @@ def plot_sensitivity(summary):
     return fig
 
 
-def save_results(result, output_dir=OUT_DATA_DIR, figure_dir=OUT_FIG_DIR, *, paper_export=True):
+def save_results(result, output_dir, figure_dir, *, paper_export=True):
     output_dir, figure_dir = Path(output_dir), Path(figure_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     figure_dir.mkdir(parents=True, exist_ok=True)
@@ -196,10 +219,10 @@ def save_results(result, output_dir=OUT_DATA_DIR, figure_dir=OUT_FIG_DIR, *, pap
         forcing_scaling="forcing_scaling.csv", phase_curves="phase_response_curves.csv")
     for key, filename in filenames.items():
         result[key].to_csv(output_dir / filename, index=False)
-    parameters = dict(model_version=combined_likelihood.MODEL_VERSION,
+    parameters = dict(model_version=MODEL_VERSION,
         method="continuous conditional point process", age_epoch="kyr BP relative to AD1950",
         response_support="fixed exact nominal anchors; 53 response events over 165.058 kyr",
-        history_tau_kyr=combined_likelihood.DEFAULT_HISTORY_TAU_KA,
+        history_tau_kyr=1.5,
         initial_unobserved_history=0, quadrature_order=4,
         climate_scaling="fixed nominal exposure-time mean / interpolant range",
         polynomial_transform="squares and products of fixed scaled climate predictors",
@@ -215,9 +238,9 @@ def save_results(result, output_dir=OUT_DATA_DIR, figure_dir=OUT_FIG_DIR, *, pap
         randomness="none; deterministic point-age fits")
     pd.DataFrame(parameters.items(), columns=["parameter", "value"]).to_csv(
         output_dir / "parameters_and_provenance.csv", index=False)
-    inputs = [Path(__file__).resolve(), combined_likelihood.EVENT_CATALOGUE_CSV,
-        combined_likelihood.OBSERVATION_SEGMENTS_CSV, LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV,
-        *[PROJECT_ROOT / "toolbox" / filename for filename in ("combined_likelihood.py", "point_process.py",
+    inputs = [Path(__file__).resolve(), EVENT_CATALOGUE_CSV,
+        OBSERVATION_SEGMENTS_CSV, LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV,
+        *[PROJECT_ROOT / "toolbox" / filename for filename in ("point_process.py",
             "model_stats.py", "event_model.py", "project_config.py")]]
     pd.DataFrame([dict(path=str(path.relative_to(PROJECT_ROOT)),
         sha256=hashlib.sha256(path.read_bytes()).hexdigest()) for path in inputs]).to_csv(
@@ -299,15 +322,11 @@ bootstrap-calibrated tests.
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-root", type=Path, default=PROJECT_ROOT)
-    parser.add_argument("--no-paper-export", action="store_true")
-    args = parser.parse_args()
     result = run_analysis()
-    output_dir = args.output_root / "data/processed" / RUN_NAME
-    save_results(result, output_dir, args.output_root / "figures" / RUN_NAME,
-                 paper_export=not args.no_paper_export)
-    write_notes(result, generated_notes_dir(args.output_root))
+    output_dir = OUTPUT_ROOT / "data/processed" / RUN_NAME
+    save_results(result, output_dir, OUTPUT_ROOT / "figures" / RUN_NAME,
+                 paper_export=EXPORT_PAPER)
+    write_notes(result, generated_notes_dir(OUTPUT_ROOT))
     print(result["summary"][["variant", "gain_bits_per_event", "nominal_LR_p",
         "pre_phase_preferred_deg", "pre_phase_rate_ratio_max_vs_min",
         "delta_AIC_full_vs_same_support_reference"]].to_string(index=False))

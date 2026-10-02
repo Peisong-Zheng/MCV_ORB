@@ -8,13 +8,13 @@ This exporter never modifies manuscript TeX or tables.
 """
 
 from pathlib import Path
-import argparse
 import csv
 import shutil
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 MANIFEST_PATH = Path("paper_figure_manifest.csv")
+MODE = "export"  # "export" copies figures; "status" lists them; "check" fails on stale copies.
 
 
 def figure_manifest(project_root=PROJECT_ROOT):
@@ -82,19 +82,16 @@ def sync_status(project_root=PROJECT_ROOT):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--status", action="store_true", help="List figure status without copying.")
-    mode.add_argument("--check", action="store_true", help="Check available copies; exit 1 if stale or missing.")
-    args = parser.parse_args()
-    if not (args.status or args.check):
+    if MODE not in {"export", "status", "check"}:
+        raise ValueError("Choose export, status or check for MODE")
+    if MODE == "export":
         export_all()
     rows = sync_status()
     for row in rows:
         print(f"{row['paper_name']:12} {row['sync_status']:28} {row['source_relpath']}")
     pending = sum(row["sync_status"] == "planned" for row in rows)
     print(f"{sum(row['sync_status'] == 'synced' for row in rows)} synced; {pending} planned.")
-    if args.check and any(row["sync_status"] not in {"synced", "planned"} for row in rows):
+    if MODE == "check" and any(row["sync_status"] not in {"synced", "planned"} for row in rows):
         raise SystemExit(1)
 
 

@@ -8,7 +8,7 @@ import warnings
 import numpy as np
 import pandas as pd
 
-from toolbox.point_process import exponential_history, gauss_legendre_intervals
+from toolbox.point_process import exponential_history, gauss_legendre_intervals, simulate_segment_events
 
 
 def response_windows(events, observations):
@@ -52,8 +52,10 @@ def scale_forcing(source, windows):
         knots = np.r_[young, source_age[inside], old]
         values = interpolate_checked(knots, source_age, source_value,
                                      context="forcing response support")
-        forcing_integral += np.trapezoid(values, knots)
-        exposure_kyr += old - young
+        window_integral = np.trapezoid(values, knots)
+        forcing_integral = forcing_integral + window_integral
+        window_duration = old - young
+        exposure_kyr = exposure_kyr + window_duration
         extrema.extend([values.min(), values.max()])
     minimum, maximum = float(min(extrema)), float(max(extrema))
     return dict(mean=forcing_integral / exposure_kyr, min=minimum,
@@ -185,6 +187,44 @@ def sample_event_phases(events, precession, phase_anchors, *, age_column="event_
     return out
 
 
+def mark_event_roles(events, windows):
+    """Label conditioning, response and history-only events on explicit windows."""
+    frames = []
+    for window in windows.itertuples(index=False):
+        selected = events.loc[events.segment_id.eq(window.segment_id)].sort_values("event_age_kyr_bp").copy()
+        ages = selected.event_age_kyr_bp.to_numpy(float)
+        response = (ages < window.response_end_kyr_bp) & (ages >= window.response_start_kyr_bp)
+        selected["event_role"] = np.where(ages == window.anchor_age_kyr_bp, "conditioning",
+                                          np.where(response, "response", "history_only"))
+        selected["included_in_response"] = response
+        frames.append(selected)
+    return pd.concat(frames, ignore_index=True)
+
+
+def fitted_rate_table(events, windows, forcings, phase_anchors, scaling, models,
+                      *, tau=1.5, initial_history=0.0, step_kyr=0.1):
+    """Evaluate fitted rates, retaining each discontinuous event-history jump."""
+    frames = []
+    terms = set().union(*(model.terms for model in models.values()))
+    for window in windows.itertuples(index=False):
+        event_ages = events.loc[events.segment_id.eq(window.segment_id), "event_age_kyr_bp"].to_numpy(float)
+        after_event = np.nextafter(event_ages, -np.inf)
+        after_event = after_event[after_event >= window.response_start_kyr_bp]
+        query = np.unique(np.r_[
+            np.arange(window.response_start_kyr_bp, window.response_end_kyr_bp, step_kyr),
+            event_ages, after_event, window.response_end_kyr_bp,
+        ])
+        features = evaluate_features(query, event_ages, window, forcings, phase_anchors,
+                                     scaling, tau=tau, initial_history=initial_history)
+        if "mis6_segment" in terms:
+            features["mis6_segment"] = features.segment_id.eq("MIS6").astype(float)
+        rates = features[["segment_id", "age_kyr_bp", "lr04", "co2", "precession_index", "pre_phase_deg"]].copy()
+        for name, model in models.items():
+            rates[name + "_rate"] = np.exp(features.loc[:, model.terms].to_numpy(float) @ model.beta)
+        frames.append(rates)
+    return pd.concat(frames, ignore_index=True)
+
+
 def clean_series(
     age_ka: np.ndarray, value: np.ndarray, *, context: str = "input series"
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -305,3 +345,114 @@ def evaluate_phase_at_ages(
             "phase_extrapolated": extrapolated,
         }
     )
+
+
+def _background_values(ages, forcings, phase_anchors, scaling, segment_id, terms, beta):
+    """Exogenous log rate on the BP axis, without allocating feature tables."""
+    age = np.asarray(ages, float)
+    values = {"intercept": np.ones_like(age),
+              "mis6_segment": np.full_like(age, float(segment_id == "MIS6"))}
+    for name, scale in scaling.items():
+        values[name + "_scaled"] = (np.interp(age, *forcings[name]) - scale["mean"]) / scale["range"]
+    phase, _ = interpolate_unwrapped_phase(np.atleast_1d(age), *phase_anchors)
+    phase = phase.reshape(age.shape)
+    values.update(pre_phase_sin=np.sin(phase), pre_phase_cos=np.cos(phase))
+    return sum(coef * values[term] for term, coef in zip(terms, beta)
+               if term != "same_type_exponential_history")
+
+
+def prepare_model_simulation(events, windows, forcings, phase_anchors, scaling, model,
+                             *, tau=1.5, initial_history=0.0, proposal_interval_kyr=1.0):
+    """Certify background envelopes on fixed generator windows for thinning.
+
+    The envelope uses scaled linear forcings, a segment offset and phase terms.
+    New nonlinear predictors need their own continuous evaluation and bounds.
+    """
+    from functools import partial
+    if not model.converged or not np.isfinite(model.beta).all():
+        raise ValueError("A finite fitted generator is required")
+    coefficients = dict(zip(model.terms, model.beta))
+    history_beta = coefficients.get("same_type_exponential_history", 0.)
+    if history_beta > 0:
+        raise ValueError("Positive feedback is outside the chosen model")
+    scales = scaling.to_dict("index")
+    allowed = {"intercept", "mis6_segment", "same_type_exponential_history",
+               "pre_phase_sin", "pre_phase_cos", *[name + "_scaled" for name in scales]}
+    if set(model.terms) - allowed:
+        raise ValueError("Simulator requires explicit continuous bounds for these model terms")
+    prepared = []
+    for window in windows.itertuples(index=False):
+        name = window.segment_id
+        edges = np.r_[np.arange(window.response_start_kyr_bp, window.anchor_age_kyr_bp,
+                                proposal_interval_kyr), window.anchor_age_kyr_bp]
+        upper = []
+        for lo, hi in zip(edges[:-1], edges[1:]):
+            bounds = {"intercept": (1., 1.), "mis6_segment": (float(name == "MIS6"),) * 2}
+            for forcing, scale in scales.items():
+                age, value = forcings[forcing]
+                knots = np.r_[lo, age[(age > lo) & (age < hi)], hi]
+                vals = (np.interp(knots, age, value) - scale["mean"]) / scale["range"]
+                bounds[forcing + "_scaled"] = (float(vals.min()), float(vals.max()))
+            # Global trigonometric bounds cover extrema inside each interval.
+            bounds.update(pre_phase_sin=(-1., 1.), pre_phase_cos=(-1., 1.))
+            upper.append(sum(max(coef * bounds[term][0], coef * bounds[term][1])
+                             for term, coef in coefficients.items()
+                             if term != "same_type_exponential_history") + 1e-12)
+        anchor = events.loc[events.segment_id.eq(name)].sort_values("event_age_kyr_bp").iloc[-1]
+        prepared.append(dict(
+            segment_id=name, anchor_age=window.anchor_age_kyr_bp,
+            young_age=window.response_start_kyr_bp, anchor_id=anchor.event_id,
+            breakpoints=edges, log_upper_bounds=np.array(upper),
+            log_background=partial(_background_values, forcings=forcings,
+                phase_anchors=phase_anchors, scaling=scales, segment_id=name,
+                terms=model.terms, beta=model.beta),
+            history_beta=history_beta, tau=tau, initial_history=initial_history,
+        ))
+    return prepared
+
+
+def simulate_prepared_events(prepared, rng):
+    """Simulate independent response segments while retaining exact anchors."""
+    frames = []
+    for part in prepared:
+        age = simulate_segment_events(
+            part["anchor_age"], part["young_age"], part["breakpoints"],
+            part["log_background"], part["log_upper_bounds"], part["history_beta"],
+            part["tau"], rng, initial_history=part["initial_history"],
+        )
+        frame = pd.DataFrame({
+            "event_age_kyr_bp": age, "segment_id": part["segment_id"],
+            "event_id": [part["anchor_id"]] + [f"sim_{part['segment_id']}_{i}" for i in range(1, len(age))],
+        })
+        frame["event_label"] = frame.event_id
+        frames.append(frame.sort_values("event_age_kyr_bp"))
+    return pd.concat(frames, ignore_index=True)
+
+
+def rescaled_event_intervals(event_features, integration_features, windows, model):
+    """Cumulative fitted intensities at responses plus terminal censored waits."""
+    events, cumulative, tails = {}, {}, {}
+    frame = integration_features
+    rate = np.exp(frame.loc[:, model.terms].to_numpy(float) @ model.beta)
+    if model.status == "zero_events":
+        rate = np.zeros(len(frame))
+    for window in windows.itertuples(index=False):
+        name = window.segment_id
+        response_ages = event_features.loc[event_features.segment_id.eq(name), "age_kyr_bp"].to_numpy(float)
+        response_ages = np.sort(response_ages)[::-1]
+        response_elapsed = window.anchor_age_kyr_bp - response_ages
+        mask = frame.segment_id.eq(name).to_numpy()
+        node_ages = frame.loc[mask, "age_kyr_bp"].to_numpy(float)
+        # Accumulate from the anchor toward the present, keeping nodes and
+        # masses aligned. Incoming table row order has no time meaning.
+        order = np.argsort(-node_ages)
+        node_ages = node_ages[order]
+        mass = rate[mask] * frame.loc[mask, "weight"].to_numpy(float)
+        mass = mass[order]
+        cumulative_mass = np.r_[0.0, np.cumsum(mass)]
+        # Compare on -BP before subtracting the origin to retain precision.
+        indices = np.searchsorted(-node_ages, -response_ages, side="left")
+        events[name] = response_elapsed
+        cumulative[name] = cumulative_mass[indices]
+        tails[name] = float(mass[indices[-1]:].sum() if len(indices) else mass.sum())
+    return events, cumulative, tails

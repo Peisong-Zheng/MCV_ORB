@@ -12,7 +12,6 @@ and figures are kept in this directory, alongside the nominal main analysis.
 """
 
 from pathlib import Path
-import argparse
 import sys
 
 import matplotlib
@@ -29,8 +28,6 @@ from toolbox.project_config import PROJECT_ROOT, BARKER_EVENT_CSVS, CATALOGUE_CO
 ROOT = Path(__file__).resolve().parent
 RUN_NAME = "Barker2011_event_age_uncertainty"
 CONTROL_CSV = ROOT / "data/raw/Barker2011_TableS1.csv"
-OUT_DATA_DIR = ROOT / "data/processed" / RUN_NAME
-OUT_FIG_DIR = ROOT / "figures" / RUN_NAME
 N_REALIZATIONS = 10_000
 RANDOM_SEED = 20260908
 AUXILIARY_AGE_KA = 400.0
@@ -39,6 +36,10 @@ PUBLISHED_GAP_KA = (265.0, 315.0)
 CONTROL_GAP_KA = (264.24, 317.70)
 BLUE = "#4477AA"
 ORANGE = "#CC9933"
+
+OUTPUT_ROOT = PROJECT_ROOT
+REDRAW = False
+EXPORT_PAPER = True
 
 
 def prepare_controls(raw):
@@ -125,9 +126,9 @@ def sample_realizations(events, controls, n_realizations=N_REALIZATIONS, seed=RA
         offsets = rng.uniform(-half_width, half_width, size=(batch_size, len(knots)))
         ordered = np.all(np.diff(knots + offsets, axis=1) > 0, axis=1)
         accepted.append(offsets[ordered])
-        n_accepted += int(ordered.sum())
-        n_proposed += batch_size
-        n_rejected += int((~ordered).sum())
+        n_accepted = n_accepted + int(ordered.sum())
+        n_proposed = n_proposed + batch_size
+        n_rejected = n_rejected + int((~ordered).sum())
         if n_proposed > max(100_000, 200 * n_realizations):
             raise RuntimeError("Too few ordered control maps; inspect proposal widths")
     control_offsets = np.vstack(accepted)[:n_realizations]
@@ -207,19 +208,12 @@ def save_figure(fig, directory, stem, *, paper_export=True):
     plt.close(fig)
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--n-realizations", type=int, default=N_REALIZATIONS)
-    parser.add_argument("--seed", type=int, default=RANDOM_SEED)
-    parser.add_argument("--output-root", type=Path, default=PROJECT_ROOT)
-    parser.add_argument("--no-paper-export", action="store_true")
-    parser.add_argument("--redraw", action="store_true")
-    args = parser.parse_args(argv)
-    root = args.output_root / "Barker2011"
+def main():
+    root = OUTPUT_ROOT / "Barker2011"
     data = root / "data/processed" / RUN_NAME
     figures = root / "figures" / RUN_NAME
     events = pd.read_csv(BARKER_EVENT_CSVS["variable_threshold"], float_precision="round_trip")
-    if args.redraw:
+    if REDRAW:
         controls = pd.read_csv(data / "age_control_points.csv", float_precision="round_trip")
         control_ages = pd.read_csv(data / "control_age_realizations.csv", float_precision="round_trip")
         columns = [f"age_ka_bp__{name}" for name in controls.control_id]
@@ -233,7 +227,7 @@ def main(argv=None):
         controls = prepare_controls(raw_controls)
         events = prepare_events(events, controls)
         draws, control_offsets, diagnostics = sample_realizations(
-            events, controls, args.n_realizations, args.seed)
+            events, controls, N_REALIZATIONS, RANDOM_SEED)
         summary = summarize_ages(events, draws)
         ids = [f"Barker_MC_{i:05d}" for i in range(1, len(draws) + 1)]
         ages_table = pd.DataFrame(draws, columns=age_columns(events))
@@ -255,7 +249,7 @@ def main(argv=None):
         print(f"Saved {len(draws):,} ordered chronologies for {len(events)} events; "
               f"proposal acceptance {diagnostics['acceptance_fraction']:.2%}")
     save_figure(plot_uncertainty(events, controls, control_offsets), figures, RUN_NAME,
-                paper_export=not args.no_paper_export and args.output_root.resolve() == PROJECT_ROOT.resolve())
+                paper_export=EXPORT_PAPER and OUTPUT_ROOT.resolve() == PROJECT_ROOT.resolve())
 
 
 if __name__ == "__main__":

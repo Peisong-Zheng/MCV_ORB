@@ -6,13 +6,14 @@ only retained events, with the original conditioning anchors, support and
 forcing scale held fixed by the caller. No latent detection model is implied.
 """
 
-import hashlib
-from pathlib import Path
 import time
 
 import numpy as np
 import pandas as pd
-from toolbox.project_config import generated_notes_dir
+from toolbox import event_model
+from toolbox.model_stats import fit_summary
+from toolbox.point_process import fit_point_process, PointProcessFitError
+from toolbox.project_config import MODEL_VERSION
 
 
 EFFECT_METRICS = (
@@ -85,7 +86,7 @@ def drop_events(events, drop_probability, rng, *, eligible_segments=None,
 def paired_metrics(metrics, reference):
     """Keep phase coefficients and circular offsets alongside scalar changes.
 
-    The fit callback supplies G, LR and history/phase coefficients using the
+    The fitted pair supplies G, LR and history/phase coefficients using the
     EFFECT_METRICS names. Phase, amplitude and max/min ratio are derived when
     both phase coefficients are finite. At zero amplitude the phase is NaN;
     a finite phase at small amplitude does not imply statistical identification.
@@ -144,7 +145,7 @@ def summarize_scenarios(replicates):
             # Counts describe all masks, including masks whose fits failed.
             usable = np.isfinite(values)
             if metric not in ("n_deleted", "n_response_events"):
-                usable &= fit_valid
+                usable = usable & fit_valid
             low, median, high = np.quantile(values[usable], [0.025, 0.5, 0.975]) if usable.any() else (np.nan,) * 3
             n_invalid = int((~fit_valid).sum())
             rows.append(dict(scope=scope, drop_probability=probability, metric=metric,
@@ -156,22 +157,15 @@ def summarize_scenarios(replicates):
     return pd.DataFrame(rows)
 
 
-def run_deletion_sensitivity(events, fit, point_metrics, *, probabilities=(0.1, 0.2),
-                             scopes=None, n_replicates=500, seed=20260912,
-                             anchor_ids=None, segment_column="segment_id",
-                             age_column="event_age_kyr_bp", id_column="event_id"):
-    """Fit retained subsets, while a callback holds support and scaling fixed.
+def analyze_deletions(events, windows, forcings, phase_anchors, scaling,
+                      reduced_terms, full_terms, *, catalogue_id,
+                      probabilities=(0.1, 0.2), scopes=None, n_replicates=500,
+                      seed=20260912, tau=1.5, initial_history=0.0,
+                      quadrature_order=4, show_progress=True):
+    """Refit retained events on the original windows and nominal forcing scales.
 
-    fit(subset) returns a metrics dict. It must recompute history using only
-    that subset. A fit_valid=False dict with an invalid_reason, or an explicit
-    DeletionFitFailure, records a failure without replacing the mask. A legal
-    zero-response case may have LR=0 and unidentified effects/G left NaN.
-
-    scopes maps labels to eligible segment IDs; None means every segment.
-    Default {"both": None} can be extended with {"MIS6_only": ("MIS6",)}.
-    Private replicate seeds pair masks across probabilities and scopes. The
-    returned boolean mask array follows the original events and replicate rows
-    and can be stored once as a compressed diagnostic, without per-draw CSVs.
+    Each replicate uses the same uniforms across deletion probabilities and
+    segment scopes. Failed fits retain their masks and explicit reasons.
     """
     if not isinstance(n_replicates, (int, np.integer)) or n_replicates < 1:
         raise ValueError("n_replicates must be a positive integer")
@@ -185,20 +179,46 @@ def run_deletion_sensitivity(events, fit, point_metrics, *, probabilities=(0.1, 
     scopes = {"both": None} if scopes is None else dict(scopes)
     if not scopes:
         raise ValueError("At least one deletion scope is required")
-    if not point_metrics.get("fit_valid", True):
-        raise ValueError("The undeleted reference fit must be valid")
+    started = time.perf_counter()
+    n_fits = 0
+
+    def fit_retained(subset):
+        event_x, integral_x = event_model.build_design(
+            subset, windows, forcings, phase_anchors, scaling, tau=tau,
+            initial_history=initial_history, quadrature_order=quadrature_order,
+        )
+        if "mis6_segment" in full_terms or "mis6_segment" in reduced_terms:
+            for frame in (event_x, integral_x):
+                frame["mis6_segment"] = frame.segment_id.eq("MIS6").astype(float)
+        reduced = fit_point_process(event_x[list(reduced_terms)], integral_x[list(reduced_terms)],
+                                    integral_x.weight, reduced_terms)
+        start_beta = np.zeros(len(full_terms))
+        if np.isfinite(reduced.beta).all():
+            for term, beta in zip(reduced.terms, reduced.beta):
+                if term in full_terms:
+                    start_beta[full_terms.index(term)] = beta
+        full = fit_point_process(event_x[list(full_terms)], integral_x[list(full_terms)],
+                                 integral_x.weight, full_terms, start_beta=start_beta)
+        summary = fit_summary(reduced, full, event_x, windows, n_source_events=len(subset),
+                              catalogue_id=catalogue_id, tau=tau, initial_history=initial_history)
+        if not summary["all_models_converged"] or not summary["likelihood_nesting_ok"]:
+            raise DeletionFitFailure("Nonconverged or nonnested deletion fit")
+        beta = dict(zip(full.terms, full.beta))
+        return dict(summary, beta_pre_phase_sin=beta["pre_phase_sin"],
+                    beta_pre_phase_cos=beta["pre_phase_cos"])
+
+    point_metrics = fit_retained(events)
     reference = paired_metrics(point_metrics, point_metrics)
     rows, masks = [], []
     for scope, eligible_segments in scopes.items():
-        anchors, eligible = _catalogue_masks(events, eligible_segments, anchor_ids,
-                                             segment_column, age_column, id_column)
+        anchors, eligible = _catalogue_masks(events, eligible_segments, None,
+                                             "segment_id", "event_age_kyr_bp", "event_id")
         for probability in probabilities:
             for replicate in range(n_replicates):
                 rng = np.random.default_rng(np.random.SeedSequence([seed, replicate]))
                 subset, membership = drop_events(
                     events, probability, rng, eligible_segments=eligible_segments,
-                    anchor_ids=anchor_ids, segment_column=segment_column,
-                    age_column=age_column, id_column=id_column)
+                    anchor_ids=None)
                 masks.append(membership.retained.to_numpy(bool))
                 row = dict(scope=scope, drop_probability=probability,
                            replicate_id=replicate + 1, seed=int(seed),
@@ -208,138 +228,35 @@ def run_deletion_sensitivity(events, fit, point_metrics, *, probabilities=(0.1, 
                            fit_valid=True, invalid_reason="")
                 row["response_status"] = "ok" if row["n_response_events"] else "no_response_events"
                 try:
-                    metrics = fit(subset)
-                    if not metrics.get("fit_valid", True):
-                        reason = metrics.get("invalid_reason", "")
-                        if not str(reason).strip():
-                            raise ValueError("An invalid fit must supply its failure reason")
-                        raise DeletionFitFailure(str(reason))
-                    if "response_exposure_kyr" in point_metrics:
-                        exposure = float(metrics["response_exposure_kyr"])
-                        if not np.isclose(exposure, point_metrics["response_exposure_kyr"], rtol=0, atol=1e-10):
-                            raise ValueError("Deleting response events changed the fixed response support")
-                        row["response_exposure_kyr"] = exposure
-                    if "n_response_events" in metrics and metrics["n_response_events"] != row["n_response_events"]:
+                    n_fits = n_fits + 1
+                    if show_progress and n_fits % 100 == 0:
+                        print(f"{catalogue_id}: deletion fit {n_fits:,} "
+                              f"({time.perf_counter() - started:.0f} s)", flush=True)
+                    metrics = fit_retained(subset)
+                    exposure = float(metrics["response_exposure_kyr"])
+                    if not np.isclose(exposure, point_metrics["response_exposure_kyr"], rtol=0, atol=1e-10):
+                        raise ValueError("Deleting response events changed the fixed response support")
+                    row["response_exposure_kyr"] = exposure
+                    if metrics["n_response_events"] != row["n_response_events"]:
                         raise ValueError("Fitted response count disagrees with retained catalogue")
                     row.update(paired_metrics(metrics, point_metrics))
-                except DeletionFitFailure as error:
+                except (DeletionFitFailure, PointProcessFitError) as error:
                     row.update(fit_valid=False, invalid_reason=str(error))
                     row.update({name: np.nan for name in reference})
                 rows.append(row)
     replicates = pd.DataFrame(rows)
-    return dict(replicates=replicates, scenario_summary=summarize_scenarios(replicates),
-                retained_masks=np.asarray(masks, dtype=bool),
-                event_ids=events[id_column].to_numpy(copy=True),
-                reference=pd.DataFrame([{name: reference[name] for name in EFFECT_METRICS}]))
-
-
-def run_catalogue_analysis(context, *, scopes, n_replicates=500, seed=20260912,
-                           show_progress=True):
-    """Apply the extra-deletion scenarios to one continuous main-analysis context."""
-    from toolbox import combined_likelihood as likelihood
-    from toolbox.point_process import PointProcessFitError
-
-    point = likelihood.fit_catalogue(context.events, context, fixed_support=True)
-    started = time.perf_counter()
-    n_fits = 0
-
-    def metrics_for_fit(fitted):
-        if not fitted.summary["all_models_converged"] or not fitted.summary["likelihood_nesting_ok"]:
-            raise DeletionFitFailure("Nonconverged or nonnested deletion fit")
-        beta = dict(zip(fitted.full.terms, fitted.full.beta))
-        return dict(fitted.summary, beta_pre_phase_sin=beta["pre_phase_sin"],
-                    beta_pre_phase_cos=beta["pre_phase_cos"])
-
-    reference = metrics_for_fit(point)
-
-    def fit_subset(subset):
-        nonlocal n_fits
-        n_fits += 1
-        if show_progress and n_fits % 100 == 0:
-            print(f"{context.catalogue_id}: deletion fit {n_fits:,} "
-                  f"({time.perf_counter() - started:.0f} s)", flush=True)
-        try:
-            fitted = likelihood.fit_catalogue(subset, context, fixed_support=True)
-        except PointProcessFitError as error:
-            raise DeletionFitFailure(str(error)) from error
-        return metrics_for_fit(fitted)
-
-    result = run_deletion_sensitivity(context.events, fit_subset, reference, scopes=scopes,
-                                      n_replicates=n_replicates, seed=seed)
-    result["reference"] = pd.DataFrame([reference])
-    result["parameters"] = dict(catalogue_id=context.catalogue_id,
-        model_version=likelihood.MODEL_VERSION, seed=seed,
-        n_replicates_per_scenario=n_replicates, deletion_probabilities="0.1;0.2",
-        scopes=";".join(scopes), history_tau_kyr=context.history_tau_ka,
-        initial_history=context.initial_history, history_coefficient_domain="beta_H <= 0",
-        quadrature_order=context.quadrature_order,
-        response_exposure_kyr=context.response_exposure_kyr,
-        initialization="original oldest event in each segment fixed and retained",
-        history="recomputed using only retained events",
-        support_scaling="fixed to nominal undeleted catalogue",
-        interpretation="extra independent deletion stress test; not inferred missingness or chronology uncertainty",
-        scenario_pairing="same replicate uniforms across probabilities and eligible scopes",
-        nested_bootstrap=False, elapsed_seconds=time.perf_counter() - started)
-    return result
-
-
-def save_results(result, context, output_root, run_name, *, diagnostics_root=None):
-    """Write compact research tables, masks for reproducibility and English notes."""
-    from toolbox import combined_likelihood as likelihood
-    from toolbox.project_config import PROJECT_ROOT, LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV
-
-    output_root = Path(output_root)
-    data_dir = output_root / "data/processed" / run_name
-    notes_dir = generated_notes_dir(output_root)
-    diagnostics_dir = (output_root / "tests/diagnostics" / run_name if diagnostics_root is None
-                       else Path(diagnostics_root) / run_name)
-    for directory in (data_dir, notes_dir, diagnostics_dir):
-        directory.mkdir(parents=True, exist_ok=True)
-    for name in ("scenario_summary", "replicates", "reference"):
-        result[name].to_csv(data_dir / f"{name}.csv", index=False, float_format="%.12g")
-    likelihood.support_table(context).to_csv(data_dir / "support.csv", index=False)
-    pd.DataFrame([dict(parameter=name, value=value) for name, value in result["parameters"].items()]).to_csv(
-        data_dir / "parameters_and_provenance.csv", index=False)
-    np.savez_compressed(diagnostics_dir / "retained_event_masks.npz",
-                        event_ids=np.asarray(result["event_ids"], dtype=str),
-                        event_ages_kyr_bp=context.events[likelihood.EVENT_AGE_COLUMN].to_numpy(),
-                        retained=result["retained_masks"],
-                        replicate_id=result["replicates"].replicate_id.to_numpy(),
-                        scope=result["replicates"].scope.to_numpy(str),
-                        drop_probability=result["replicates"].drop_probability.to_numpy())
-    input_paths = [Path(__file__), Path(likelihood.__file__), PROJECT_ROOT / "toolbox/point_process.py",
-                   LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV]
-    input_paths.append(likelihood.EVENT_CATALOGUE_CSV)
-    pd.DataFrame([dict(path=str(path.relative_to(PROJECT_ROOT)),
-                       sha256=hashlib.sha256(path.read_bytes()).hexdigest())
-                  for path in input_paths]).to_csv(diagnostics_dir / "input_code_sha256.csv", index=False)
-    rows = result["replicates"]
-    summary = result["scenario_summary"]
-    report_metrics = ["gain_bits_per_event", "phase_offset_deg", "pre_phase_rate_ratio_max_vs_min"]
-    values = summary.loc[summary.metric.isin(report_metrics),
-                         ["scope", "drop_probability", "metric", "median", "q025", "q975", "n_finite"]]
-    note = f"""Extra event-deletion sensitivity: {context.catalogue_id}
-
-Each noninitial response event is independently deleted with probability 0.1 or 0.2.
-There are {result['parameters']['n_replicates_per_scenario']} replicate masks per scope/probability.
-Every original conditioning event, response endpoint and forcing scale remains fixed.
-Both continuous nested models are refitted, rebuilding history only from retained events.
-Replicate seeds pair the deletion masks across probabilities and eligible segment scopes.
-This is a stress test of additional loss, not a reconstruction or correction of pre-existing
-missing events. It cannot rule out phase-dependent or climate-dependent detection bias.
-No nested null bootstrap or chronology Monte Carlo is included in this experiment.
-
-Valid fits: {int(rows.fit_valid.sum())}/{len(rows)}. Failed fits are retained with their masks
-and explicit reasons; effect quantiles use finite supported estimates and show their denominator.
-Quantiles describe the specified deletion scenarios, not sampling confidence intervals.
-Phase offsets are circular differences in [-180, 180) degrees from the original estimate.
-Phase coefficients and amplitude remain available because a weak effect has an uncertain peak.
-
-{values.to_string(index=False, float_format=lambda x: f'{x:.6g}')}
-
-Research tables: scenario_summary.csv, replicates.csv, reference.csv, support.csv and parameters_and_provenance.csv.
-The compressed membership masks and input hashes are stored under tests/diagnostics.
-No figure is generated by this experiment.
-"""
-    (notes_dir / f"{run_name}_Methods_and_results.txt").write_text(note, encoding="utf-8")
-    return data_dir
+    return dict(events=events, windows=windows, replicates=replicates,
+        scenario_summary=summarize_scenarios(replicates),
+        retained_masks=np.asarray(masks, dtype=bool), event_ids=events.event_id.to_numpy(copy=True),
+        reference=pd.DataFrame([point_metrics]), parameters=dict(
+            catalogue_id=catalogue_id, model_version=MODEL_VERSION, seed=seed,
+            n_replicates_per_scenario=n_replicates,
+            deletion_probabilities=";".join(str(value) for value in probabilities),
+            scopes=";".join(scopes), history_tau_kyr=tau, initial_history=initial_history,
+            history_coefficient_domain="beta_H <= 0", quadrature_order=quadrature_order,
+            response_exposure_kyr=float((windows.response_end_kyr_bp - windows.response_start_kyr_bp).sum()),
+            initialization="original oldest event in each segment fixed and retained",
+            history="recomputed using only retained events", support_scaling="fixed to nominal undeleted catalogue",
+            interpretation="extra independent deletion stress test; not inferred missingness or chronology uncertainty",
+            scenario_pairing="same replicate uniforms across probabilities and eligible scopes",
+            nested_bootstrap=False, elapsed_seconds=time.perf_counter() - started))

@@ -15,12 +15,15 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import NGRIP_MIS6_event_uncertainty_sensitivity as analysis
-from toolbox import combined_likelihood, age_sensitivity, plotting
+from toolbox import age_sensitivity, event_model, model_stats, plotting
+from toolbox.point_process import fit_point_process
+from toolbox.project_config import (EVENT_CATALOGUE_CSV, OBSERVATION_SEGMENTS_CSV,
+                                    LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV)
 
 
 @pytest.fixture(scope="module")
 def events() -> pd.DataFrame:
-    return combined_likelihood.load_event_catalogue()
+    return pd.read_csv(EVENT_CATALOGUE_CSV)
 
 
 @pytest.fixture(scope="module")
@@ -31,25 +34,53 @@ def source_tables() -> tuple[pd.DataFrame, pd.DataFrame]:
     )
 
 
+def model_inputs(events):
+    observations = pd.read_csv(OBSERVATION_SEGMENTS_CSV)
+    lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
+    co2 = pd.read_csv(CO2_CSV, float_precision="round_trip")
+    orbital = pd.read_csv(ORBITAL_CSV, float_precision="round_trip")
+    phase = pd.read_csv(PRECESSION_PHASE_CSV, float_precision="round_trip")
+    forcings = {"lr04": (lr04.age_kyr_bp.to_numpy(), lr04.lr04.to_numpy()),
+                "co2": (co2.age_kyr_bp.to_numpy(), co2.co2_ppm.to_numpy()),
+                "precession_index": (orbital.age_kyr_bp.to_numpy(), orbital.precession_index.to_numpy())}
+    windows = event_model.response_windows(events, observations)
+    scaling = event_model.nominal_scaling({k: forcings[k] for k in ("lr04", "co2")}, windows)
+    return dict(events=events, observations=observations, forcings=forcings,
+                phase_anchors=(phase.age_kyr_bp.to_numpy(), phase.phase_unwrapped_rad.to_numpy()),
+                scaling=scaling, reduced_terms=analysis.REDUCED_TERMS, full_terms=analysis.FULL_TERMS,
+                catalogue_id=analysis.CATALOGUE_ID, tau=analysis.HISTORY_TAU_KYR)
+
+
+def refit(inputs, draws):
+    return age_sensitivity.fit_realizations(
+        **inputs, realizations=draws, age_columns=analysis.combined_age_columns(inputs["events"]))
+
+
 @pytest.fixture(scope="module")
-def small_setup(events):
-    context = combined_likelihood.build_context()
-    draws = analysis.load_joint_realizations(events, n_realizations=5)
-    results, diagnostics = analysis.fit_realizations(events, draws, context)
-    point_fit = combined_likelihood.fit_catalogue(events, context)
-    return context, draws, results, diagnostics, point_fit
+def small_setup(events, source_tables):
+    inputs = model_inputs(events)
+    draws = analysis.pair_source_ensembles(events, *source_tables, n_realizations=5, seed=analysis.PAIRING_SEED)
+    results, diagnostics = refit(inputs, draws)
+    windows = event_model.response_windows(events, inputs["observations"])
+    event_x, integral_x = event_model.build_design(events, windows, inputs["forcings"],
+                                                  inputs["phase_anchors"], inputs["scaling"])
+    for frame in (event_x, integral_x):
+        frame["mis6_segment"] = frame.segment_id.eq("MIS6").astype(float)
+    reduced = fit_point_process(event_x[analysis.REDUCED_TERMS], integral_x[analysis.REDUCED_TERMS],
+                                integral_x.weight, analysis.REDUCED_TERMS)
+    full = fit_point_process(event_x[analysis.FULL_TERMS], integral_x[analysis.FULL_TERMS],
+                             integral_x.weight, analysis.FULL_TERMS, start_beta=np.r_[reduced.beta, 0., 0.])
+    point = model_stats.fit_summary(reduced, full, event_x, windows,
+                                    n_source_events=len(events), catalogue_id=analysis.CATALOGUE_ID)
+    return inputs, draws, results, diagnostics, point
 
 
 def test_main_model_and_uncertainty_scope_are_frozen():
     assert analysis.N_REALIZATIONS == 10_000
     assert analysis.HISTORY_TAU_KYR == pytest.approx(1.5)
-    assert combined_likelihood.DEFAULT_HISTORY_TAU_KA == 1.5
-    assert combined_likelihood.REDUCED_TERMS == (
-        "same_type_exponential_history",
-        "lr04_scaled",
-        "co2_scaled",
-        "mis6_segment",
-    )
+    assert analysis.REDUCED_TERMS == [
+        "intercept", "same_type_exponential_history", "lr04_scaled", "co2_scaled", "mis6_segment",
+    ]
 
 
 def test_source_columns_follow_stable_event_ids_not_display_suffixes(events):
@@ -138,7 +169,7 @@ def test_crossed_source_sequence_is_rejected_not_sorted(events, source_tables):
 
 
 def test_small_mc_reconditions_exact_anchors_and_reports_finite_results(small_setup):
-    context, draws, results, diagnostics, _ = small_setup
+    inputs, draws, results, diagnostics, _ = small_setup
     assert len(results) == 5
     assert results.fit_valid.all()
     assert results.n_response_events.eq(53).all()
@@ -151,26 +182,27 @@ def test_small_mc_reconditions_exact_anchors_and_reports_finite_results(small_se
     assert not diagnostics['event_count_pattern_cache']
     assert diagnostics['n_numerical_failures'] == 0
     for i, row in draws.iterrows():
-        expected = sum(row[f'age_kyr_bp__{context.events.loc[context.events.segment_id.eq(name)].iloc[-1].event_id}']
-                       - segment.observation_start_kyr_bp for name, segment in context.segments.items())
+        expected = sum(
+            row[f'age_kyr_bp__{inputs["events"].loc[inputs["events"].segment_id.eq(window.segment_id)].iloc[-1].event_id}']
+            - window.observation_start_kyr_bp for window in inputs["observations"].itertuples())
         assert results.response_exposure_kyr.iloc[i] == pytest.approx(expected)
 
 
 def test_summary_reports_actual_denominator_and_circular_phase(small_setup):
     _, _, results, _, point_fit = small_setup
-    summary = analysis.build_summary(results, point_fit).iloc[0]
+    summary = age_sensitivity.summarize(results, point_fit).iloc[0]
     valid = results.loc[results.fit_valid]
     assert summary.n_nominal_p_below_0p05 == valid.nominal_LR_p.lt(.05).sum()
     assert summary.fraction_nominal_p_below_0p05 == pytest.approx(valid.nominal_LR_p.lt(.05).mean())
     assert summary.n_valid == len(valid)
-    phase = age_sensitivity.unwrap_phase(valid.pre_phase_preferred_deg, point_fit.summary['pre_phase_preferred_deg'])
+    phase = age_sensitivity.unwrap_phase(valid.pre_phase_preferred_deg, point_fit['pre_phase_preferred_deg'])
     assert summary.pre_phase_preferred_deg_median == pytest.approx(np.median(phase))
     assert summary.phase_quantiles_unwrapped_about_point
     assert not any('AICc' in column for column in summary.index)
 
 
 def test_compact_results_keep_identifiers_and_scientific_metrics(small_setup):
-    compact = analysis.compact_gain_results(small_setup[2])
+    compact = age_sensitivity.compact_results(small_setup[2])
     assert {'realization_id','ngrip_realization_id','mis6_realization_id','fit_valid','invalid_reason',
             'LR_statistic','nominal_LR_p','gain_bits_per_event','delta_AIC_full_minus_reduced',
             'beta_history','beta_pre_phase_sin','beta_pre_phase_cos'}.issubset(compact.columns)
@@ -178,7 +210,7 @@ def test_compact_results_keep_identifiers_and_scientific_metrics(small_setup):
 
 
 def boundary_draws(events):
-    ages = events[combined_likelihood.EVENT_AGE_COLUMN].to_numpy(float)
+    ages = events["event_age_kyr_bp"].to_numpy(float)
     draws = pd.DataFrame(np.tile(ages, (3, 1)), columns=analysis.combined_age_columns(events))
     draws.insert(0, 'realization_id', ['nominal', 'older_anchor', 'outside'])
     draws.insert(1, 'ngrip_realization_id', ['n1', 'n2', 'n3'])
@@ -189,10 +221,10 @@ def boundary_draws(events):
 
 
 def test_boundary_draws_preserve_all_ages_and_original_failure_ids(events, small_setup):
-    context, _, _, _, point_fit = small_setup
+    inputs, _, _, _, point_fit = small_setup
     draws = boundary_draws(events)
     original = draws.copy(deep=True)
-    results, diagnostics = analysis.fit_realizations(events, draws, context)
+    results, diagnostics = refit(inputs, draws)
     pd.testing.assert_frame_equal(draws, original)
     assert results.realization_id.tolist() == draws.realization_id.tolist()
     assert results.fit_valid.tolist() == [True, True, False]
@@ -201,34 +233,34 @@ def test_boundary_draws_preserve_all_ages_and_original_failure_ids(events, small
     assert results.invalid_reason.iloc[2] == 'outside_NGRIP_observation_support'
     assert diagnostics['n_valid'] == 2 and diagnostics['n_invalid'] == 1
     assert not diagnostics['event_count_pattern_cache']
-    summary = analysis.build_summary(results, point_fit).iloc[0]
+    summary = age_sensitivity.summarize(results, point_fit).iloc[0]
     assert summary.n_realizations == 3 and summary.n_valid == 2
     assert summary.fraction_nominal_p_below_0p05 == pytest.approx(results.iloc[:2].nominal_LR_p.lt(.05).mean())
 
 
 def test_numerical_failures_retained_but_programming_errors_propagate(events, small_setup, monkeypatch):
     from toolbox.point_process import PointProcessFitError
-    context = small_setup[0]
+    inputs = small_setup[0]
     draws = boundary_draws(events).iloc[:1]
     def failed(*args, **kwargs):
         raise PointProcessFitError('diagnosed optimization failure')
-    monkeypatch.setattr(combined_likelihood, 'fit_catalogue', failed)
-    results, diagnostics = analysis.fit_realizations(events, draws, context)
+    monkeypatch.setattr(age_sensitivity, 'fit_point_process', failed)
+    results, diagnostics = refit(inputs, draws)
     assert not results.fit_valid.any()
     assert results.invalid_reason.str.startswith('numerical_fit:').all()
     assert diagnostics['n_numerical_failures'] == 1
     def broken(*args, **kwargs):
         raise ValueError('unrelated implementation error')
-    monkeypatch.setattr(combined_likelihood, 'fit_catalogue', broken)
+    monkeypatch.setattr(age_sensitivity, 'fit_point_process', broken)
     with pytest.raises(ValueError, match='unrelated implementation'):
-        analysis.fit_realizations(events, draws, context)
+        refit(inputs, draws)
 
 
 def test_all_outside_draws_have_explicit_empty_summary_without_redrawing(events, small_setup):
-    context, _, _, _, point_fit = small_setup
+    inputs, _, _, _, point_fit = small_setup
     draws = boundary_draws(events).iloc[2:]
-    results, diagnostics = analysis.fit_realizations(events, draws, context)
-    summary = analysis.build_summary(results, point_fit).iloc[0]
+    results, diagnostics = refit(inputs, draws)
+    summary = age_sensitivity.summarize(results, point_fit).iloc[0]
     assert len(results) == 1 and not results.fit_valid.any()
     assert summary.n_realizations == summary.n_invalid == 1
     assert summary.n_valid == 0
@@ -239,8 +271,8 @@ def test_all_outside_draws_have_explicit_empty_summary_without_redrawing(events,
 
 def test_plot_uses_only_valid_realizations(events, small_setup, monkeypatch):
     import matplotlib.pyplot as plt
-    context, _, _, _, point_fit = small_setup
-    results, _ = analysis.fit_realizations(events, boundary_draws(events), context)
+    inputs, _, _, _, point_fit = small_setup
+    results, _ = refit(inputs, boundary_draws(events))
     sizes = []
     original = plotting._histogram_panel
     def inspect(ax, values, *args, **kwargs):

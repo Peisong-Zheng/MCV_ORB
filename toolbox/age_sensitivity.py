@@ -1,70 +1,114 @@
-"""Refit saved chronological realizations without changing their ages or IDs."""
+"""Refit saved chronological realizations at fixed nominal climate scaling."""
 from concurrent.futures import ProcessPoolExecutor
 import multiprocessing as mp
 import numpy as np
 import pandas as pd
-from toolbox import combined_likelihood as likelihood
-from toolbox.point_process import PointProcessFitError
+from toolbox import event_model, model_stats
+from toolbox.point_process import PointProcessFitError, fit_point_process
+from toolbox.project_config import MODEL_VERSION
 from toolbox.model_stats import unwrap_phase
 
-_CONTEXT = None
+_FIT_INPUTS = None
 
 
-def _initialize(context):
-    global _CONTEXT
-    _CONTEXT=context
+def _initialize(*inputs):
+    global _FIT_INPUTS
+    _FIT_INPUTS = inputs
 
 
 def _fit_ages(ages):
-    events=_CONTEXT.events.copy()
-    events[likelihood.EVENT_AGE_COLUMN]=ages
+    (nominal_events, observations, forcings, phase_anchors, scaling,
+     reduced_terms, full_terms, catalogue_id, tau, initial_history, quadrature_order) = _FIT_INPUTS
+    events = nominal_events.copy()
+    events["event_age_kyr_bp"] = ages
     if "event_age_ka" in events:
-        events["event_age_ka"]=ages
-    for name,segment in _CONTEXT.segments.items():
-        x=ages[events.segment_id.eq(name).to_numpy()]
-        if x.min()<segment.observation_start_kyr_bp or x.max()>segment.observation_end_kyr_bp:
-            return {"fit_valid":False,"invalid_reason":f"outside_{name}_observation_support"}
+        events["event_age_ka"] = ages
+    for window in observations.itertuples(index=False):
+        selected = ages[events.segment_id.eq(window.segment_id).to_numpy()]
+        if (selected.min() < window.observation_start_kyr_bp
+                or selected.max() > window.observation_end_kyr_bp):
+            return {"fit_valid": False,
+                    "invalid_reason": f"outside_{window.segment_id}_observation_support"}
+    # Each chronology moves its anchor and history; nominal scaling stays fixed.
+    windows = event_model.response_windows(events, observations)
+    event_x, integral_x = event_model.build_design(
+        events, windows, forcings, phase_anchors, scaling, tau=tau,
+        initial_history=initial_history, quadrature_order=quadrature_order,
+    )
+    if "mis6_segment" in full_terms or "mis6_segment" in reduced_terms:
+        for frame in (event_x, integral_x):
+            frame["mis6_segment"] = frame.segment_id.eq("MIS6").astype(float)
+    history = "same_type_exponential_history"
     try:
-        fit=likelihood.fit_catalogue(events,_CONTEXT)
+        reduced = fit_point_process(
+            event_x[reduced_terms], integral_x[reduced_terms], integral_x.weight, reduced_terms,
+            nonpositive_terms=[term for term in reduced_terms if term == history],
+        )
+        start = np.zeros(len(full_terms))
+        if np.isfinite(reduced.beta).all():
+            for term, beta in zip(reduced.terms, reduced.beta):
+                start[full_terms.index(term)] = beta
+        full = fit_point_process(
+            event_x[full_terms], integral_x[full_terms], integral_x.weight, full_terms,
+            nonpositive_terms=[term for term in full_terms if term == history], start_beta=start,
+        )
     except PointProcessFitError as error:
-        return {"fit_valid":False,"invalid_reason":f"numerical_fit: {error}"}
-    beta=dict(zip(fit.full.terms,fit.full.beta))
-    return {**fit.summary,"fit_valid":True,"invalid_reason":"",
-            "beta_pre_phase_sin":beta["pre_phase_sin"],"beta_pre_phase_cos":beta["pre_phase_cos"],
-            **{f"beta__{term}":value for term,value in beta.items()}}
+        return {"fit_valid": False, "invalid_reason": f"numerical_fit: {error}"}
+    summary = model_stats.fit_summary(
+        reduced, full, event_x, windows, n_source_events=len(events),
+        catalogue_id=catalogue_id, tau=tau, initial_history=initial_history,
+    )
+    beta = dict(zip(full.terms, full.beta))
+    return {**summary, "fit_valid": True, "invalid_reason": "",
+            "beta_pre_phase_sin": beta["pre_phase_sin"],
+            "beta_pre_phase_cos": beta["pre_phase_cos"],
+            **{f"beta__{term}": value for term, value in beta.items()}}
 
 
-def fit_realizations(context,realizations,age_columns,n_workers=1,show_progress=False):
-    age=realizations.loc[:,age_columns].to_numpy(float)
+def fit_realizations(events, observations, forcings, phase_anchors, scaling,
+                     reduced_terms, full_terms, realizations, age_columns, *,
+                     catalogue_id, tau=1.5, initial_history=0., quadrature_order=4,
+                     n_workers=1, show_progress=False):
+    """Refit each ordered age row, retaining IDs and unsupported rows explicitly."""
+    age = realizations.loc[:, age_columns].to_numpy(float)
     if not np.isfinite(age).all():
         raise ValueError("Chronology realizations must be finite")
-    for name in context.segments:
-        mask=context.events.segment_id.eq(name).to_numpy()
-        if not np.all(np.diff(age[:,mask],axis=1)>0):
+    if age.shape[1] != len(events):
+        raise ValueError("One age column is required for each event")
+    for name in observations.segment_id:
+        mask = events.segment_id.eq(name).to_numpy()
+        if not np.all(np.diff(age[:, mask], axis=1) > 0):
             raise ValueError("Event rank must be preserved; no sorting repair is applied")
-    identifiers=[c for c in realizations if not c.startswith(('age_kyr_bp__','age_ka_bp__'))]
-    if 'realization_id' not in identifiers or realizations.realization_id.duplicated().any():
+    identifiers = [c for c in realizations if not c.startswith(('age_kyr_bp__', 'age_ka_bp__'))]
+    if ('realization_id' not in identifiers or realizations.realization_id.isna().any()
+            or realizations.realization_id.duplicated().any()):
         raise ValueError("Realizations require unique IDs")
-    rows=[]
-    if n_workers>1:
-        pool=ProcessPoolExecutor(n_workers,mp_context=mp.get_context('spawn'),initializer=_initialize,initargs=(context,))
-        outputs=pool.map(_fit_ages,age,chunksize=25)
+    inputs = (events, observations, forcings, phase_anchors, scaling,
+              list(reduced_terms), list(full_terms), catalogue_id, tau,
+              initial_history, quadrature_order)
+    rows = []
+    if n_workers > 1:
+        pool = ProcessPoolExecutor(n_workers, mp_context=mp.get_context('spawn'),
+                                   initializer=_initialize, initargs=inputs)
+        outputs = pool.map(_fit_ages, age, chunksize=25)
     else:
-        _initialize(context);pool=None;outputs=map(_fit_ages,age)
+        _initialize(*inputs)
+        pool = None
+        outputs = map(_fit_ages, age)
     try:
-        for i,result in enumerate(outputs):
-            rows.append({**realizations.iloc[i][identifiers].to_dict(),**result})
-            if show_progress and (i+1)%1000==0:
-                print(f"Refitted {i+1:,}/{len(age):,} exact-age realizations",flush=True)
+        for i, result in enumerate(outputs):
+            rows.append({**realizations.iloc[i][identifiers].to_dict(), **result})
+            if show_progress and (i + 1) % 1000 == 0:
+                print(f"Refitted {i+1:,}/{len(age):,} exact-age realizations", flush=True)
     finally:
         if pool is not None:
             pool.shutdown()
-    out=pd.DataFrame(rows)
-    numeric_fail=out.invalid_reason.fillna('').str.startswith('numerical_fit').sum()
-    diagnostics=dict(n_realizations=len(out),n_valid=int(out.fit_valid.sum()),n_invalid=int((~out.fit_valid).sum()),
-                     n_numerical_failures=int(numeric_fail),age_input_reused=True,event_count_pattern_cache=False,
-                     model_version=likelihood.MODEL_VERSION)
-    return out,diagnostics
+    out = pd.DataFrame(rows)
+    numeric_fail = out.invalid_reason.fillna('').str.startswith('numerical_fit').sum()
+    diagnostics = dict(n_realizations=len(out), n_valid=int(out.fit_valid.sum()),
+                       n_invalid=int((~out.fit_valid).sum()), n_numerical_failures=int(numeric_fail),
+                       age_input_reused=True, event_count_pattern_cache=False, model_version=MODEL_VERSION)
+    return out, diagnostics
 
 
 def summarize(results,point):
@@ -81,7 +125,7 @@ def summarize(results,point):
              fraction_nominal_p_below_0p05=float(valid.nominal_LR_p.lt(.05).mean()),
              n_delta_AIC_below_zero=int(valid.delta_AIC_full_minus_reduced.lt(0).sum()),
              fraction_delta_AIC_below_zero=float(valid.delta_AIC_full_minus_reduced.lt(0).mean()),
-             model_version=likelihood.MODEL_VERSION)
+             model_version=MODEL_VERSION)
     for key in ('gain_bits_per_event','LR_statistic','nominal_LR_p','delta_AIC_full_minus_reduced',
                 'pre_phase_rate_ratio_max_vs_min','pre_phase_preferred_deg'):
         value=valid[key].to_numpy(float)

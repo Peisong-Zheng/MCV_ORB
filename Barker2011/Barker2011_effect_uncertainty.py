@@ -6,7 +6,6 @@ Combined selects 200 age realizations and simulates 50 catalogues per fitted mod
 The simulation, interval construction and figure template match NGRIP–MIS6.
 """
 
-import argparse
 import json
 import os
 from pathlib import Path
@@ -21,18 +20,30 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 import pandas as pd
 
-import NGRIP_MIS6_effect_uncertainty as shared
-from toolbox import combined_likelihood as likelihood
-from toolbox import effect_uncertainty as effect
 from toolbox.project_config import (PROJECT_ROOT, BARKER_EVENT_CSVS, LR04_CSV, CO2_CSV,
                                     ORBITAL_CSV, PRECESSION_PHASE_CSV)
 
+
+from toolbox import event_model, sampling
+from toolbox.point_process import fit_point_process
+from toolbox.plotting import plot_effect_uncertainty
+from toolbox.model_stats import SCENARIOS, INTERVAL_TYPES, summarize_effects, build_curve_table
+from toolbox.project_config import MODEL_VERSION
+HISTORY_TERM = "same_type_exponential_history"
 
 RUN_NAME = "Barker2011_effect_uncertainty"
 BARKER_ROOT = PROJECT_ROOT / "Barker2011"
 AGE_DRAWS = BARKER_ROOT / "data/processed/Barker2011_event_age_uncertainty/event_age_realizations.csv"
 AGE_RESULTS = BARKER_ROOT / "data/processed/Barker2011_event_uncertainty_sensitivity/gain_realizations.csv"
-DEFAULT_SEED = 20260925
+RANDOM_SEED = 20260925
+
+OUTPUT_ROOT = PROJECT_ROOT
+N_POINT_DRAWS = 5_000
+N_OUTER_DRAWS = 200
+N_INNER_DRAWS = 50
+N_WORKERS = 3
+REDRAW = False
+EXPORT_PAPER = True
 
 
 def load_age_inputs(events):
@@ -80,32 +91,35 @@ def validate_simulation_ids(replicates, selected, n_point, n_outer, n_inner, see
         np.testing.assert_allclose(group.response_exposure_kyr, exposure, rtol=1e-10, atol=1e-10)
 
 
+def save_figure(summary, curves, regions, figure_dir, export=False, *, compact_ratio_ticks=False):
+    """Write the common effect figure in this study's output folder."""
+    import matplotlib.pyplot as plt
+    from paper_figure_export import copy_pdf_to_paper
+    figure_dir.mkdir(parents=True, exist_ok=True)
+    fig = plot_effect_uncertainty(summary, curves, regions, compact_ratio_ticks=compact_ratio_ticks)
+    for suffix in ("png", "pdf"):
+        fig.savefig(figure_dir / f"{RUN_NAME}.{suffix}", dpi=450)
+    plt.close(fig)
+    if export:
+        copy_pdf_to_paper(figure_dir / f"{RUN_NAME}.pdf")
+
+
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--n-point", type=int, default=5000)
-    parser.add_argument("--n-outer", type=int, default=200)
-    parser.add_argument("--n-inner", type=int, default=50)
-    parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
-    parser.add_argument("--workers", type=int, default=3)
-    parser.add_argument("--output-root", type=Path, default=PROJECT_ROOT)
-    parser.add_argument("--redraw", action="store_true")
-    parser.add_argument("--no-paper-export", action="store_true")
-    args = parser.parse_args()
-    if args.n_point < 20 or min(args.n_outer, args.n_inner, args.workers) < 1 or args.seed < 0:
-        parser.error("Require n-point >= 20, positive counts/workers and a nonnegative seed")
-    root = args.output_root / "Barker2011"
+    if N_POINT_DRAWS < 20 or min(N_OUTER_DRAWS, N_INNER_DRAWS, N_WORKERS) < 1 or RANDOM_SEED < 0:
+        raise ValueError("Require at least 20 nominal draws, positive counts/workers and a nonnegative seed")
+    root = OUTPUT_ROOT / "Barker2011"
     data_dir = root / "data/processed" / RUN_NAME
     figure_dir = root / "figures" / RUN_NAME
     for directory in (data_dir, figure_dir):
         directory.mkdir(parents=True, exist_ok=True)
-    export = not args.no_paper_export and args.output_root.resolve() == PROJECT_ROOT.resolve()
-    if args.redraw:
+    export = EXPORT_PAPER and OUTPUT_ROOT.resolve() == PROJECT_ROOT.resolve()
+    if REDRAW:
         # Saved regions and curves are the result; plotting needs no new model fit.
         summary = pd.read_csv(data_dir / "effect_summary.csv", float_precision="round_trip")
         curves = pd.read_csv(data_dir / "phase_response_bands.csv", float_precision="round_trip")
         encoded = json.loads((data_dir / "coefficient_regions.json").read_text())
-        regions = {scenario: encoded[name] for scenario, name in shared.SCENARIOS.items()}
-        expected = {(scenario, quantity) for scenario in shared.SCENARIOS
+        regions = {scenario: encoded[name] for scenario, name in SCENARIOS.items()}
+        expected = {(scenario, quantity) for scenario in SCENARIOS
                     for quantity in ("preferred_phase_deg", "max_min_rate_ratio")}
         if len(summary) != 6 or set(zip(summary.scenario, summary.quantity)) != expected:
             raise ValueError("Effect summary must contain both quantities for all three scenarios")
@@ -113,32 +127,59 @@ def main():
                 or not np.isfinite(curves.to_numpy(float)).all()
                 or not summary.low.le(summary.high).all()):
             raise ValueError("Saved effect bounds must be finite and ordered")
-        shared.plot_results(summary, curves, regions, figure_dir, export, run_name=RUN_NAME,
+        save_figure(summary, curves, regions, figure_dir, export,
                             compact_ratio_ticks=True)
         print(summary.to_string(index=False), flush=True)
         return
 
     started = time.perf_counter()
-    events = pd.read_csv(BARKER_EVENT_CSVS["variable_threshold"], float_precision="round_trip")
-    context = likelihood.build_barker_context(events)
-    point_fit = likelihood.fit_catalogue(context.events, context)
-    effect.validate_effect_fit(point_fit)
-    draws, ages, age_columns = load_age_inputs(context.events)
-    generators, selected = shared.build_generators(
-        context.events, context, point_fit, draws, ages, args.n_outer, args.seed,
-        age_columns=age_columns, source_id_columns=())
+    event_definition = "variable_threshold"
+    quadrature_order = 4
+    events = pd.read_csv(BARKER_EVENT_CSVS[event_definition], float_precision="round_trip")
+    if (len(events) != {"variable_threshold": 70, "fixed_threshold": 59}[event_definition]
+            or events.event_id.isna().any() or not events.event_id.is_unique
+            or not np.all(np.diff(events.event_age_kyr_bp) > 0)):
+        raise ValueError("Check prepared Barker event count, identities and increasing ages")
+    events["segment_id"] = "Barker2011"
+    observations = pd.DataFrame([dict(segment_id="Barker2011", observation_start_kyr_bp=0.,
+                                      observation_end_kyr_bp=400.)])
+    catalogue_id = f"barker_{event_definition}_speleo_0_400"
+    lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
+    co2 = pd.read_csv(CO2_CSV, float_precision="round_trip")
+    orbital = pd.read_csv(ORBITAL_CSV, float_precision="round_trip")
+    anchors = pd.read_csv(PRECESSION_PHASE_CSV, float_precision="round_trip")
+    forcings = {"lr04": (lr04.age_kyr_bp.to_numpy(), lr04.lr04.to_numpy()),
+                "co2": (co2.age_kyr_bp.to_numpy(), co2.co2_ppm.to_numpy()),
+                "precession_index": (orbital.age_kyr_bp.to_numpy(), orbital.precession_index.to_numpy())}
+    phase_anchors = (anchors.age_kyr_bp.to_numpy(), anchors.phase_unwrapped_rad.to_numpy())
+    windows = event_model.response_windows(events, observations)
+    scaling = event_model.nominal_scaling({name: forcings[name] for name in ("lr04", "co2")}, windows)
+    event_x, integral_x = event_model.build_design(events, windows, forcings, phase_anchors, scaling,
+                                                  quadrature_order=quadrature_order)
+    reduced_terms = ("intercept", HISTORY_TERM, "lr04_scaled", "co2_scaled")
+    full_terms = reduced_terms + ("pre_phase_sin", "pre_phase_cos")
+    reduced = fit_point_process(event_x[list(reduced_terms)], integral_x[list(reduced_terms)],
+        integral_x.weight, reduced_terms, nonpositive_terms=(HISTORY_TERM,))
+    full = fit_point_process(event_x[list(full_terms)], integral_x[list(full_terms)],
+        integral_x.weight, full_terms, nonpositive_terms=(HISTORY_TERM,), start_beta=np.r_[reduced.beta, 0., 0.])
+    sampling.validate_effect_fit(reduced, full)
+    draws, ages, age_columns = load_age_inputs(events)
+    generators, selected = sampling.effect_generators(events, observations, windows, forcings,
+        phase_anchors, scaling, full, draws, ages, age_columns,
+        reduced_terms=reduced_terms, full_terms=full_terms, n_outer=N_OUTER_DRAWS, seed=RANDOM_SEED)
     selected.to_csv(data_dir / "selected_age_generators.csv", index=False)
-    pd.DataFrame([dict(zip(point_fit.full.terms, point_fit.full.beta))]).to_csv(
+    pd.DataFrame([dict(zip(full.terms, full.beta))]).to_csv(
         data_dir / "point_generator.csv", index=False)
-    likelihood.scaling_table(context)[["forcing_id", "mean", "range"]].to_csv(
+    scaling.reset_index()[["forcing_id", "mean", "range"]].to_csv(
         data_dir / "predictor_scaling.csv", index=False, float_format="%.17g")
-    replicates = shared.run_simulations(context, generators, args.n_point, args.n_inner,
-                                         args.seed, args.workers)
+    replicates = sampling.sample_effect(generators, forcings, phase_anchors, scaling,
+        reduced_terms=reduced_terms, full_terms=full_terms, n_point=N_POINT_DRAWS,
+        n_inner=N_INNER_DRAWS, seed=RANDOM_SEED, workers=N_WORKERS)
     # Retain failures and all fitted coefficients; effect summaries reject invalid fits.
     replicates.drop(columns=["inner_id", "n_observation_events", "phase_deg", "rate_ratio"],
                     errors="ignore").to_csv(
         data_dir / "effect_replicates.csv", index=False, float_format="%.12g")
-    settings = dict(model_version=likelihood.MODEL_VERSION, event_definition="variable_threshold",
+    settings = dict(model_version=MODEL_VERSION, event_definition="variable_threshold",
                     event_input_csv=str(BARKER_EVENT_CSVS["variable_threshold"].relative_to(PROJECT_ROOT)),
                     age_draws_csv=str(AGE_DRAWS.relative_to(PROJECT_ROOT)),
                     age_results_csv=str(AGE_RESULTS.relative_to(PROJECT_ROOT)),
@@ -146,29 +187,29 @@ def main():
                     co2_csv=str(CO2_CSV.relative_to(PROJECT_ROOT)),
                     orbital_csv=str(ORBITAL_CSV.relative_to(PROJECT_ROOT)),
                     phase_anchors_csv=str(PRECESSION_PHASE_CSV.relative_to(PROJECT_ROOT)),
-                    n_point=args.n_point, n_outer=args.n_outer, n_inner=args.n_inner,
-                    seed=args.seed, n_age_total=len(ages), n_age_valid=int(ages.fit_valid.sum()),
-                    history_tau_kyr=context.history_tau_ka, initial_history=context.initial_history,
-                    quadrature_order=context.quadrature_order,
-                    response_exposure_kyr=context.response_exposure_kyr,
-                    response_start_kyr_bp=context.segments["Barker2011"].response_start_kyr_bp,
+                    n_point=N_POINT_DRAWS, n_outer=N_OUTER_DRAWS, n_inner=N_INNER_DRAWS,
+                    seed=RANDOM_SEED, n_age_total=len(ages), n_age_valid=int(ages.fit_valid.sum()),
+                    history_tau_kyr=1.5, initial_history=0.,
+                    quadrature_order=quadrature_order,
+                    response_exposure_kyr=float((windows.response_end_kyr_bp-windows.response_start_kyr_bp).sum()),
+                    response_start_kyr_bp=windows.response_start_kyr_bp.item(),
                     n_failed=int((~replicates.fit_valid).sum()))
     pd.DataFrame(settings.items(), columns=["parameter", "value"]).to_csv(
         data_dir / "parameters_and_provenance.csv", index=False)
-    validate_simulation_ids(replicates, selected, args.n_point, args.n_outer, args.n_inner, args.seed)
-    summary, regions = shared.summarize_effects(point_fit, ages, replicates)
-    curves = shared.build_curve_table(point_fit, regions)
+    validate_simulation_ids(replicates, selected, N_POINT_DRAWS, N_OUTER_DRAWS, N_INNER_DRAWS, RANDOM_SEED)
+    summary, regions = summarize_effects(full, ages, replicates)
+    curves = build_curve_table(full, regions)
     summary.to_csv(data_dir / "effect_summary.csv", index=False, float_format="%.12g")
     curves.to_csv(data_dir / "phase_response_bands.csv", index=False, float_format="%.12g")
-    encoded = {shared.SCENARIOS[scenario]: {
+    encoded = {SCENARIOS[scenario]: {
         key: value.tolist() if isinstance(value, np.ndarray) else value
         for key, value in region.items() if key != "bootstrap_error_quadratic"}
         for scenario, region in regions.items()}
     (data_dir / "coefficient_regions.json").write_text(json.dumps(encoded, indent=2) + "\n")
-    shared.plot_results(summary, curves, regions, figure_dir, export, run_name=RUN_NAME,
+    save_figure(summary, curves, regions, figure_dir, export,
                         compact_ratio_ticks=True)
     print(summary.to_string(index=False), flush=True)
-    print(f"Elapsed: {time.perf_counter() - started:.1f} s; workers: {args.workers}", flush=True)
+    print(f"Elapsed: {time.perf_counter() - started:.1f} s; workers: {N_WORKERS}", flush=True)
 
 
 if __name__ == "__main__":

@@ -1,30 +1,42 @@
 #!/usr/bin/env python3
 """Refit the saved joint age ensemble with the continuous event likelihood."""
-from pathlib import Path
-import argparse
-import json
 import shutil
 import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from toolbox import combined_likelihood, age_sensitivity
+from toolbox import event_model, model_stats, age_sensitivity
+from toolbox.point_process import fit_point_process
+from toolbox.project_config import (
+    PROJECT_ROOT, EVENT_CATALOGUE_CSV, OBSERVATION_SEGMENTS_CSV, MODEL_VERSION,
+    LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV,
+)
 from toolbox.plotting import plot_sensitivity as draw_sensitivity
-from toolbox.project_config import PROJECT_ROOT
 from paper_figure_export import copy_pdf_to_paper
 from toolbox.project_config import generated_notes_dir
 
+# Adjust run parameters and paths here before running the script.
 RUN_NAME='NGRIP_MIS6_event_uncertainty_sensitivity'
 OUT_DATA_DIR=PROJECT_ROOT/'data/processed'/RUN_NAME
 OUT_FIG_DIR=PROJECT_ROOT/'figures'/RUN_NAME
 NGRIP_MC_INPUT=PROJECT_ROOT/'NGRIP/data/processed/ngrip_event_age_uncertainty/ngrip_event_age_realizations.csv'
 MIS6_MC_INPUT=PROJECT_ROOT/'MIS6/data/processed/MIS6_event_age_uncertainty/mis6_event_age_realizations.csv'
-COMBINED_AGE_OUTPUT=OUT_DATA_DIR/'combined_event_age_realizations.csv'
+COMBINED_AGE_INPUT = PROJECT_ROOT / 'data/processed' / RUN_NAME / 'combined_event_age_realizations.csv'
+REDRAW_INPUT_DIR = PROJECT_ROOT / 'data/processed' / RUN_NAME
+NOTE_DIR = generated_notes_dir(PROJECT_ROOT)
+N_WORKERS = 1
+REDRAW = False
+EXPORT_PAPER = True
 N_REALIZATIONS=10000
 PAIRING_SEED=20260906
 HISTORY_TAU_KYR=1.5
 P_THRESHOLD=.05
+HISTORY_TERM = "same_type_exponential_history"
+REDUCED_TERMS = ["intercept", HISTORY_TERM, "lr04_scaled", "co2_scaled", "mis6_segment"]
+FULL_TERMS = REDUCED_TERMS + ["pre_phase_sin", "pre_phase_cos"]
+CATALOGUE_ID = "ngrip_warming_plus_mis6"
+
 
 def combined_age_columns(events: pd.DataFrame) -> list[str]:
     """Name one wide-table age column per stable curated event ID."""
@@ -124,74 +136,62 @@ def pair_source_ensembles(
     )
     return draws
 
-def load_joint_realizations(
-    events: pd.DataFrame,
-    *,
-    n_realizations: int = N_REALIZATIONS,
-    seed: int = PAIRING_SEED,
-    ngrip_path: Path = NGRIP_MC_INPUT,
-    mis6_path: Path = MIS6_MC_INPUT,
-) -> pd.DataFrame:
-    """Load the existing combined-error ensembles and form fixed random pairs."""
-
-    if not ngrip_path.exists():
-        raise FileNotFoundError(f"Missing NGRIP age ensemble: {ngrip_path}")
-    if not mis6_path.exists():
-        raise FileNotFoundError(f"Missing MIS 6 age ensemble: {mis6_path}")
-    return pair_source_ensembles(
-        events,
-        pd.read_csv(ngrip_path),
-        pd.read_csv(mis6_path),
-        n_realizations=n_realizations,
-        seed=seed,
-    )
-
-
-def fit_realizations(events,draws,context,show_progress=False,n_workers=1):
-    return age_sensitivity.fit_realizations(context,draws,combined_age_columns(events),n_workers,show_progress)
-
-
-def compact_gain_results(results):
-    return age_sensitivity.compact_results(results)
-
-
-def build_summary(results,point_fit):
-    return age_sensitivity.summarize(results,point_fit.summary)
-
-
 def main():
-    parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output-root',type=Path,default=PROJECT_ROOT)
-    parser.add_argument('--workers',type=int,default=1)
-    parser.add_argument('--n-realizations',type=int,default=N_REALIZATIONS)
-    parser.add_argument('--no-paper-export',action='store_true')
-    parser.add_argument('--redraw',action='store_true')
-    args=parser.parse_args()
-    context=combined_likelihood.build_context()
-    point=combined_likelihood.fit_catalogue(context.events,context)
-    data=args.output_root/'data/processed'/RUN_NAME
-    figures=args.output_root/'figures'/RUN_NAME
-    notes=generated_notes_dir(args.output_root)
+    events = pd.read_csv(EVENT_CATALOGUE_CSV)
+    observations = pd.read_csv(OBSERVATION_SEGMENTS_CSV)
+    if (events.groupby("segment_id", sort=False).size().to_dict() != {"NGRIP": 34, "MIS6": 21}
+            or events.event_id.isna().any() or not events.event_id.is_unique):
+        raise ValueError("Check the curated 34 NGRIP and 21 MIS6 event identities")
+    lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
+    co2 = pd.read_csv(CO2_CSV, float_precision="round_trip")
+    orbital = pd.read_csv(ORBITAL_CSV, float_precision="round_trip")
+    anchors = pd.read_csv(PRECESSION_PHASE_CSV, float_precision="round_trip")
+    forcings = {"lr04": (lr04.age_kyr_bp.to_numpy(), lr04.lr04.to_numpy()),
+                "co2": (co2.age_kyr_bp.to_numpy(), co2.co2_ppm.to_numpy()),
+                "precession_index": (orbital.age_kyr_bp.to_numpy(), orbital.precession_index.to_numpy())}
+    phase_anchors = (anchors.age_kyr_bp.to_numpy(), anchors.phase_unwrapped_rad.to_numpy())
+    windows = event_model.response_windows(events, observations)
+    scaling = event_model.nominal_scaling({name: forcings[name] for name in ("lr04", "co2")}, windows)
+    event_x, integral_x = event_model.build_design(
+        events, windows, forcings, phase_anchors, scaling, tau=HISTORY_TAU_KYR,
+    )
+    for frame in (event_x, integral_x):
+        frame["mis6_segment"] = frame.segment_id.eq("MIS6").astype(float)
+    reduced = fit_point_process(event_x[REDUCED_TERMS], integral_x[REDUCED_TERMS],
+                                integral_x.weight, REDUCED_TERMS, nonpositive_terms=(HISTORY_TERM,))
+    full = fit_point_process(event_x[FULL_TERMS], integral_x[FULL_TERMS],
+                             integral_x.weight, FULL_TERMS, nonpositive_terms=(HISTORY_TERM,),
+                             start_beta=np.r_[reduced.beta, 0., 0.])
+    point = model_stats.fit_summary(reduced, full, event_x, windows, n_source_events=len(events),
+                                    catalogue_id=CATALOGUE_ID, tau=HISTORY_TAU_KYR)
+    data = OUT_DATA_DIR
+    figures = OUT_FIG_DIR
+    notes = NOTE_DIR
     for directory in (data,figures,notes): directory.mkdir(parents=True,exist_ok=True)
-    if args.redraw:
-        results=pd.read_csv(data/'gain_realizations.csv')
+    if REDRAW:
+        results=pd.read_csv(REDRAW_INPUT_DIR / 'gain_realizations.csv')
     else:
         # The frozen pairings are analysis inputs; do not resample or rewrite them.
-        draws=pd.read_csv(COMBINED_AGE_OUTPUT,float_precision='round_trip').iloc[:args.n_realizations].copy()
-        results,diagnostics=fit_realizations(context.events,draws,context,True,args.workers)
-        compact_gain_results(results).to_csv(data/'gain_realizations.csv',index=False)
+        draws=pd.read_csv(COMBINED_AGE_INPUT,float_precision='round_trip').iloc[:N_REALIZATIONS].copy()
+        results,diagnostics=age_sensitivity.fit_realizations(
+            events, observations, forcings, phase_anchors, scaling, REDUCED_TERMS, FULL_TERMS,
+            draws, [f"age_kyr_bp__{event_id}" for event_id in events.event_id],
+            catalogue_id=CATALOGUE_ID, tau=HISTORY_TAU_KYR,
+            show_progress=True, n_workers=N_WORKERS)
+        age_sensitivity.compact_results(results).to_csv(data/'gain_realizations.csv',index=False)
         pd.DataFrame([diagnostics]).to_csv(data/'fitting_diagnostics.csv',index=False)
-        if data.resolve()!=OUT_DATA_DIR.resolve(): shutil.copy2(COMBINED_AGE_OUTPUT,data/COMBINED_AGE_OUTPUT.name)
+        if data.resolve() != COMBINED_AGE_INPUT.parent.resolve():
+            shutil.copy2(COMBINED_AGE_INPUT, data / COMBINED_AGE_INPUT.name)
         if diagnostics['n_numerical_failures']: raise RuntimeError('Unresolved numerical age fits; inspect diagnostics')
-    summary=build_summary(results,point)
+    summary=age_sensitivity.summarize(results,point)
     summary.to_csv(data/'summary.csv',index=False)
-    pd.DataFrame([dict(parameter=k,value=v) for k,v in dict(model_version=combined_likelihood.MODEL_VERSION,
+    pd.DataFrame([dict(parameter=k,value=v) for k,v in dict(model_version=MODEL_VERSION,
                     history_tau_kyr=HISTORY_TAU_KYR,history_coefficient_domain='nonpositive',
                     age_input='saved combined_event_age_realizations.csv',n_realizations=len(results)).items()]).to_csv(data/'parameters_and_provenance.csv',index=False)
     fig=draw_sensitivity(results,point)
     for ext in ('pdf','png'): fig.savefig(figures/f'{RUN_NAME}.{ext}',dpi=450)
     plt.close(fig)
-    if not args.no_paper_export: copy_pdf_to_paper(figures/f'{RUN_NAME}.pdf')
+    if EXPORT_PAPER: copy_pdf_to_paper(figures/f'{RUN_NAME}.pdf')
     row=summary.iloc[0]
     text=(f"Continuous conditional likelihood was refitted to {len(results):,} saved joint chronological realizations. "
           f"Each segment conditions on its exact oldest event; history decays with tau = 1.5 kyr and its coefficient is nonpositive. "

@@ -292,8 +292,9 @@ def draw_geography(ax, globe):
                            (points[:, 1] <= outline[:, 1].max()))
             inside = MplPath(outline).contains_points(points[inside_bbox])
             for hole in rings[1:]:
-                inside &= ~MplPath(hole).contains_points(points[inside_bbox])
-            is_land[inside_bbox] |= inside
+                inside_hole = MplPath(hole).contains_points(points[inside_bbox])
+                inside = inside & ~inside_hole
+            is_land[inside_bbox] = is_land[inside_bbox] | inside
     land = np.zeros_like(x)
     land[visible] = is_land
     land[~visible] = np.nan

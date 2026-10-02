@@ -144,14 +144,17 @@ def test_small_draws_have_stable_ids_and_independent_rows(events, grid):
 
 def test_grid_screening_reuses_saved_exact_ages(monkeypatch):
     import ngrip_knot_spacing_sensitivity as screening
-    from toolbox import combined_likelihood as likelihood
-    catalogue = likelihood.load_event_catalogue()
+    from toolbox.project_config import EVENT_CATALOGUE_CSV
+    catalogue = pd.read_csv(EVENT_CATALOGUE_CSV)
     def forbid_sampling(*args, **kwargs):
         raise AssertionError("Refitting saved chronological sequences must not resample ages")
     monkeypatch.setattr(np.random, "default_rng", forbid_sampling)
-    paired = screening.load_saved_pairings(catalogue, screening.OUT_DATA_DIR, 3)
-    columns = screening.pooled.combined_age_columns(catalogue)
-    with np.load(screening.OUT_DATA_DIR / "age_realizations.npz", allow_pickle=False) as saved:
+    saved_ids = pd.read_csv(screening.INPUT_DATA_DIR / "gain_realizations.csv",
+                            usecols=["knot_spacing_ka", *screening.ID_COLUMNS])
+    with np.load(screening.INPUT_DATA_DIR / "age_realizations.npz", allow_pickle=False) as archive:
+        paired = screening.restore_pairings(catalogue, saved_ids, archive, 3)
+    columns = [f"age_kyr_bp__{event_id}" for event_id in catalogue.event_id]
+    with np.load(screening.INPUT_DATA_DIR / "age_realizations.npz", allow_pickle=False) as saved:
         for spacing, frame in paired.items():
             tag = f"knots_{spacing:g}".replace(".", "p")
             np.testing.assert_array_equal(frame[columns], saved[f"{tag}__paired_55_ages_ka_bp"][:3])

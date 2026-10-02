@@ -8,7 +8,6 @@ are separate experiments. Both use inhibitory exponential history with tau =
 the BP1950 working assumption; its precise source epoch remains unverified.
 """
 
-import argparse
 from pathlib import Path
 import sys
 import matplotlib
@@ -30,8 +29,6 @@ from toolbox.project_config import (
 )
 
 RUN_NAME = "Barker2011_event_phase_analysis"
-OUT_DATA_DIR = ROOT / "data/processed" / RUN_NAME
-OUT_FIG_DIR = ROOT / "figures" / RUN_NAME
 EXPECTED_COUNTS = {"variable_threshold": 70, "fixed_threshold": 59}
 DEFINITION_COLORS = {"variable_threshold": CATALOGUE_COLORS["variable"],
                      "fixed_threshold": CATALOGUE_COLORS["fixed"]}
@@ -39,6 +36,9 @@ EVENT_COLOR = DEFINITION_COLORS["variable_threshold"]
 ANALYSIS_START_KA, ANALYSIS_END_KA = 0.0, 400.0
 HISTORY_TAU_KA = 1.5
 HISTORY_TERM = "same_type_exponential_history"
+
+OUTPUT_ROOT = PROJECT_ROOT
+EXPORT_PAPER = True
 
 
 def run_analysis(event_definition="variable_threshold", *, quadrature_order=4):
@@ -239,7 +239,7 @@ def plot_results(result, fixed_result=None):
     _add_panel_label(response, "c", x=-0.06)
     return fig
 
-def write_outputs(result, output_dir=OUT_DATA_DIR):
+def write_outputs(result, output_dir):
     """Save scientific summaries, coefficients and the tables used by paper figures."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -265,7 +265,7 @@ def write_outputs(result, output_dir=OUT_DATA_DIR):
     for name, table in tables.items():
         table.to_csv(output_dir / name, index=False, float_format="%.12g")
 
-def save_figure(fig, output_dir=OUT_FIG_DIR, *, paper_export=False):
+def save_figure(fig, output_dir, *, paper_export=False):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     png, pdf = [output_dir / f"{RUN_NAME}.{suffix}" for suffix in ("png", "pdf")]
@@ -277,20 +277,15 @@ def save_figure(fig, output_dir=OUT_FIG_DIR, *, paper_export=False):
         copy_pdf_to_paper(pdf)
     return png, pdf
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-root", type=Path, default=PROJECT_ROOT,
-                        help="Project-shaped root; Barker outputs remain below Barker2011")
-    parser.add_argument("--no-paper-export", action="store_true")
-    args = parser.parse_args(argv)
+def main():
     result = run_analysis()
     fixed = run_analysis("fixed_threshold")
-    root = args.output_root / "Barker2011"
+    root = OUTPUT_ROOT / "Barker2011"
     output = root / "data/processed" / RUN_NAME
     write_outputs(result, output)
     write_outputs(fixed, output / "fixed_threshold")
     save_figure(plot_results(result, fixed), root / "figures" / RUN_NAME,
-                paper_export=not args.no_paper_export and args.output_root.resolve() == PROJECT_ROOT.resolve())
+                paper_export=EXPORT_PAPER and OUTPUT_ROOT.resolve() == PROJECT_ROOT.resolve())
     for current in (result, fixed):
         s = current["summary"].iloc[0]
         support = current["windows"].iloc[0]

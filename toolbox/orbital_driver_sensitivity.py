@@ -8,101 +8,39 @@ import numpy as np
 import pandas as pd
 from scipy.stats import chi2
 
-from toolbox import combined_likelihood, project_config
+from toolbox import event_model
+from toolbox.point_process import fit_point_process
 
 
-ECC_TXT = project_config.ECC_TXT
-OBL_TXT = project_config.OBL_TXT
-INSOLATION_NC = project_config.INSOLATION_NC
 DRIVER_IDS = ("ecc", "obl", "insol65n")
-DRIVER_LABELS = {
-    "ecc": "Eccentricity",
-    "obl": "Obliquity",
-    "insol65n": "65°N summer-solstice insolation",
-}
 DRIVER_TERMS = {driver: f"{driver}_scaled" for driver in DRIVER_IDS}
-DRIVER_RAW_COLUMNS = {"ecc": "ecc", "obl": "obl_deg", "insol65n": "insol65n_Wm2"}
 PHASE_TERMS = ("pre_phase_sin", "pre_phase_cos")
 NESTING_TOLERANCE = 1e-7
 
 
-def _ordered_series(age, values):
-    """Sort a finite, unique source age series before interpolation."""
-    age = np.asarray(age, dtype=float)
-    values = np.asarray(values, dtype=float)
-    if age.ndim != 1 or values.shape != age.shape or len(age) < 2:
-        raise ValueError("Orbital inputs must contain at least two paired ages and values")
-    if not np.isfinite(age).all() or not np.isfinite(values).all():
-        raise ValueError("Orbital inputs contain non-finite ages or values")
-    order = np.argsort(age)
-    age, values = age[order], values[order]
-    if np.any(np.diff(age) <= 0):
-        raise ValueError("Orbital input ages must be unique")
-    return age, values
-
-
-def load_driver_sources():
-    """Read native BP1950 samples; preprocessing already converted ages/units."""
-    orbital = pd.read_csv(project_config.ORBITAL_CSV, float_precision="round_trip")
-    insolation = pd.read_csv(project_config.INSOLATION_65N_CSV, float_precision="round_trip")
-    source_data = {}
-    for driver, table, column, path, units in (
-        ("ecc", orbital, "eccentricity", project_config.ORBITAL_CSV, "dimensionless"),
-        ("obl", orbital, "obliquity_deg", project_config.ORBITAL_CSV, "degrees"),
-        ("insol65n", insolation, "insolation_Wm2", project_config.INSOLATION_65N_CSV, "W m-2"),
-    ):
-        age, values = _ordered_series(table.age_kyr_bp.to_numpy(), table[column].to_numpy())
-        source_data[driver] = dict(path=path, age=age, values=values, units=units)
-    provenance = pd.DataFrame([
-        dict(driver_id=driver, source_file=str(source["path"]),
-             reference=project_config.ORBITAL_REFERENCE,
-             source_units=source["units"], analysis_units=source["units"],
-             source_epoch="BP1950", analysis_epoch="BP1950", age_offset_kyr=0.,
-             source_spacing_kyr=float(np.median(np.diff(source["age"]))),
-             source_age_min_BP1950_kyr=float(source["age"][0]),
-             source_age_max_BP1950_kyr=float(source["age"][-1]),
-             interpolation="linear; no extrapolation; native resolution unchanged")
-        for driver, source in source_data.items()
-    ])
-    return source_data, provenance
-
-
-def prepare_drivers(context):
-    """Add native forcing interpolants and fixed nominal time-weighted scales."""
-    sources, provenance = load_driver_sources()
-    rows = []
-    for driver in DRIVER_IDS:
-        source = sources[driver]
-        context = combined_likelihood.add_forcing(context, driver, source["age"], source["values"])
-        scale = context.scaling[driver]
-        rows.append(dict(driver_id=driver, raw_column=driver,
-            scaled_column=DRIVER_TERMS[driver], units=source["units"],
-            response_mean=scale["mean"], response_min=scale["min"],
-            response_max=scale["max"], response_range=scale["range"],
-            scaling="(value - nominal exposure-time mean) / nominal interpolant range"))
-    return context, pd.DataFrame(rows), provenance
-
-
-def fit_named_models(design, specs):
+def fit_named_models(event_features, integration_features, specs):
     """Fit named continuous designs with the common nonpositive history domain.
 
     Both the event sum and intensity integral use the same forcing interpolants.
     A numerical design/fit failure remains explicit in the candidate table.
     """
-    support = dict(n_events=len(design.event_frame), exposure_kyr=float(design.weights.sum()))
-    model_rows, coefficient_rows = [], []
-    event_rates = design.event_frame.loc[:, [name for name in
-        ("event_id", "segment_id", "age_kyr_bp") if name in design.event_frame]].copy()
+    support = dict(n_events=len(event_features), exposure_kyr=float(integration_features.weight.sum()))
+    model_rows, fits = [], {}
     for model_id, terms in specs.items():
         terms = tuple(terms)
-        beta = np.full(1 + len(terms), np.nan)
-        row = dict(model_id=model_id, terms=";".join(terms), n_parameters=len(beta),
+        beta = np.full(len(terms), np.nan)
+        row = dict(model_id=model_id, terms=";".join(term for term in terms if term != "intercept"), n_parameters=len(beta),
             converged=False, fit_valid=False, invalid_reason="", log_likelihood=np.nan,
             AIC=np.nan, pre_phase_preferred_deg=np.nan,
             pre_phase_rate_ratio_max_vs_min=np.nan, **support)
-        event_rates[model_id] = np.nan
+        fits[model_id] = None
         try:
-            fitted = combined_likelihood.fit_terms(design, terms)
+            fitted = fit_point_process(
+                event_features.loc[:, terms].to_numpy(float),
+                integration_features.loc[:, terms].to_numpy(float),
+                integration_features.weight.to_numpy(float), terms,
+            )
+            fits[model_id] = fitted
             beta = fitted.beta
             row.update(converged=fitted.converged, log_likelihood=fitted.log_likelihood,
                        AIC=fitted.aic, fit_valid=bool(fitted.converged and fitted.identifiable),
@@ -112,10 +50,8 @@ def fit_named_models(design, specs):
             if not np.isfinite(beta).all() or not np.isfinite(fitted.log_likelihood):
                 row.update(fit_valid=False, invalid_reason="non-finite fitted coefficients or likelihood")
             if row["fit_valid"]:
-                x = design.event_frame.loc[:, list(terms)].to_numpy(float)
-                event_rates[model_id] = np.exp(beta[0] + x @ beta[1:])
                 if all(term in terms for term in PHASE_TERMS):
-                    b_sin, b_cos = [beta[1 + terms.index(term)] for term in PHASE_TERMS]
+                    b_sin, b_cos = [beta[terms.index(term)] for term in PHASE_TERMS]
                     amplitude = np.hypot(b_sin, b_cos)
                     row["pre_phase_rate_ratio_max_vs_min"] = float(np.exp(2 * amplitude))
                     if amplitude > 1e-12:
@@ -123,19 +59,16 @@ def fit_named_models(design, specs):
         except (ValueError, RuntimeError, FloatingPointError, np.linalg.LinAlgError) as error:
             row["invalid_reason"] = str(error)
         model_rows.append(row)
-        coefficient_rows.extend(dict(model_id=model_id, term=term, beta=value,
-            fit_valid=row["fit_valid"], invalid_reason=row["invalid_reason"])
-            for term, value in zip(("intercept",) + terms, beta))
-    return dict(models=pd.DataFrame(model_rows), coefficients=pd.DataFrame(coefficient_rows),
-                fitted_rates=event_rates)
+    return dict(models=pd.DataFrame(model_rows), fits=fits)
 
 
 def model_specs(baseline_terms):
-    """Eight prespecified models; terms exclude the automatically fitted intercept."""
+    """Eight prespecified models, with the intercept explicit in each term list."""
     baseline = tuple(baseline_terms)
-    forbidden = set(PHASE_TERMS) | set(DRIVER_TERMS.values()) | {"intercept"}
-    if len(set(baseline)) != len(baseline) or set(baseline) & forbidden:
-        raise ValueError("Baseline terms must be unique and exclude orbital terms/intercept")
+    forbidden = set(PHASE_TERMS) | set(DRIVER_TERMS.values())
+    if (not baseline or baseline[0] != "intercept"
+            or len(set(baseline)) != len(baseline) or set(baseline) & forbidden):
+        raise ValueError("Baseline terms must begin with intercept and exclude orbital additions")
     specs = {"B": baseline, "BP": baseline + PHASE_TERMS}
     for driver in DRIVER_IDS:
         specs[f"B_{driver}"] = baseline + (DRIVER_TERMS[driver],)
@@ -174,10 +107,10 @@ def _comparison_specs():
     return comparisons
 
 
-def fit_models(design, baseline_terms):
+def fit_models(event_features, integration_features, baseline_terms):
     """Fit the eight prespecified continuous models and ten nested comparisons."""
     specs = model_specs(baseline_terms)
-    result = fit_named_models(design, specs)
+    result = fit_named_models(event_features, integration_features, specs)
     lookup = result["models"].set_index("model_id")
     comparison_rows = []
     for comparison_id, driver, group, reduced_id, full_id in _comparison_specs():
@@ -210,30 +143,57 @@ def fit_models(design, baseline_terms):
     return result
 
 
-def analyze_chronologies(context, selected, age_columns, show_progress=True):
-    """Fit point ages and the existing chronology subset without changing its IDs."""
-    from toolbox import orbital_driver_reporting as reporting
+def invalid_tables(point, reason):
+    """Keep unsupported draws in every comparison's denominator, without estimates."""
+    models = point["models"].iloc[:0].reindex(range(len(point["models"])))
+    comparisons = point["comparisons"].iloc[:0].reindex(range(len(point["comparisons"])))
+    for column in ("model_id", "terms", "n_parameters"):
+        models[column] = point["models"][column].to_numpy()
+    for column in ("comparison_id", "driver_id", "comparison_group", "reduced_model_id",
+                   "full_model_id", "df"):
+        comparisons[column] = point["comparisons"][column].to_numpy()
+    for frame in (models, comparisons):
+        frame["fit_valid"] = False
+        frame["invalid_reason"] = reason
+    return {"models": models, "comparisons": comparisons}
 
-    events = context.events
-    point_design = combined_likelihood.prepare_catalogue(events, context)
-    point = fit_models(point_design, context.reduced_terms)
+
+def analyze_chronologies(events, windows, forcings, phase_anchors, scaling,
+                         baseline_terms, selected, age_columns, *, tau=1.5,
+                         initial_history=0.0, quadrature_order=4, show_progress=True):
+    """Refit the same eight models on each draw, keeping nominal forcing scales."""
+    event_x, integral_x = event_model.build_design(
+        events, windows, forcings, phase_anchors, scaling, tau=tau,
+        initial_history=initial_history, quadrature_order=quadrature_order,
+        history_variants=True,
+    )
+    if "mis6_segment" in baseline_terms:
+        for frame in (event_x, integral_x):
+            frame["mis6_segment"] = frame.segment_id.eq("MIS6").astype(float)
+    point = fit_models(event_x, integral_x, baseline_terms)
     if not point["models"].fit_valid.all() or not point["comparisons"].fit_valid.all():
         raise RuntimeError(f"Invalid point-age orbital fits:\n{point['models'].to_string(index=False)}")
-    reference = combined_likelihood.fit_catalogue(events, context).summary
-    reference_check = reporting.check_reference(point, pd.Series(reference))
+    observations = windows[["segment_id", "observation_start_kyr_bp", "observation_end_kyr_bp"]]
     mc_models, mc_comparisons, status = [], [], []
     started = time.perf_counter()
     for index, row in selected.iterrows():
         shifted = events.copy()
-        shifted[combined_likelihood.EVENT_AGE_COLUMN] = row[age_columns].to_numpy(float)
+        shifted["event_age_kyr_bp"] = row[age_columns].to_numpy(float)
         reason = ""
         try:
-            design = combined_likelihood.prepare_catalogue(shifted, context)
+            draw_windows = event_model.response_windows(shifted, observations)
+            draw_event_x, draw_integral_x = event_model.build_design(
+                shifted, draw_windows, forcings, phase_anchors, scaling, tau=tau,
+                initial_history=initial_history, quadrature_order=quadrature_order,
+            )
+            if "mis6_segment" in baseline_terms:
+                for frame in (draw_event_x, draw_integral_x):
+                    frame["mis6_segment"] = frame.segment_id.eq("MIS6").astype(float)
         except ValueError as error:
             reason = str(error)
-            fitted = reporting.invalid_tables(point, reason)
+            fitted = invalid_tables(point, reason)
         else:
-            fitted = fit_models(design, context.reduced_terms)
+            fitted = fit_models(draw_event_x, draw_integral_x, baseline_terms)
         for key, output in (("models", mc_models), ("comparisons", mc_comparisons)):
             output.append(fitted[key].assign(realization_id=row.realization_id))
         valid = bool(fitted["comparisons"].fit_valid.all())
@@ -247,17 +207,11 @@ def analyze_chronologies(context, selected, age_columns, show_progress=True):
                   f"({time.perf_counter() - started:.0f} s)", flush=True)
     mc_models = pd.concat(mc_models, ignore_index=True)
     mc_comparisons = pd.concat(mc_comparisons, ignore_index=True)
-    support = pd.DataFrame([dict(segment_id=segment_id,
-        observation_start_kyr_bp=segment.observation_start_kyr_bp,
-        observation_end_kyr_bp=segment.observation_end_kyr_bp,
-        response_start_kyr_bp=segment.response_start_kyr_bp,
-        response_end_kyr_bp=segment.response_end_kyr_bp,
-        anchor_age_kyr_bp=segment.anchor_age_kyr_bp)
-        for segment_id, segment in point_design.context.segments.items()])
-    return dict(events=point_design.all_events, response=point_design.event_frame,
-        integration=point_design.integration_frame, point=point, support=support,
+    return dict(events=event_model.mark_event_roles(events, windows), windows=windows,
+        event_features=event_x, integration_features=integral_x,
+        point_models=point["models"], point_comparisons=point["comparisons"], point_fits=point["fits"],
         selected_realizations=selected, realization_status=pd.DataFrame(status),
-        mc_models=mc_models, mc_comparisons=mc_comparisons, reference_check=reference_check,
+        mc_models=mc_models, mc_comparisons=mc_comparisons,
         comparison_summary=summarize_comparisons(point["comparisons"], mc_comparisons),
         phase_summary=summarize_phase(point["models"], mc_models))
 

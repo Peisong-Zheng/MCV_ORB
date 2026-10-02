@@ -7,6 +7,8 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MODEL_VERSION = "continuous_exponential_inhibition_2026-09-12"
+EVENT_CATALOGUE_CSV = PROJECT_ROOT / "data/curated/ngrip_mis6_warming_events.csv"
+OBSERVATION_SEGMENTS_CSV = PROJECT_ROOT / "data/curated/observation_segments.csv"
 
 
 LR04_XLSX = PROJECT_ROOT / "data/raw/lr04.xlsx"

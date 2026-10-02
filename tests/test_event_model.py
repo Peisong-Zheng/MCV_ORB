@@ -53,7 +53,7 @@ def test_chronology_changes_anchor_but_keeps_supplied_nominal_scaling(inputs):
     events, observations, windows, forcings, anchors, scaling = inputs
     original_scaling = scaling.copy(deep=True)
     shifted = events.copy()
-    shifted.loc[1, "event_age_kyr_bp"] += 1
+    shifted.loc[1, "event_age_kyr_bp"] = shifted.loc[1, "event_age_kyr_bp"] + 1
     with pytest.raises(ValueError, match="conditioning event"):
         model.build_design(shifted, windows, forcings, anchors, scaling)
     new_windows = model.response_windows(shifted, observations)

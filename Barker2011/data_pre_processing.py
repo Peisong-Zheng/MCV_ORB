@@ -6,7 +6,6 @@ The source epoch has not been verified; no 50-year conversion is applied.
 Event IDs preserve the original Excel row so saved chronologies remain aligned.
 """
 
-import argparse
 from pathlib import Path
 
 import numpy as np
@@ -17,10 +16,7 @@ SOURCE_XLS = ROOT / "data/raw/Barker et al-2011-SOM.xls"
 OUTPUT_DIR = ROOT / "data/processed"
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
-    args = parser.parse_args(argv)
+def main():
 
     raw = pd.read_excel(SOURCE_XLS, sheet_name="Sheet1", header=8)
     definitions = {
@@ -51,9 +47,9 @@ def main(argv=None):
     if not np.array_equal(fixed.event_age_kyr_bp, variable.loc[fixed.index, "event_age_kyr_bp"]):
         raise ValueError("The two definitions must retain the same age for each shared event ID")
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     for definition, events in catalogues.items():
-        output = args.output_dir / f"barker_events_{definition}.csv"
+        output = OUTPUT_DIR / f"barker_events_{definition}.csv"
         events.to_csv(output, index=False, float_format="%.17g")
         ages = events.event_age_kyr_bp
         print(f"{definition}: {len(events)} events, {ages.min():.6f}–{ages.max():.6f} kyr BP; {output}")

@@ -6,8 +6,6 @@ The history coefficient remains nonpositive. Integration resolution is checked
 numerically and is not a scientific sensitivity axis.
 """
 
-import argparse
-from dataclasses import replace
 import hashlib
 from pathlib import Path
 
@@ -17,44 +15,45 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from toolbox import combined_likelihood
+from toolbox import event_model
+from toolbox.point_process import fit_point_process
+from toolbox.model_stats import fit_summary
+from toolbox.project_config import EVENT_CATALOGUE_CSV, OBSERVATION_SEGMENTS_CSV, MODEL_VERSION
 from toolbox.plotting import add_panel_label
 from toolbox.model_stats import nested_likelihood_metrics
 from toolbox.project_config import PROJECT_ROOT, LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV
 from toolbox.project_config import generated_notes_dir
 
 RUN_NAME = "NGRIP_MIS6_likelihood_design_sensitivity"
-OUT_DATA_DIR = PROJECT_ROOT / "data/processed" / RUN_NAME
-OUT_FIG_DIR = PROJECT_ROOT / "figures" / RUN_NAME
+OUTPUT_ROOT = PROJECT_ROOT
+EXPORT_PAPER = True
 HISTORY_TAUS_KYR = (1.0, 1.5, 2.0, 3.0, 5.0)
 INITIAL_HISTORY_VALUES = (0.0, 0.5, 1.0)
 PRIMARY_HISTORY_TAU_KYR = 1.5
+BACKGROUND = ("intercept", "same_type_exponential_history", "lr04_scaled", "co2_scaled", "mis6_segment")
+FULL_TERMS = BACKGROUND + ("pre_phase_sin", "pre_phase_cos")
+CATALOGUE_ID = "ngrip_warming_plus_mis6"
 PHASE_INTERACTION_TERMS = ("mis6_x_pre_phase_sin", "mis6_x_pre_phase_cos")
 
 
-def _fit_row(context, experiment):
-    fitted = combined_likelihood.fit_catalogue(context.events, context, fixed_support=True)
-    row = dict(experiment=experiment, **fitted.summary)
-    beta = dict(zip(fitted.full.terms, fitted.full.beta))
-    row.update(beta_pre_phase_sin=beta["pre_phase_sin"], beta_pre_phase_cos=beta["pre_phase_cos"],
-               reduced_aic=fitted.reduced.aic, full_aic=fitted.full.aic,
-               is_primary_design=context.history_tau_ka == PRIMARY_HISTORY_TAU_KYR
-               and context.initial_history == 0)
-    return row
-
-
-def run_design_sensitivity(events=None):
-    """Five fixed decay times on the same exact event and exposure support."""
-    context = combined_likelihood.build_context(events=events)
-    return pd.DataFrame([_fit_row(replace(context, history_tau_ka=tau), "history_decay")
-                         for tau in HISTORY_TAUS_KYR])
-
-
-def run_initial_history_sensitivity(events=None):
-    """Prespecified unobserved history levels immediately before each anchor."""
-    context = combined_likelihood.build_context(events=events)
-    return pd.DataFrame([_fit_row(replace(context, initial_history=value), "initial_history")
-                         for value in INITIAL_HISTORY_VALUES])
+def _fit_row(events, windows, forcings, phase_anchors, scaling, experiment,
+             *, tau=1.5, initial_history=0.0):
+    event_x, integral_x = event_model.build_design(
+        events, windows, forcings, phase_anchors, scaling, tau=tau, initial_history=initial_history,
+    )
+    for frame in (event_x, integral_x):
+        frame["mis6_segment"] = frame.segment_id.eq("MIS6").astype(float)
+    reduced = fit_point_process(event_x.loc[:, BACKGROUND], integral_x.loc[:, BACKGROUND],
+                                integral_x.weight, BACKGROUND)
+    full = fit_point_process(event_x.loc[:, FULL_TERMS], integral_x.loc[:, FULL_TERMS],
+                             integral_x.weight, FULL_TERMS, start_beta=np.r_[reduced.beta, 0., 0.])
+    summary = fit_summary(reduced, full, event_x, windows, n_source_events=len(events),
+                          catalogue_id=CATALOGUE_ID, tau=tau, initial_history=initial_history)
+    beta = dict(zip(full.terms, full.beta))
+    return dict(experiment=experiment, **summary,
+        beta_pre_phase_sin=beta["pre_phase_sin"], beta_pre_phase_cos=beta["pre_phase_cos"],
+        reduced_aic=reduced.aic, full_aic=full.aic,
+        is_primary_design=tau == PRIMARY_HISTORY_TAU_KYR and initial_history == 0)
 
 
 def _phase_summary(beta_sin, beta_cos):
@@ -63,18 +62,20 @@ def _phase_summary(beta_sin, beta_cos):
     return phase, float(np.exp(2 * amplitude))
 
 
-def run_pooling_diagnostic(events=None):
+def run_pooling_diagnostic(events, windows, forcings, phase_anchors, scaling):
     """Compare common and segment-specific phase coefficients on identical ages."""
-    context = combined_likelihood.build_context(events=events)
-    derived = {name: (combined_likelihood.SEGMENT_TERM, phase)
-               for name, phase in zip(PHASE_INTERACTION_TERMS, ("pre_phase_sin", "pre_phase_cos"))}
-    context = replace(context, derived_terms=derived)
-    design = combined_likelihood.prepare_catalogue(context.events, context)
-    common = combined_likelihood.fit_terms(design, context.full_terms)
-    terms = context.full_terms + PHASE_INTERACTION_TERMS
-    heterogeneous = combined_likelihood.fit_terms(design, terms)
+    event_x, integral_x = event_model.build_design(events, windows, forcings, phase_anchors, scaling)
+    for frame in (event_x, integral_x):
+        frame["mis6_segment"] = frame.segment_id.eq("MIS6").astype(float)
+        frame["mis6_x_pre_phase_sin"] = frame.mis6_segment * frame.pre_phase_sin
+        frame["mis6_x_pre_phase_cos"] = frame.mis6_segment * frame.pre_phase_cos
+    common = fit_point_process(event_x.loc[:, FULL_TERMS], integral_x.loc[:, FULL_TERMS],
+                               integral_x.weight, FULL_TERMS)
+    terms = FULL_TERMS + PHASE_INTERACTION_TERMS
+    heterogeneous = fit_point_process(event_x.loc[:, terms], integral_x.loc[:, terms],
+                                      integral_x.weight, terms)
     metrics = nested_likelihood_metrics(loglik_full=heterogeneous.log_likelihood,
-        loglik_reduced=common.log_likelihood, df=2, n_events=len(design.event_frame),
+        loglik_reduced=common.log_likelihood, df=2, n_events=len(event_x),
         aic_full=heterogeneous.aic, aic_reduced=common.aic)
     beta = dict(zip(heterogeneous.terms, heterogeneous.beta))
     ngrip_phase, ngrip_ratio = _phase_summary(beta["pre_phase_sin"], beta["pre_phase_cos"])
@@ -83,7 +84,7 @@ def run_pooling_diagnostic(events=None):
     if metrics["ll_gain_nats"] < -1e-7:
         raise RuntimeError("Segment-specific phase likelihood is below the nested common model")
     return pd.DataFrame([dict(comparison="segment-specific versus common precession response",
-        n_events=len(design.event_frame), response_exposure_kyr=context.response_exposure_kyr,
+        n_events=len(event_x), response_exposure_kyr=float((windows.response_end_kyr_bp - windows.response_start_kyr_bp).sum()),
         common_model_loglik=common.log_likelihood, segment_specific_model_loglik=heterogeneous.log_likelihood,
         LR_statistic=metrics["LR_statistic"], df=2, nominal_LR_p=metrics["LR_p_value"],
         gain_bits_per_event_for_interaction=metrics["gain_bits_per_event"],
@@ -92,6 +93,34 @@ def run_pooling_diagnostic(events=None):
         ngrip_phase_rate_ratio_max_vs_min=ngrip_ratio, mis6_phase_rate_ratio_max_vs_min=mis6_ratio,
         both_models_converged=common.converged and heterogeneous.converged,
         likelihood_nesting_ok=True)])
+
+
+def run_analysis():
+    """Read the nominal data once and evaluate the prespecified design scenarios."""
+    events = pd.read_csv(EVENT_CATALOGUE_CSV)
+    observations = pd.read_csv(OBSERVATION_SEGMENTS_CSV)
+    lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
+    co2 = pd.read_csv(CO2_CSV, float_precision="round_trip")
+    orbital = pd.read_csv(ORBITAL_CSV, float_precision="round_trip")
+    anchors = pd.read_csv(PRECESSION_PHASE_CSV, float_precision="round_trip")
+    forcings = {
+        "lr04": (lr04.age_kyr_bp.to_numpy(), lr04.lr04.to_numpy()),
+        "co2": (co2.age_kyr_bp.to_numpy(), co2.co2_ppm.to_numpy()),
+        "precession_index": (orbital.age_kyr_bp.to_numpy(), orbital.precession_index.to_numpy()),
+    }
+    phase_anchors = (anchors.age_kyr_bp.to_numpy(), anchors.phase_unwrapped_rad.to_numpy())
+    windows = event_model.response_windows(events, observations)
+    scaling = event_model.nominal_scaling({name: forcings[name] for name in ("lr04", "co2")}, windows)
+    design = pd.DataFrame([
+        _fit_row(events, windows, forcings, phase_anchors, scaling, "history_decay", tau=tau)
+        for tau in HISTORY_TAUS_KYR
+    ])
+    initial = pd.DataFrame([
+        _fit_row(events, windows, forcings, phase_anchors, scaling, "initial_history", initial_history=value)
+        for value in INITIAL_HISTORY_VALUES
+    ])
+    pooling = run_pooling_diagnostic(events, windows, forcings, phase_anchors, scaling)
+    return dict(design=design, initial_history=initial, pooling=pooling, windows=windows, scaling=scaling)
 
 
 def plot_sensitivity(design, initial_history):
@@ -121,19 +150,19 @@ def plot_sensitivity(design, initial_history):
     return fig
 
 
-def write_outputs(design, initial_history, pooling, output_dir=OUT_DATA_DIR):
+def write_outputs(result, output_dir):
+    design, initial_history, pooling = result["design"], result["initial_history"], result["pooling"]
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     for name, frame in (("design_sensitivity", design), ("initial_history_sensitivity", initial_history),
                         ("pooling_diagnostic", pooling)):
         frame.to_csv(output_dir / f"{name}.csv", index=False)
-    context = combined_likelihood.build_context()
-    combined_likelihood.support_table(context).to_csv(output_dir / "support.csv", index=False)
-    combined_likelihood.scaling_table(context).to_csv(output_dir / "forcing_scaling.csv", index=False)
-    parameters = dict(model_version=combined_likelihood.MODEL_VERSION,
+    result["windows"].to_csv(output_dir / "support.csv", index=False)
+    result["scaling"].reset_index().assign(weighting="nominal response time").to_csv(output_dir / "forcing_scaling.csv", index=False)
+    parameters = dict(model_version=MODEL_VERSION,
         history_taus_kyr=";".join(map(str, HISTORY_TAUS_KYR)),
         initial_history_values=";".join(map(str, INITIAL_HISTORY_VALUES)),
-        history_coefficient_domain="nonpositive", quadrature_order=context.quadrature_order,
+        history_coefficient_domain="nonpositive", quadrature_order=4,
         nominal_initial_history=0, primary_history_tau_kyr=PRIMARY_HISTORY_TAU_KYR,
         response_support="fixed exact nominal anchors; young observation boundaries retained",
         climate_scaling="fixed nominal exposure-time means and interpolant ranges",
@@ -142,10 +171,10 @@ def write_outputs(design, initial_history, pooling, output_dir=OUT_DATA_DIR):
         sampling="deterministic point-age scenarios; no Monte Carlo")
     pd.DataFrame(parameters.items(), columns=["parameter", "value"]).to_csv(
         output_dir / "parameters_and_provenance.csv", index=False)
-    inputs = [Path(__file__).resolve(), combined_likelihood.EVENT_CATALOGUE_CSV,
-        combined_likelihood.OBSERVATION_SEGMENTS_CSV, LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV,
+    inputs = [Path(__file__).resolve(), EVENT_CATALOGUE_CSV,
+        OBSERVATION_SEGMENTS_CSV, LR04_CSV, CO2_CSV, ORBITAL_CSV, PRECESSION_PHASE_CSV,
         *[PROJECT_ROOT / "toolbox" / filename for filename in (
-            "combined_likelihood.py", "point_process.py", "event_model.py",
+            "point_process.py", "event_model.py",
             "model_stats.py", "project_config.py")]]
     pd.DataFrame([dict(path=str(path.relative_to(PROJECT_ROOT)),
         sha256=hashlib.sha256(path.read_bytes()).hexdigest()) for path in inputs]).to_csv(
@@ -221,7 +250,7 @@ calibrate these alternative-history fits.
     (note_dir / f"{RUN_NAME}_Caption.txt").write_text(caption)
 
 
-def save_figure(fig, output_dir=OUT_FIG_DIR, *, paper_export=True):
+def save_figure(fig, output_dir, *, paper_export=True):
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     png, pdf = [output_dir / f"{RUN_NAME}.{extension}" for extension in ("png", "pdf")]
@@ -235,18 +264,13 @@ def save_figure(fig, output_dir=OUT_FIG_DIR, *, paper_export=True):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-root", type=Path, default=PROJECT_ROOT)
-    parser.add_argument("--no-paper-export", action="store_true")
-    args = parser.parse_args()
-    design = run_design_sensitivity()
-    initial = run_initial_history_sensitivity()
-    pooling = run_pooling_diagnostic()
-    output_dir = args.output_root / "data/processed" / RUN_NAME
-    write_outputs(design, initial, pooling, output_dir)
-    write_notes(design, initial, pooling, generated_notes_dir(args.output_root))
-    save_figure(plot_sensitivity(design, initial), args.output_root / "figures" / RUN_NAME,
-                paper_export=not args.no_paper_export)
+    result = run_analysis()
+    design, initial, pooling = (result[key] for key in ("design", "initial_history", "pooling"))
+    output_dir = OUTPUT_ROOT / "data/processed" / RUN_NAME
+    write_outputs(result, output_dir)
+    write_notes(design, initial, pooling, generated_notes_dir(OUTPUT_ROOT))
+    save_figure(plot_sensitivity(design, initial), OUTPUT_ROOT / "figures" / RUN_NAME,
+                paper_export=EXPORT_PAPER)
     print(design[["history_tau_kyr", "gain_bits_per_event", "nominal_LR_p"]].to_string(index=False))
     print(initial[["initial_unobserved_history", "gain_bits_per_event", "nominal_LR_p"]].to_string(index=False))
     print(pooling.to_string(index=False))

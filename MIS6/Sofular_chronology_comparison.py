@@ -123,7 +123,7 @@ def plot_comparison(controls, summaries):
             f"{row.composite_event_label}  |  {row.nominal_event_age_ka_bp:.3f}"
             for row in primary.itertuples()
         ]
-        labels[-1] += " *"
+        labels[-1] = labels[-1] + " *"
         ax_events.set_yticks(y, labels)
         ax_events.set_ylim(len(primary) - 0.5, -0.6)
         ax_events.set_xlim(-1.04, 1.04)

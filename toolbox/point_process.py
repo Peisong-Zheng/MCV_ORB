@@ -97,7 +97,8 @@ def exponential_history(query_ages, event_ages, tau=1.5, anchor_age=None,
         history[present] = (1 + at_event[j]) * np.exp(-since_previous_kyr / tau)
     if initial_history:
         elapsed_kyr = anchor_age - query.ravel()
-        history += initial_history * np.exp(-elapsed_kyr / tau)
+        remaining_initial_history = initial_history * np.exp(-elapsed_kyr / tau)
+        history = history + remaining_initial_history
     return history.reshape(query.shape)
 
 
@@ -288,7 +289,8 @@ def simulate_segment_events(anchor_age, young_age, breakpoints, log_background,
             unit_wait = rng.exponential()
             log_wait = np.log(unit_wait) - log_upper if unit_wait > 0 else -np.inf
             if log_wait >= np.log(remaining_kyr):
-                history *= np.exp(-remaining_kyr / tau)
+                decay_factor = np.exp(-remaining_kyr / tau)
+                history = history * decay_factor
                 current_elapsed = end
                 break
             wait = np.exp(log_wait)
@@ -298,12 +300,14 @@ def simulate_segment_events(anchor_age, young_age, breakpoints, log_background,
             if candidate_elapsed <= current_elapsed or candidate_age >= current_age:
                 raise RuntimeError("Simulation waiting time is below floating-point age resolution")
             if candidate_elapsed >= end:
-                history *= np.exp(-remaining_kyr / tau)
+                decay_factor = np.exp(-remaining_kyr / tau)
+                history = history * decay_factor
                 current_elapsed = end
                 break
-            history *= np.exp(-wait / tau)
+            decay_factor = np.exp(-wait / tau)
+            history = history * decay_factor
             current_elapsed = candidate_elapsed
-            candidates += 1
+            candidates = candidates + 1
             if candidates > max_candidates:
                 raise RuntimeError("Thinning candidate limit reached; inspect the background envelope")
             log_bg = float(log_background(candidate_age))
@@ -316,5 +320,5 @@ def simulate_segment_events(anchor_age, young_age, breakpoints, log_background,
             log_uniform = np.log(uniform) if uniform > 0 else -np.inf
             if log_uniform < log_accept:
                 ages.append(candidate_age)
-                history += 1
+                history = history + 1
     return np.asarray(ages)

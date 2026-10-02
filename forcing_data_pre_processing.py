@@ -5,7 +5,6 @@ resampling or model scaling is applied. Analysis scripts interpolate these
 native samples onto their own event and integration ages.
 """
 
-import argparse
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +13,8 @@ from scipy.signal import find_peaks
 import xarray as xr
 
 from toolbox import project_config as config
+
+OUTPUT_DIR = config.FORCING_DIR
 
 
 def precession_phase_anchors(orbital):
@@ -55,7 +56,7 @@ def prepare_forcings(output_dir=config.FORCING_DIR):
     co2.columns = co2.columns.str.strip()
     co2 = co2.rename(columns={"Gasage (yr BP)": "age_kyr_bp", "CO2 (ppmv)": "co2_ppm"})[
         ["age_kyr_bp", "co2_ppm"]]
-    co2["age_kyr_bp"] /= 1000
+    co2["age_kyr_bp"] = co2["age_kyr_bp"] / 1000
     co2 = co2.loc[np.isfinite(co2).all(axis=1)].sort_values("age_kyr_bp").reset_index(drop=True)
     tables = {"lr04.csv": lr04, "co2.csv": co2}
 
@@ -105,7 +106,9 @@ def prepare_forcings(output_dir=config.FORCING_DIR):
     return tables
 
 
+def main():
+    prepare_forcings(OUTPUT_DIR)
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-dir", type=Path, default=config.FORCING_DIR)
-    prepare_forcings(parser.parse_args().output_dir)
+    main()

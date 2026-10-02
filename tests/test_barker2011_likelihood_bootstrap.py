@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 import pytest
 from Barker2011 import Barker2011_likelihood_bootstrap as bootstrap
-from toolbox import combined_likelihood as c
 
 
 @pytest.fixture(scope="module")
@@ -20,12 +19,11 @@ def test_primary_catalogue_support_and_observed_statistic(result):
     assert len(result["events"]) == 70
     assert result["events"].event_id.str.startswith("Barker_S3_").all()
     assert result["summary"].event_definition.item() == "variable_threshold"
-    observed = result["observed_fit"]
-    assert observed.summary["n_response_events"] == 69
-    assert observed.summary["LR_statistic"] == pytest.approx(10.582480594, abs=1e-6)
-    assert result["context"].response_exposure_kyr == pytest.approx(396.4642638777)
+    assert result["summary"].n_response_events.item() == 69
+    assert result["summary"].LR_statistic.item() == pytest.approx(10.582480594, abs=1e-6)
+    assert result["summary"].response_exposure_kyr.item() == pytest.approx(396.4642638777)
     assert result["replicates"].fit_valid.all()
-    assert bootstrap.DEFAULT_SEED == 20260909 and bootstrap.DEFAULT_N_BOOTSTRAP == 9999
+    assert bootstrap.RANDOM_SEED == 20260909 and bootstrap.N_BOOTSTRAP == 9999
 
 
 def test_shared_driver_parallel_and_serial_agree(result):
@@ -41,13 +39,13 @@ def test_fixed_threshold_uses_own_anchor_background_and_null(fixed_result, resul
     assert fixed["summary"].event_definition.item() == "fixed_threshold"
     assert fixed["summary"].n_response_events.item() == 58
     assert fixed["summary"].LR_statistic.item() == pytest.approx(8.57672375244, abs=1e-6)
-    assert fixed["context"].response_exposure_kyr == pytest.approx(392.245695897)
-    assert fixed["context"].response_exposure_kyr != result["context"].response_exposure_kyr
-    assert fixed["context"].scaling != result["context"].scaling
+    assert fixed["summary"].response_exposure_kyr.item() == pytest.approx(392.245695897)
+    assert fixed["summary"].response_exposure_kyr.item() != result["summary"].response_exposure_kyr.item()
+    assert not fixed["scaling"].equals(result["scaling"])
     # The two definitions must not share the fitted BG model or reference LR.
-    assert fixed["observed_fit"].reduced.log_likelihood != result["observed_fit"].reduced.log_likelihood
+    assert fixed["reduced"].log_likelihood != result["reduced"].log_likelihood
     assert fixed["replicates"].fit_valid.all()
-    assert fixed["parameters"].set_index("parameter").loc["event_definition", "value"] == "fixed_threshold"
+    assert fixed["summary"].event_definition.item() == "fixed_threshold"
     row = fixed["summary"].iloc[0]
     exceedances = (fixed["replicates"].LR_statistic >= row.LR_statistic).sum()
     assert row.empirical_p_plus_one == (exceedances + 1) / (len(fixed["replicates"]) + 1)
