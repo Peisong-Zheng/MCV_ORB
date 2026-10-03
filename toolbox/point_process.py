@@ -33,7 +33,15 @@ class FittedPointProcess:
 
 
 def gauss_legendre_intervals(breakpoints, order=8):
-    """Return interior nodes and positive kyr weights on increasing intervals."""
+    """Return interior nodes and positive kyr weights on increasing intervals.
+
+    Standard formula for one interval [a, b]:
+        integral_a^b f(t) dt ≈ (b-a)/2 * sum_j w_j * f(t_j)
+        t_j = (a+b)/2 + (b-a)/2 * x_j
+
+    Apply this formula to every adjacent pair of breakpoints. The caller
+    evaluates f at the returned nodes and sums durations * f(nodes).
+    """
     breaks = np.asarray(breakpoints, dtype=float)
     if breaks.ndim != 1 or len(breaks) < 2:
         raise ValueError("Integration needs at least two interval boundaries")
@@ -41,11 +49,33 @@ def gauss_legendre_intervals(breakpoints, order=8):
         raise ValueError("Integration boundaries must be finite and increasing")
     if not isinstance(order, (int, np.integer)) or order < 1:
         raise ValueError("Quadrature order must be a positive integer")
+    # points and weights are the standard x_j and w_j on [-1, 1].
+    # Each has length order: this is the number of nodes PER interval,
+    # unrelated to the number of intervals.
     points, weights = leggauss(order)
+
+    # For all intervals: a = breaks[:-1], b = breaks[1:].
+    # np.diff(breaks) gives b-a, so this is exactly (b-a)/2.
     half_width = np.diff(breaks) / 2
+
+    # a + (b-a)/2 = (a+b)/2: this is the midpoint in the standard formula.
     middle = breaks[:-1] + half_width
+
+    # Transform each standard node: t_j = (a+b)/2 + (b-a)/2 * x_j.
+    # If there are m intervals, [:, None] changes (m,) into a column (m, 1).
+    # Broadcasting with points of shape (order,) gives (m, order):
+    # nodes[i, j] = middle[i] + half_width[i] * points[j].
+    # Each row is one interval; each column is one of its Gaussian nodes.
     nodes = middle[:, None] + half_width[:, None] * points
+
+    # The integral's prefactor (b-a)/2 is included in these weights:
+    # durations[i, j] = (b_i-a_i)/2 * w_j, from dt = (b-a)/2 * dx.
+    # The caller must not multiply by (b-a)/2 again when summing f(nodes).
+    # These are duration weights, not distances between adjacent nodes.
     durations = half_width[:, None] * weights
+
+    # Flatten row by row: all nodes of the first interval, then the next.
+    # Flatten weights in the same order to preserve their pairing with nodes.
     return nodes.ravel(), durations.ravel()
 
 
