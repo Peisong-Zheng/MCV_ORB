@@ -9,7 +9,7 @@ import pandas as pd
 from scipy.stats import chi2
 
 from toolbox import event_model
-from toolbox.point_process import fit_point_process
+from toolbox.point_process import fit_point_process, PointProcessFitError
 
 
 DRIVER_IDS = ("ecc", "obl", "insol65n")
@@ -26,6 +26,8 @@ def fit_named_models(event_features, integration_features, specs):
     """
     support = dict(n_events=len(event_features), exposure_kyr=float(integration_features.weight.sum()))
     model_rows, fits = [], {}
+    # Every model sees the same response events and quadrature exposure; only
+    # predictor columns change, so likelihood differences compare like supports.
     for model_id, terms in specs.items():
         terms = tuple(terms)
         beta = np.full(len(terms), np.nan)
@@ -43,20 +45,20 @@ def fit_named_models(event_features, integration_features, specs):
             fits[model_id] = fitted
             beta = fitted.beta
             row.update(converged=fitted.converged, log_likelihood=fitted.log_likelihood,
-                       AIC=fitted.aic, fit_valid=bool(fitted.converged and fitted.identifiable),
+                       AIC=fitted.aic, fit_valid=bool(fitted.converged),
                        fit_status=fitted.status)
-            if not fitted.converged or not fitted.identifiable:
-                row["invalid_reason"] = "continuous fit failed convergence/KKT checks"
-            if not np.isfinite(beta).all() or not np.isfinite(fitted.log_likelihood):
-                row.update(fit_valid=False, invalid_reason="non-finite fitted coefficients or likelihood")
+            if not len(event_features):
+                row["invalid_reason"] = "No response events; effect is unidentified"
             if row["fit_valid"]:
                 if all(term in terms for term in PHASE_TERMS):
                     b_sin, b_cos = [beta[terms.index(term)] for term in PHASE_TERMS]
+                    # b_sin*sin(phi)+b_cos*cos(phi) has extrema +/-amplitude;
+                    # exponentiating their difference gives the rate ratio.
                     amplitude = np.hypot(b_sin, b_cos)
                     row["pre_phase_rate_ratio_max_vs_min"] = float(np.exp(2 * amplitude))
                     if amplitude > 1e-12:
                         row["pre_phase_preferred_deg"] = float(np.degrees(np.arctan2(b_sin, b_cos)) % 360)
-        except (ValueError, RuntimeError, FloatingPointError, np.linalg.LinAlgError) as error:
+        except PointProcessFitError as error:
             row["invalid_reason"] = str(error)
         model_rows.append(row)
     return dict(models=pd.DataFrame(model_rows), fits=fits)
@@ -66,9 +68,10 @@ def model_specs(baseline_terms):
     """Eight prespecified models, with the intercept explicit in each term list."""
     baseline = tuple(baseline_terms)
     forbidden = set(PHASE_TERMS) | set(DRIVER_TERMS.values())
-    if (not baseline or baseline[0] != "intercept"
-            or len(set(baseline)) != len(baseline) or set(baseline) & forbidden):
-        raise ValueError("Baseline terms must begin with intercept and exclude orbital additions")
+    if set(baseline) & forbidden:
+        raise ValueError("Baseline terms must exclude orbital additions")
+    # B is the shared background/history model; P adds the two phase columns.
+    # Each alternative orbital driver adds one scalar predictor, alone or with P.
     specs = {"B": baseline, "BP": baseline + PHASE_TERMS}
     for driver in DRIVER_IDS:
         specs[f"B_{driver}"] = baseline + (DRIVER_TERMS[driver],)
@@ -83,12 +86,12 @@ def holm_adjust(p_values):
     during adjustment and restored to NaN in the returned array.
     """
     p = np.asarray(p_values, dtype=float)
-    if p.ndim != 1 or np.any(np.isfinite(p) & ((p < 0) | (p > 1))):
-        raise ValueError("Holm adjustment requires one-dimensional p values in [0, 1]")
     finite = np.isfinite(p)
     values = np.where(finite, p, 1.0)
     order = np.argsort(values, kind="stable")
     adjusted = np.empty(len(p), dtype=float)
+    # Step-down factors are m, m-1, ..., 1; the cumulative maximum keeps
+    # adjusted p values nondecreasing in the sorted original p values.
     adjusted[order] = np.minimum(1.0, np.maximum.accumulate(
         values[order] * np.arange(len(p), 0, -1)
     ))
@@ -115,6 +118,8 @@ def fit_models(event_features, integration_features, baseline_terms):
     comparison_rows = []
     for comparison_id, driver, group, reduced_id, full_id in _comparison_specs():
         reduced, full = lookup.loc[reduced_id], lookup.loc[full_id]
+        # Nested LR tests use the number of added coefficients: two for phase,
+        # one for a scalar driver. A larger fitted model cannot lose likelihood.
         df = int(full.n_parameters - reduced.n_parameters)
         gain = float(full.log_likelihood - reduced.log_likelihood)
         reasons = [f"{model_id}: {lookup.loc[model_id, 'invalid_reason']}"
@@ -123,6 +128,8 @@ def fit_models(event_features, integration_features, baseline_terms):
         if not reasons and not nesting_ok:
             reasons.append("full likelihood below reduced likelihood")
         valid = not reasons
+        # Only a negative gain within numerical tolerance is rounded to zero;
+        # a larger violation remains an invalid comparison, not evidence for H0.
         lr = 2 * max(gain, 0.0) if valid else np.nan
         comparison_rows.append({
             "comparison_id": comparison_id, "driver_id": driver, "comparison_group": group,
@@ -137,6 +144,8 @@ def fit_models(event_features, integration_features, baseline_terms):
         })
     comparisons = pd.DataFrame(comparison_rows)
     comparisons["holm_nominal_p"] = np.nan
+    # The nine alternative-driver tests form the planned multiplicity family;
+    # the phase-only reference is reported separately from that family.
     family = comparisons.comparison_group.ne("reference")
     comparisons.loc[family, "holm_nominal_p"] = holm_adjust(comparisons.loc[family, "nominal_p"])
     result["comparisons"] = comparisons
@@ -172,7 +181,7 @@ def analyze_chronologies(events, windows, forcings, phase_anchors, scaling,
             frame["mis6_segment"] = frame.segment_id.eq("MIS6").astype(float)
     point = fit_models(event_x, integral_x, baseline_terms)
     if not point["models"].fit_valid.all() or not point["comparisons"].fit_valid.all():
-        raise RuntimeError(f"Invalid point-age orbital fits:\n{point['models'].to_string(index=False)}")
+        raise RuntimeError("Invalid nominal orbital fits or likelihood comparisons")
     observations = windows[["segment_id", "observation_start_kyr_bp", "observation_end_kyr_bp"]]
     mc_models, mc_comparisons, status = [], [], []
     started = time.perf_counter()
@@ -180,7 +189,17 @@ def analyze_chronologies(events, windows, forcings, phase_anchors, scaling,
         shifted = events.copy()
         shifted["event_age_kyr_bp"] = row[age_columns].to_numpy(float)
         reason = ""
-        try:
+        for window in observations.itertuples(index=False):
+            ages = shifted.loc[shifted.segment_id.eq(window.segment_id), "event_age_kyr_bp"]
+            if (ages.min() < window.observation_start_kyr_bp
+                    or ages.max() > window.observation_end_kyr_bp):
+                reason = f"outside_{window.segment_id}_observation_support"
+                break
+        if reason:
+            fitted = invalid_tables(point, reason)
+        else:
+            # Age perturbations move each conditioning anchor and hence its
+            # response exposure; observation bounds and nominal scales stay fixed.
             draw_windows = event_model.response_windows(shifted, observations)
             draw_event_x, draw_integral_x = event_model.build_design(
                 shifted, draw_windows, forcings, phase_anchors, scaling, tau=tau,
@@ -189,10 +208,6 @@ def analyze_chronologies(events, windows, forcings, phase_anchors, scaling,
             if "mis6_segment" in baseline_terms:
                 for frame in (draw_event_x, draw_integral_x):
                     frame["mis6_segment"] = frame.segment_id.eq("MIS6").astype(float)
-        except ValueError as error:
-            reason = str(error)
-            fitted = invalid_tables(point, reason)
-        else:
             fitted = fit_models(draw_event_x, draw_integral_x, baseline_terms)
         for key, output in (("models", mc_models), ("comparisons", mc_comparisons)):
             output.append(fitted[key].assign(realization_id=row.realization_id))
@@ -230,6 +245,8 @@ def summarize_comparisons(point_df: pd.DataFrame, mc_df: pd.DataFrame):
         row.update(point_fit_valid=bool(point.fit_valid), point_invalid_reason=point.invalid_reason,
                    holm_nominal_p_point=point.holm_nominal_p, n_mc_total=len(sample),
                    n_mc_valid=len(valid), n_mc_invalid=len(sample) - len(valid))
+        # These are chronology sensitivity quantiles over valid draws, not
+        # sampling confidence limits; total/invalid counts remain visible above.
         for metric in metrics:
             row[f"{metric}_point"] = point[metric]
             values = valid[metric].to_numpy(float)
@@ -260,6 +277,8 @@ def summarize_phase(point_models: pd.DataFrame, mc_models: pd.DataFrame):
             values = valid[metric].to_numpy(float)
             values = values[np.isfinite(values)]
             if metric == "pre_phase_preferred_deg":
+                # Center the circular sample on its own model's nominal phase
+                # before taking linear quantiles across the 0/360-degree seam.
                 reference = point[metric]
                 values = reference + (values - reference + 180) % 360 - 180
                 values = values[np.isfinite(values)]

@@ -55,17 +55,6 @@ def run_analysis(*, n_bootstrap=N_BOOTSTRAP, seed=RANDOM_SEED,
                  n_workers=1, show_progress=False, quadrature_order=4):
     events = pd.read_csv(EVENT_CATALOGUE_CSV)
     observations = pd.read_csv(OBSERVATION_SEGMENTS_CSV)
-    if len(events) != 55 or not events.event_id.is_unique or events.event_id.isna().any():
-        raise ValueError("Check the curated 55-event pooled catalogue and event IDs")
-    if set(events.segment_id) != {"NGRIP", "MIS6"}:
-        raise ValueError("The primary analysis needs NGRIP and MIS6")
-    if events.groupby("segment_id").size().to_dict() != {"NGRIP": 34, "MIS6": 21}:
-        raise ValueError("The primary catalogue requires 34 NGRIP and 21 MIS6 events")
-    if not events.loc[events.segment_id.eq("NGRIP"), "event_label"].str.startswith("GI-").all():
-        raise ValueError("The primary catalogue contains NGRIP warming starts only")
-    for segment_id, group in events.groupby("segment_id", sort=False):
-        if not np.all(np.diff(group.event_age_kyr_bp) > 0):
-            raise ValueError(f"{segment_id} event ages must be strictly increasing")
     catalogue_id = "ngrip_warming_plus_mis6"
     lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
     co2 = pd.read_csv(CO2_CSV, float_precision="round_trip")
@@ -260,7 +249,7 @@ def main():
     save_tables(result, OUTPUT_ROOT / "data/processed" / RUN_NAME)
     write_notes(result, generated_notes_dir(OUTPUT_ROOT))
     if result["summary"].iloc[0].n_failed_replicates:
-        raise RuntimeError("Unresolved bootstrap fits saved; p value and figure publication withheld")
+        raise RuntimeError("Bootstrap has failed fits; see saved replicate results")
     save_figure(result["replicates"], result["summary"], OUTPUT_ROOT / "figures" / RUN_NAME,
                 paper_export=EXPORT_PAPER and OUTPUT_ROOT.resolve() == PROJECT_ROOT.resolve())
     columns = ["LR_statistic", "empirical_p_plus_one", "n_failed_replicates"]

@@ -53,7 +53,6 @@ def main():
         events.to_csv(output, index=False, float_format="%.17g")
         ages = events.event_age_kyr_bp
         print(f"{definition}: {len(events)} events, {ages.min():.6f}–{ages.max():.6f} kyr BP; {output}")
-    print("Checked unique IDs, ordered ages and identical ages for all shared events.")
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ orbital_source_epoch,J2000.0,,source convention
 orbital_age_offset_to_BP1950,-0.05,kyr,applied before interpolation
 event_catalogue,data/curated/ngrip_mis6_warming_events.csv,,source input
 observation_segments,data/curated/observation_segments.csv,,source input
-lr04_input,data/raw/lr04.xlsx,,source input
-co2_input,data/raw/composite_co2.xlsx,,source input
-precession_input,data/raw/pre_1000_60_inter100.txt,,source input
+lr04_input,data/processed/forcings/lr04.csv,,source input
+co2_input,data/processed/forcings/co2.csv,,source input
+precession_input,data/processed/forcings/orbital.csv,,source input
+phase_anchors_input,data/processed/forcings/precession_phase_anchors.csv,,source input

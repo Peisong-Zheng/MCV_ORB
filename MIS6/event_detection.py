@@ -113,18 +113,6 @@ def load_selected_anchors(path: Path) -> pd.DataFrame:
             "display_label": "string",
         },
     )
-    required = {
-        "record_id",
-        "event_label",
-        "display_label",
-        "anchor_age_ka_bp",
-        "label_scheme",
-        "anchor_purpose",
-    }
-    missing = required.difference(anchors.columns)
-    if missing:
-        raise ValueError(f"Anchor table is missing columns: {sorted(missing)}")
-
     anchors["anchor_age_ka_bp"] = pd.to_numeric(
         anchors["anchor_age_ka_bp"], errors="coerce"
     )
@@ -159,20 +147,12 @@ def load_selected_anchors(path: Path) -> pd.DataFrame:
     selected = selected.rename(columns={"display_label": "source_event_display_label"})
     selected = selected.sort_values("anchor_age_ka_bp").reset_index(drop=True)
 
-    if (
-        len(selected) != N_EVENTS
-        or selected["composite_event_display_label"].duplicated().any()
-    ):
-        raise ValueError(f"The composite chronology must contain {N_EVENTS} unique events")
     return selected
 
 
 def load_record(path: Path, spec: RecordSpec) -> pd.DataFrame:
     """Read a record, average duplicate ages, sort, and identify data gaps."""
     raw = pd.read_excel(path, sheet_name=spec.sheet)
-    if raw.shape[1] < 2:
-        raise ValueError(f"{spec.sheet!r} must contain age and proxy columns")
-
     frame = raw.iloc[:, :2].copy()
     frame.columns = ["age_ka_bp", "proxy"]
     frame = frame.apply(pd.to_numeric, errors="coerce").dropna()
@@ -182,8 +162,8 @@ def load_record(path: Path, spec: RecordSpec) -> pd.DataFrame:
         .sort_values("age_ka_bp")
         .reset_index(drop=True)
     )
-    if len(frame) < 3 or not frame["age_ka_bp"].is_monotonic_increasing:
-        raise ValueError(f"{spec.sheet!r} has an invalid age axis")
+    if len(frame) < 3:
+        raise ValueError(f"{spec.sheet!r} needs at least three ages")
 
     gaps = frame["age_ka_bp"].diff().gt(MATERIAL_GAP_KA)
     frame["segment"] = gaps.cumsum().astype(int)

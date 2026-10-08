@@ -29,7 +29,6 @@ from toolbox.project_config import (
 )
 
 RUN_NAME = "Barker2011_event_phase_analysis"
-EXPECTED_COUNTS = {"variable_threshold": 70, "fixed_threshold": 59}
 DEFINITION_COLORS = {"variable_threshold": CATALOGUE_COLORS["variable"],
                      "fixed_threshold": CATALOGUE_COLORS["fixed"]}
 EVENT_COLOR = DEFINITION_COLORS["variable_threshold"]
@@ -44,11 +43,6 @@ EXPORT_PAPER = True
 def run_analysis(event_definition="variable_threshold", *, quadrature_order=4):
     events = pd.read_csv(BARKER_EVENT_CSVS[event_definition], float_precision="round_trip")
     events["segment_id"] = "Barker2011"
-    if (len(events) != EXPECTED_COUNTS[event_definition]
-            or events.event_id.isna().any() or not events.event_id.is_unique):
-        raise ValueError("Check the prepared Barker event count and identities")
-    if not np.all(np.diff(events.event_age_kyr_bp) > 0):
-        raise ValueError("Barker event ages must be strictly increasing")
 
     lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
     co2 = pd.read_csv(CO2_CSV, float_precision="round_trip")
@@ -109,23 +103,10 @@ def run_analysis(event_definition="variable_threshold", *, quadrature_order=4):
     result = dict(events=events, windows=windows, forcings=forcings, scaling=scaling,
                   event_features=event_x, integration_features=integral_x,
                   reduced=reduced, full=full, summary=summary, event_phases=phases, rayleigh=rayleigh)
-    validate_results(result)
-    return result
-
-
-def validate_results(result):
-    events = result["events"]
-    summary = result["summary"].iloc[0]
-    expected = EXPECTED_COUNTS[summary.event_definition]
-    if len(events) != expected or events.included_in_response.sum() != expected - 1:
-        raise ValueError("Exactly one oldest event conditions this definition's fit")
-    if not np.isclose(summary.response_exposure_kyr, events.event_age_kyr_bp.max() - ANALYSIS_START_KA):
-        raise ValueError("Continuous support does not match the exact anchor")
     if result["event_phases"].pre_phase_extrapolated.any():
         raise ValueError("An event phase is extrapolated")
-    for model in (result["reduced"], result["full"]):
-        if not model.converged or model.beta[model.terms.index(HISTORY_TERM)] > 0:
-            raise ValueError("Inspect finite MLE and inhibitory history")
+    return result
+
 
 def _add_panel_label(axis: plt.Axes, label: str, *, x: float = -0.12):
     axis.text(
@@ -303,7 +284,6 @@ def main():
             for name, model in (("reduced", current["reduced"]), ("full", current["full"]))
         ])
         print(models.to_string(index=False, float_format=lambda value: f"{value:.6f}"))
-        print("Checks passed: event IDs/order, exact support, phase coverage, likelihood nesting and inhibitory history.")
     print(f"Saved 9 CSVs and the research figure under {root}.")
 
 

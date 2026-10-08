@@ -55,10 +55,6 @@ def run_analysis(*, n_bootstrap=N_BOOTSTRAP, seed=RANDOM_SEED,
                  n_workers=1, show_progress=False, event_definition="variable_threshold",
                  quadrature_order=4):
     events = pd.read_csv(BARKER_EVENT_CSVS[event_definition], float_precision="round_trip")
-    if (len(events) != {"variable_threshold": 70, "fixed_threshold": 59}[event_definition]
-            or events.event_id.isna().any() or not events.event_id.is_unique
-            or not np.all(np.diff(events.event_age_kyr_bp) > 0)):
-        raise ValueError("Check prepared Barker event count, identities and increasing ages")
     events["segment_id"] = "Barker2011"
     observations = pd.DataFrame([dict(segment_id="Barker2011", observation_start_kyr_bp=0.,
                                       observation_end_kyr_bp=400.)])
@@ -163,7 +159,7 @@ def main():
     data_dir, figure_dir = output_directories(OUTPUT_ROOT, EVENT_DEFINITION)
     save_tables(result, data_dir)
     if result["summary"].iloc[0].n_failed_replicates:
-        raise RuntimeError("Unresolved bootstrap fits saved; p value and figure publication withheld")
+        raise RuntimeError("Bootstrap has failed fits; see saved replicate results")
     save_figure(result["replicates"], result["summary"], figure_dir,
                 paper_export=EXPORT_PAPER and OUTPUT_ROOT.resolve() == PROJECT_ROOT.resolve())
     print(result["summary"][["LR_statistic", "empirical_p_plus_one", "n_failed_replicates"]].to_string(index=False))

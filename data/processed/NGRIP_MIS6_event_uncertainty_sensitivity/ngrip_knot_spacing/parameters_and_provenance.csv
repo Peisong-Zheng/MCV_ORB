@@ -7,7 +7,7 @@ ngrip_seed,20260907
 pairing_seed,20260906
 age_input_policy,reuse original paired_55_ages arrays and saved source IDs; no sampling
 age_archive_policy,"complete original NPZ copied byte-for-byte, including when fitting a subset"
-source_directory,/Users/pz/VScode/MCV_ORB/data/processed/NGRIP_MIS6_event_uncertainty_sensitivity/ngrip_knot_spacing
+source_directory,/Users/pz/VScode/MCV_ORB/agent_work/backups/20261003T103620Z/MCV_ORB/data/processed/NGRIP_MIS6_event_uncertainty_sensitivity/ngrip_knot_spacing
 chronology_diagnostics,"original sampling, knot, and analytical basis diagnostics copied unchanged"
 ngrip_joint_boundary_count,69
 ngrip_warming_source_count,34

@@ -149,7 +149,7 @@ def test_invalid_age_projection_cannot_extrapolate(sources, ages, component, mes
 
 def test_source_schema_and_coordinate_corruption_rejected(simple_source):
     missing = replace(simple_source, series=simple_source.series.drop(columns="d13C"))
-    with pytest.raises(ValueError, match="schema"):
+    with pytest.raises(KeyError, match="d13C"):
         chronology.build_context(np.array([11.0]), sources={"So-4": missing})
     series = simple_source.series.copy()
     series.loc[1, "depth_mm"] = 0.0

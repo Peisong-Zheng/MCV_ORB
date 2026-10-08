@@ -24,14 +24,6 @@ QUADRATURE_ORDER = 4
 
 def run_analysis(n_replicates=500, seed=20260912, *, quadrature_order=4, show_progress=True):
     events = pd.read_csv(EVENT_CATALOGUE_CSV)
-    if (events.groupby("segment_id").size().to_dict() != {"NGRIP": 34, "MIS6": 21}
-            or events.event_id.isna().any() or not events.event_id.is_unique):
-        raise ValueError("Check the prepared 34 NGRIP and 21 MIS6 warming-event identities")
-    if not events.loc[events.segment_id.eq("NGRIP"), "event_label"].str.startswith("GI-").all():
-        raise ValueError("The NGRIP catalogue must contain warming starts only")
-    for _, segment in events.groupby("segment_id", sort=False):
-        if not np.all(np.diff(segment.event_age_kyr_bp) > 0):
-            raise ValueError("Event ages must increase strictly within each segment")
     observations = pd.read_csv(OBSERVATION_SEGMENTS_CSV)
     lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
     co2 = pd.read_csv(CO2_CSV, float_precision="round_trip")
@@ -122,7 +114,7 @@ def main():
     data_dir = save_results(result, OUTPUT_ROOT)
     print(f"Saved {data_dir}; valid fits {result['replicates'].fit_valid.sum()}/{len(result['replicates'])}.")
     if not result["replicates"].fit_valid.all():
-        raise RuntimeError("Deletion failures are saved; resolve or report them before publication")
+        raise RuntimeError("Deletion experiment has failed fits; see saved results")
 
 
 if __name__ == "__main__":

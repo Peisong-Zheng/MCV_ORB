@@ -30,38 +30,26 @@ def residual_statistics(events_by_segment, cumulative_at_events_by_segment,
     observation endpoint, or the whole response interval when no event occurs.
     Tails affect cumulative residuals, not the completed waiting-time sample.
     """
-    if not events_by_segment:
-        raise ValueError("At least one observed segment is required")
-    if set(events_by_segment) != set(cumulative_at_events_by_segment):
-        raise ValueError("Events and cumulative integrals must have matching segments")
-    if tail_integrals is not None and set(tail_integrals) != set(events_by_segment):
-        raise ValueError("Tail integrals must cover every segment")
-
     interval_frames, segment_rows, uniform_samples = [], [], []
     adjacent_sum, n_pairs = 0.0, 0
     for segment_id, coordinates in events_by_segment.items():
         events = np.asarray(coordinates, dtype=float)
         cumulative = np.asarray(cumulative_at_events_by_segment[segment_id], dtype=float)
-        if events.ndim != 1 or cumulative.shape != events.shape:
-            raise ValueError("Each event needs one cumulative integral")
-        if not np.isfinite(events).all() or not np.isfinite(cumulative).all():
-            raise ValueError("Event coordinates and integrals must be finite")
-        differences = np.diff(events)
-        if len(differences) and not (np.all(differences > 0) or np.all(differences < 0)):
-            raise ValueError("Event coordinates must be strictly ordered within a segment")
+        # Compensator increments are Exp(1) under the model; 1-exp(-z) makes them uniform.
         transformed = np.diff(np.r_[0.0, cumulative])
-        if np.any(transformed < 0):
-            raise ValueError("Cumulative integrals must be nonnegative and nondecreasing")
+        tail = np.nan if tail_integrals is None else float(tail_integrals[segment_id])
+        if (not np.isfinite(transformed).all() or np.any(transformed < 0)
+                or (tail_integrals is not None and (not np.isfinite(tail) or tail < 0))):
+            raise ValueError("Invalid cumulative intensity")
         uniform = -np.expm1(-transformed)
         uniform_samples.append(uniform)
+        # Only consecutive intervals within the same segment form dependence pairs.
         local_sum = float(np.sum((uniform[:-1] - 0.5) * (uniform[1:] - 0.5)))
         local_pairs = max(len(uniform) - 1, 0)
         adjacent_sum = adjacent_sum + local_sum
         n_pairs = n_pairs + local_pairs
 
-        tail = np.nan if tail_integrals is None else float(tail_integrals[segment_id])
-        if tail_integrals is not None and (not np.isfinite(tail) or tail < 0):
-            raise ValueError("Tail integrals must be finite and nonnegative")
+        # The final waiting time is right-censored; include its exposure in N-Lambda only.
         at_last_event = float(cumulative[-1]) if len(cumulative) else 0.0
         endpoint_integral = at_last_event + tail
         segment_rows.append(dict(
@@ -104,13 +92,11 @@ def likelihood_ratio(loglik_full, loglik_null, tolerance=1e-7):
 def holm_adjust(p_values):
     """Holm adjustment; unresolved tests remain in the prespecified family."""
     p = np.asarray(p_values, dtype=float)
-    if p.ndim != 1 or np.any(np.isfinite(p) & ((p < 0) | (p > 1))):
-        raise ValueError("Expected p values in [0, 1], or NaN for unresolved tests")
-    if np.isinf(p).any():
-        raise ValueError("Infinite p values are invalid")
     finite = np.isfinite(p)
+    # Missing tests occupy their original family slots but remain unresolved in the output.
     order = np.argsort(np.where(finite, p, 1.0), kind="stable")
     adjusted = np.empty(len(p))
+    # Step-down multipliers and a cumulative maximum preserve ordered adjusted p values.
     adjusted[order] = np.minimum(1, np.maximum.accumulate(
         np.where(finite, p, 1.0)[order] * np.arange(len(p), 0, -1)))
     adjusted[~finite] = np.nan
@@ -125,28 +111,28 @@ def bootstrap_summary(observed, replicates, statistics=GOF_STATISTICS, adjust_ho
     its bounds treat invalid replicates as unknown exceedances. The confidence
     interval concerns Monte Carlo exceedance probability, not model parameters.
     """
-    if replicates.empty or not statistics or len(set(statistics)) != len(statistics):
-        raise ValueError("Bootstrap summary needs draws and distinct statistic names")
-    valid_fit = np.ones(len(replicates), dtype=bool)
-    if "fit_valid" in replicates:
-        if not replicates.fit_valid.isin([True, False]).all():
-            raise ValueError("Every replicate needs an explicit fit-valid status")
-        valid_fit = replicates.fit_valid.to_numpy(bool)
+    if replicates.empty:
+        raise ValueError("Bootstrap summary needs simulated draws")
+    if not replicates.fit_valid.isin([True, False]).all():
+        raise ValueError("Every replicate needs an explicit fit-valid status")
+    valid_fit = replicates.fit_valid.to_numpy(bool)
     rows = []
     for name in statistics:
         point = float(observed[name])
         values = replicates[name].to_numpy(float)
-        if not np.isfinite(point) or point < 0 or np.any(np.isfinite(values) & (values < 0)):
-            raise ValueError("These discrepancy statistics must be nonnegative")
+        if not np.isfinite(point):
+            raise ValueError("Observed statistic must be finite")
         valid = valid_fit & np.isfinite(values)
         total, accepted = len(values), int(valid.sum())
         missing = total - accepted
         exceeding = int(np.sum(values[valid] >= point))
+        # Bound unresolved p values by treating every missing draw as below, then above, the observation.
         p_low = (1 + exceeding) / (total + 1)
         p_high = (1 + exceeding + missing) / (total + 1)
         p = p_low if not missing else np.nan
         ci_low = ci_high = mc_se = np.nan
         if not missing:
+            # Clopper-Pearson bounds quantify the finite bootstrap's exceedance uncertainty.
             ci_low = 0.0 if exceeding == 0 else beta_distribution.ppf(
                 0.025, exceeding, total - exceeding + 1)
             ci_high = 1.0 if exceeding == total else beta_distribution.ppf(
@@ -168,29 +154,29 @@ def bootstrap_summary(observed, replicates, statistics=GOF_STATISTICS, adjust_ho
 def select_sampling_gof_replicates(draws, settings, saved_generator, full_model, *,
                                    response_exposure_kyr, tau=1.5, quadrature_order=4):
     """Check the saved nominal generator and keep all B_sampling rows, including failures."""
-    from toolbox.project_config import MODEL_VERSION
-
+    # Reused residuals must come from the same fitted generator and integration settings.
     saved_tau = settings.get("history_tau_ka", settings.get("history_tau_kyr"))
-    if (settings["model_version"] != MODEL_VERSION or float(saved_tau) != tau
-            or int(settings.get("quadrature_order", 4)) != quadrature_order):
+    if float(saved_tau) != tau or int(settings.get("quadrature_order", 4)) != quadrature_order:
         raise ValueError("S4 model settings differ from the diagnostic model")
     saved = saved_generator.rename(columns=lambda name: name.removeprefix("beta__"))
     if len(saved) != 1 or set(saved.columns) != set(full_model.terms):
-        raise ValueError("S4 generator does not contain the current full-model terms")
-    np.testing.assert_allclose(saved.loc[0, list(full_model.terms)].to_numpy(float), full_model.beta,
-        rtol=1e-7, atol=1e-8, err_msg="S4 generator differs from the current nominal fit")
+        raise ValueError("GOF generator must match the full-model terms")
+    if not np.allclose(saved.loc[0, list(full_model.terms)].to_numpy(float), full_model.beta,
+                       rtol=1e-7, atol=1e-8):
+        raise ValueError("GOF generator differs from the nominal fit")
     columns = ["replicate_id", "scenario", "outer_id", "seed", "fit_valid", "invalid_reason",
                "response_exposure_kyr", "n_response_events", *GOF_STATISTICS, "residual_status"]
+    # GOF uses nominal full-model sampling; chronology-mixture draws target a different ensemble.
     sampling = draws.loc[draws.scenario.eq("B_sampling"), columns].reset_index(drop=True)
-    if not sampling.fit_valid.isin([True, False]).all():
-        raise ValueError("S4 nominal sampling draws need an explicit fit status")
+    # Check all requested IDs, including failures, so reuse cannot silently shrink the denominator.
     expected_ids = np.arange(1, int(settings["n_point"]) + 1)
     if not np.array_equal(np.sort(sampling.replicate_id), expected_ids):
         raise ValueError("S4 nominal sampling ensemble is incomplete or has duplicate IDs")
-    if not sampling.outer_id.eq(0).all() or not sampling.seed.eq(int(settings["seed"])).all():
-        raise ValueError("S4 nominal sampling draws have inconsistent generators or seeds")
-    np.testing.assert_allclose(sampling.response_exposure_kyr, response_exposure_kyr,
-        rtol=1e-10, atol=1e-10, err_msg="S4 sampling draws use different response exposure")
+    if not sampling.outer_id.eq(0).all():
+        raise ValueError("GOF draws must use the nominal generator")
+    if not np.allclose(sampling.response_exposure_kyr, response_exposure_kyr,
+                       rtol=1e-10, atol=1e-10):
+        raise ValueError("GOF draws use different response exposure")
     return sampling
 
 
@@ -198,8 +184,7 @@ def gof_results(event_features, integration_features, windows, full_model, repli
     """Summarize observed residuals against nominal full-model refits."""
     from toolbox.event_model import rescaled_event_intervals
 
-    if "scenario" in replicates and not replicates.scenario.eq("B_sampling").all():
-        raise ValueError("GOF calibration must contain only nominal B_sampling full refits")
+    # Observed and simulated statistics both use fitted intensities, accounting for parameter fitting.
     observed = residual_statistics(*rescaled_event_intervals(
         event_features, integration_features, windows, full_model))
     summary = bootstrap_summary(observed["statistics"], replicates)

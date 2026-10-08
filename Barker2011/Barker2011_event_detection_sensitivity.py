@@ -74,10 +74,6 @@ def save_results(result, output_root):
 def run_analysis(n_replicates=500, seed=20260913, *, quadrature_order=4, show_progress=True):
     events = pd.read_csv(BARKER_EVENT_CSVS["variable_threshold"], float_precision="round_trip")
     events["segment_id"] = "Barker2011"
-    if len(events) != 70 or events.event_id.isna().any() or not events.event_id.is_unique:
-        raise ValueError("Check the prepared Barker event count and identities")
-    if not np.all(np.diff(events.event_age_kyr_bp) > 0):
-        raise ValueError("Barker event ages must be strictly increasing")
     observations = pd.DataFrame([dict(segment_id="Barker2011",
         observation_start_kyr_bp=0., observation_end_kyr_bp=400.)])
     lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
@@ -108,7 +104,7 @@ def main():
     data_dir = save_results(result, OUTPUT_ROOT)
     print(f"Saved {data_dir}; valid fits {result['replicates'].fit_valid.sum()}/{len(result['replicates'])}.")
     if not result["replicates"].fit_valid.all():
-        raise RuntimeError("Deletion failures are saved; resolve or report them before publication")
+        raise RuntimeError("Deletion experiment has failed fits; see saved results")
 
 
 if __name__ == "__main__":

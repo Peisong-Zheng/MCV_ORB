@@ -41,10 +41,6 @@ REDRAW = False
 def run_analysis(n_realizations=N_REALIZATIONS, show_progress=True, quadrature_order=4):
     events = pd.read_csv(BARKER_EVENT_CSVS["variable_threshold"], float_precision="round_trip")
     events["segment_id"] = "Barker2011"
-    if len(events) != 70 or events.event_id.isna().any() or not events.event_id.is_unique:
-        raise ValueError("Check the prepared Barker event count and identities")
-    if not np.all(np.diff(events.event_age_kyr_bp) > 0):
-        raise ValueError("Barker event ages must be strictly increasing")
     observations = pd.DataFrame([dict(segment_id="Barker2011",
         observation_start_kyr_bp=0., observation_end_kyr_bp=400.)])
     lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
@@ -69,7 +65,7 @@ def run_analysis(n_realizations=N_REALIZATIONS, show_progress=True, quadrature_o
     draws = pd.read_csv(AGE_INPUT, float_precision="round_trip").sort_values("realization_id")
     if draws.realization_id.isna().any() or not draws.realization_id.is_unique:
         raise ValueError("Chronology IDs must be present and unique")
-    if not isinstance(n_realizations, (int, np.integer)) or not 1 <= n_realizations <= len(draws):
+    if not 1 <= n_realizations <= len(draws):
         raise ValueError("Requested chronology count must lie within the complete ensemble")
     # Sorting IDs makes the draw independent of CSV row order. All models use this draw.
     indices = np.random.default_rng(SELECTION_SEED).choice(len(draws), n_realizations, replace=False)

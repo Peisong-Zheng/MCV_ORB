@@ -1,2 +1,2 @@
 model_version,event_definition,n_source_events,n_response_events,response_exposure_kyr,LR_statistic,nominal_LR_p,gain_bits_per_event,pre_phase_preferred_deg,pre_phase_rate_ratio_max_vs_min,rayleigh_mean_phase_deg,rayleigh_mean_resultant_length,rayleigh_p
-continuous_exponential_inhibition_2026-09-12,fixed_threshold,59,58,392.245695897,8.57672375244,0.0137273940597,0.106668938144,347.056629829,3.18786389174,7.9036369634,0.227099883219,0.0470451355251
+continuous_exponential_inhibition_2026-09-12,fixed_threshold,59,58,392.245695897,8.57672375244,0.0137273940597,0.106668938144,347.056627359,3.18786364088,7.9036369634,0.227099883219,0.0470451355251

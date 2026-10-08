@@ -62,7 +62,8 @@ def load_age_inputs(events, age_results_path=AGE_RESULTS):
     ids = ["realization_id", "ngrip_realization_id", "mis6_realization_id"]
     if draws.realization_id.duplicated().any() or results.realization_id.duplicated().any():
         raise ValueError("Age input IDs must be unique")
-    pd.testing.assert_frame_equal(draws[ids], results[ids])
+    if not np.array_equal(draws[ids].to_numpy(), results[ids].to_numpy()):
+        raise ValueError("Age realizations and fits must have the same paired IDs")
     if not results.fit_valid.isin([True, False]).all():
         raise ValueError("Every saved age realization needs an explicit support status")
     columns = [f"age_kyr_bp__{event_id}" for event_id in events.event_id]
@@ -151,8 +152,6 @@ def effect_caption(catalogue):
 
 
 def main():
-    if N_POINT_DRAWS < 20 or min(N_OUTER_DRAWS, N_INNER_DRAWS, N_WORKERS) < 1 or RANDOM_SEED < 0:
-        raise ValueError("Require N_POINT_DRAWS >= 20, positive group/worker counts and nonnegative RANDOM_SEED")
     output_dir = OUTPUT_ROOT / "data/processed" / RUN_NAME
     figure_dir = OUTPUT_ROOT / "figures" / RUN_NAME
     if REDRAW:
@@ -171,17 +170,6 @@ def main():
     quadrature_order = 4
     events = pd.read_csv(EVENT_CATALOGUE_CSV)
     observations = pd.read_csv(OBSERVATION_SEGMENTS_CSV)
-    if len(events) != 55 or not events.event_id.is_unique or events.event_id.isna().any():
-        raise ValueError("Check the curated 55-event pooled catalogue and event IDs")
-    if set(events.segment_id) != {"NGRIP", "MIS6"}:
-        raise ValueError("The primary analysis needs NGRIP and MIS6")
-    if events.groupby("segment_id").size().to_dict() != {"NGRIP": 34, "MIS6": 21}:
-        raise ValueError("The primary catalogue requires 34 NGRIP and 21 MIS6 events")
-    if not events.loc[events.segment_id.eq("NGRIP"), "event_label"].str.startswith("GI-").all():
-        raise ValueError("The primary catalogue contains NGRIP warming starts only")
-    for segment_id, group in events.groupby("segment_id", sort=False):
-        if not np.all(np.diff(group.event_age_kyr_bp) > 0):
-            raise ValueError(f"{segment_id} event ages must be strictly increasing")
     catalogue_id = "ngrip_warming_plus_mis6"
     lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
     co2 = pd.read_csv(CO2_CSV, float_precision="round_trip")

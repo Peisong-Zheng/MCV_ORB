@@ -53,8 +53,6 @@ def main():
         raise ValueError("n_realizations must be positive")
     events = pd.read_csv(BARKER_EVENT_CSVS["variable_threshold"], float_precision="round_trip")
     events["segment_id"] = "Barker2011"
-    if len(events) != 70 or events.event_id.isna().any() or not events.event_id.is_unique:
-        raise ValueError("Expected 70 unique Barker warming events")
     observations = pd.DataFrame([dict(segment_id="Barker2011", observation_start_kyr_bp=0.,
                                       observation_end_kyr_bp=400.)])
     lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
@@ -103,7 +101,7 @@ def main():
     summary = summary[SUMMARY_COLUMNS]
     summary.to_csv(data / "summary.csv", index=False)
     if summary.n_numerical_failures.item():
-        raise RuntimeError("Unresolved numerical age fits saved; figure publication withheld")
+        raise RuntimeError("Age ensemble has failed numerical fits; see saved results")
     fig = plot_sensitivity(results, point)
     for ext in ("pdf", "png"):
         fig.savefig(figures / f"{RUN_NAME}.{ext}", dpi=450)

@@ -98,17 +98,6 @@ def main():
     quadrature_order = QUADRATURE_ORDER
     events = pd.read_csv(EVENT_CATALOGUE_CSV)
     observations = pd.read_csv(OBSERVATION_SEGMENTS_CSV)
-    if len(events) != 55 or not events.event_id.is_unique or events.event_id.isna().any():
-        raise ValueError("Check the curated 55-event pooled catalogue and event IDs")
-    if set(events.segment_id) != {"NGRIP", "MIS6"}:
-        raise ValueError("The primary analysis needs NGRIP and MIS6")
-    if events.groupby("segment_id").size().to_dict() != {"NGRIP": 34, "MIS6": 21}:
-        raise ValueError("The primary catalogue requires 34 NGRIP and 21 MIS6 events")
-    if not events.loc[events.segment_id.eq("NGRIP"), "event_label"].str.startswith("GI-").all():
-        raise ValueError("The primary catalogue contains NGRIP warming starts only")
-    for segment_id, group in events.groupby("segment_id", sort=False):
-        if not np.all(np.diff(group.event_age_kyr_bp) > 0):
-            raise ValueError(f"{segment_id} event ages must be strictly increasing")
     catalogue_id = "ngrip_warming_plus_mis6"
     lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
     co2 = pd.read_csv(CO2_CSV, float_precision="round_trip")
@@ -150,7 +139,7 @@ def main():
              **gof_parameters))
     print(f"Saved {data_dir}")
     if any(not frame.fit_valid.all() for name, frame in result.items() if name.endswith("replicates")):
-        raise RuntimeError("Model-check failures are saved; resolve or report them before publication")
+        raise RuntimeError("Model checks have failed fits; see saved results")
 
 
 if __name__ == "__main__":

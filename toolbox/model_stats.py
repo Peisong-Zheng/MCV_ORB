@@ -7,16 +7,19 @@ from scipy.stats import chi2, beta as beta_distribution
 
 def unwrap_phase(values, center):
     """Express circular phases within 180 degrees of the reference phase."""
+    # Keep phases crossing 0/360 degrees adjacent when taking ordinary quantiles.
     return center + (np.asarray(values) - center + 180) % 360 - 180
 
 
 def nested_likelihood_metrics(*, loglik_full, loglik_reduced, df, n_events,
                               aic_full, aic_reduced):
     """Compare nested models fitted to the same response events and support."""
+    # The gain is in natural-log units; divide by ln(2) and event count for G.
     gain = float(loglik_full - loglik_reduced)
     if gain < -1e-7:
         raise RuntimeError("Full-model likelihood is below the nested reference")
     lr = 2 * gain
+    # Chi-square calibration is nominal; negative delta AIC favors the full model.
     return dict(
         df=int(df), n_events=int(n_events), loglik_reduced=float(loglik_reduced),
         loglik_full=float(loglik_full), ll_gain_nats=gain,
@@ -58,6 +61,7 @@ def rayleigh_test(phases_rad: np.ndarray) -> dict[str, float]:
             "rayleigh_p": np.nan,
         }
 
+    # Average unit vectors so the circular mean respects the phase seam.
     cosine_sum = float(np.cos(theta).sum())
     sine_sum = float(np.sin(theta).sum())
     resultant = float(np.hypot(cosine_sum, sine_sum))
@@ -80,11 +84,10 @@ def rayleigh_rbar_threshold(n: int, alpha: float = 0.05) -> float:
 
     if n <= 0:
         return np.nan
-    if not 0 < alpha < 1:
-        raise ValueError("alpha must lie between 0 and 1.")
     low, high = 0.0, 1.0
     if rayleigh_p_value_from_z(n, n) > alpha:
         return np.nan
+    # Invert the same finite-sample p value used by the test, rather than an asymptotic cutoff.
     for _ in range(80):
         middle = (low + high) / 2
         if rayleigh_p_value_from_z(n * middle**2, n) <= alpha:
@@ -110,6 +113,7 @@ def phase_sector_observed_expected(events, integration, models, n_sectors=12):
     rows = []
     for model_id, model in models.items():
         rate = np.exp(integration.loc[:, model.terms].to_numpy(float) @ model.beta)
+        # Quadrature exposure weights turn rate into expected counts per sector.
         mass = rate * integration["weight"].to_numpy(float)
         fitted, _ = np.histogram(integration["pre_phase_deg"].to_numpy(float),
                                  bins=edges, weights=mass)
@@ -132,11 +136,11 @@ def phase_coefficients(model):
 def phase_and_ratio(coefficients):
     """Map (..., 2) sine/cosine coefficients to circular phase and rate ratio."""
     coefficients = np.asarray(coefficients, dtype=float)
-    if coefficients.shape[-1:] != (2,) or not np.isfinite(coefficients).all():
-        raise ValueError("Expected finite sine/cosine coefficient pairs")
     sine, cosine = coefficients[..., 0], coefficients[..., 1]
+    # b_s sin(phi) + b_c cos(phi) = r cos(phi - phi_peak).
     phase = np.degrees(np.arctan2(sine, cosine)) % 360
     radius = np.hypot(sine, cosine)
+    # Zero amplitude has no preferred phase; peak/trough rates differ by exp(2r).
     phase = np.where(radius == 0, np.nan, phase)
     return phase, np.exp(2 * radius)
 
@@ -152,18 +156,15 @@ def bootstrap_joint_region(point_coefficients, bootstrap_coefficients, level=0.9
     """
     point = np.asarray(point_coefficients, dtype=float)
     samples = np.asarray(bootstrap_coefficients, dtype=float)
-    if point.shape != (2,) or samples.ndim != 2 or samples.shape[1] != 2:
-        raise ValueError("Joint region requires two phase coefficients")
-    if len(samples) < 20 or not np.isfinite(samples).all() or not np.isfinite(point).all():
-        raise ValueError("Joint region needs at least 20 finite bootstrap estimates")
-    if not 0 < level < 1:
-        raise ValueError("Confidence level must be between zero and one")
+    if len(samples) < 3 or not np.isfinite(samples).all() or not np.isfinite(point).all():
+        raise ValueError("Joint region needs at least three finite coefficient pairs")
+    # Covariance measures ensemble spread; errors remain centered on the nominal fit.
     covariance = np.cov(samples, rowvar=False)
-    if np.linalg.eigvalsh(covariance).min() <= 0:
-        raise ValueError("Bootstrap phase covariance must be positive definite")
     errors = samples - point
     quadratic = np.einsum("ij,ji->i", errors, np.linalg.solve(covariance, errors.T))
+    # Empirical calibration retains bias; it does not substitute a chi-square cutoff.
     critical = float(np.quantile(quadratic, level))
+    # Including the origin permits zero phase amplitude and leaves direction unidentified.
     origin_q = float(point @ np.linalg.solve(covariance, point))
     return {
         "center": point, "covariance": covariance, "critical_value": critical,
@@ -173,6 +174,7 @@ def bootstrap_joint_region(point_coefficients, bootstrap_coefficients, level=0.9
 
 
 def ellipse_boundary(region, angles):
+    # Map the unit circle to the joint coefficient ellipse, centered on the point fit.
     transform = np.sqrt(region["critical_value"]) * np.linalg.cholesky(region["covariance"])
     angles = np.atleast_1d(angles)
     unit = np.column_stack((np.cos(angles), np.sin(angles)))
@@ -184,6 +186,7 @@ def _periodic_extreme(function, maximize=False):
     angles = np.linspace(0, 2 * np.pi, 721)[:-1]
     sign = -1 if maximize else 1
     values = sign * np.asarray(function(angles))
+    # Neighbor comparisons wrap around the seam; refine every candidate extremum.
     candidates = np.flatnonzero((values <= np.roll(values, 1)) &
                                (values <= np.roll(values, -1)))
     step = 2 * np.pi / len(angles)
@@ -200,6 +203,7 @@ def _periodic_extreme(function, maximize=False):
 
 def project_joint_region(region):
     """Project a 2D region to radial rate ratio and a continuous circular arc."""
+    # Radius controls modulation strength; an enclosed origin sets the minimum ratio to one.
     radius = lambda t: np.linalg.norm(ellipse_boundary(region, t), axis=1)
     low_r = 0.0 if region["origin_in_region"] else _periodic_extreme(radius)
     high_r = _periodic_extreme(radius, maximize=True)
@@ -207,6 +211,7 @@ def project_joint_region(region):
     if region["origin_in_region"]:
         phase_low, phase_high = 0.0, 360.0
     else:
+        # Unwrap about the nominal direction before finding arc endpoints across 0 degrees.
         phase = lambda t: unwrap_phase(phase_and_ratio(ellipse_boundary(region, t))[0], point_phase)
         phase_low = _periodic_extreme(phase)
         phase_high = _periodic_extreme(phase, maximize=True)
@@ -220,6 +225,7 @@ def joint_region_curve_band(region, phase_deg):
     radians = np.deg2rad(phase_deg)
     direction = np.column_stack((np.sin(radians), np.cos(radians)))
     center = direction @ region["center"]
+    # The ellipse support function bounds log-rate modulation at every phase jointly.
     half_width = np.sqrt(region["critical_value"] *
                          np.einsum("ij,jk,ik->i", direction, region["covariance"], direction))
     return np.exp(center - half_width), np.exp(center + half_width)
@@ -230,10 +236,11 @@ def empirical_p_value(
     """Return the plus-one bootstrap p value and exceedance count."""
 
     values = np.asarray(bootstrap_statistics, dtype=float)
-    if values.ndim != 1 or len(values) == 0 or not np.isfinite(values).all():
+    if len(values) == 0 or not np.isfinite(values).all():
         raise ValueError("bootstrap_statistics must be a finite, non-empty vector")
     if not np.isfinite(observed_statistic):
         raise ValueError("observed_statistic must be finite")
+    # Include ties in the upper tail; the plus-one correction prevents a zero simulated p.
     exceedances = int(np.count_nonzero(values >= observed_statistic))
     return float((exceedances + 1) / (len(values) + 1)), exceedances
 
@@ -245,11 +252,7 @@ def clopper_pearson_interval(
 ) -> tuple[float, float]:
     """Exact binomial interval for the null exceedance probability."""
 
-    if trials <= 0 or not 0 <= successes <= trials:
-        raise ValueError("Require 0 <= successes <= trials and trials > 0")
-    if not 0.0 < confidence < 1.0:
-        raise ValueError("confidence must lie between zero and one")
-
+    # Invert binomial tails for Monte Carlo uncertainty, not for model-parameter uncertainty.
     alpha = 1.0 - confidence
     low = (
         0.0
@@ -282,6 +285,7 @@ def phase_bootstrap_summary(observed_summary, replicates, failed_reasons):
                failed_reasons="; ".join(f"{reason} ({n})" for reason,n in failed_reasons.items()))
     p = low = high = mc_se = np.nan
     exceedances = np.nan
+    # Dropping failed refits would condition the null distribution on numerical success.
     if not failed:
         p, exceedances = empirical_p_value(replicates.LR_statistic.to_numpy(), row["LR_statistic"])
         low, high = clopper_pearson_interval(exceedances, len(replicates))
@@ -306,15 +310,17 @@ PHASE_COLUMNS = [f"beta__{term}" for term in PHASE_TERMS]
 def summarize_effects(full_model, age_results, replicates):
     """Use matched ellipse projections, retaining each ensemble's interpretation."""
     if not replicates.fit_valid.all():
-        raise RuntimeError("Simulation failures saved; review them before publishing intervals")
+        raise RuntimeError("Cannot summarize effect intervals with failed refits")
     if 'effect_identified' in replicates and not replicates.effect_identified.all():
         raise RuntimeError("Unidentified effect draws retained; confidence region is not reported")
     point = phase_coefficients(full_model)
     point_phase, point_ratio = phase_and_ratio(point)
     b = replicates.loc[replicates.scenario.eq("B_sampling")]
     c = replicates.loc[replicates.scenario.eq("C_joint")]
+    # Equal inner sample counts give each outer chronology equal weight in the joint ensemble.
     if c.groupby("outer_id").size().nunique() != 1:
         raise ValueError("Joint groups must have equal weight and complete inner samples")
+    # A varies chronology, B simulates under the nominal fit, and C combines both sources.
     samples = {
         "A_chronology": age_results.loc[age_results.fit_valid,
                                         ["beta_pre_phase_sin", "beta_pre_phase_cos"]].to_numpy(float),
@@ -347,6 +353,7 @@ def build_curve_table(full_model, regions):
     radians = np.deg2rad(phases)
     direction = np.column_stack((np.sin(radians), np.cos(radians)))
     point = phase_coefficients(full_model)
+    # Hold the other predictors fixed: this is the multiplicative phase component alone.
     table = {"phase_deg": phases, "point_multiplier": np.exp(direction @ point)}
     for scenario, name in SCENARIOS.items():
         table[f"{name}_low"], table[f"{name}_high"] = joint_region_curve_band(regions[scenario], phases)

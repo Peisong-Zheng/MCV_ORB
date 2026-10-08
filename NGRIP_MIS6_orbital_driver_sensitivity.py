@@ -35,14 +35,6 @@ AGE_INPUT = ROOT / "data/processed" / RUN_NAME / "selected_realizations.csv"
 
 def run_analysis(n_realizations=N_REALIZATIONS, show_progress=True, quadrature_order=4):
     events = pd.read_csv(EVENT_CATALOGUE_CSV)
-    if (events.groupby("segment_id").size().to_dict() != {"NGRIP": 34, "MIS6": 21}
-            or events.event_id.isna().any() or not events.event_id.is_unique):
-        raise ValueError("Check the prepared 34 NGRIP and 21 MIS6 warming-event identities")
-    if not events.loc[events.segment_id.eq("NGRIP"), "event_label"].str.startswith("GI-").all():
-        raise ValueError("The NGRIP catalogue must contain warming starts only")
-    for _, segment in events.groupby("segment_id", sort=False):
-        if not np.all(np.diff(segment.event_age_kyr_bp) > 0):
-            raise ValueError("Event ages must increase strictly within each segment")
     observations = pd.read_csv(OBSERVATION_SEGMENTS_CSV)
     lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
     co2 = pd.read_csv(CO2_CSV, float_precision="round_trip")
@@ -66,7 +58,7 @@ def run_analysis(n_realizations=N_REALIZATIONS, show_progress=True, quadrature_o
     selected = pd.read_csv(AGE_INPUT, float_precision="round_trip")
     if selected.realization_id.isna().any() or not selected.realization_id.is_unique:
         raise ValueError("Saved chronology IDs must be present and unique")
-    if not isinstance(n_realizations, (int, np.integer)) or not 1 <= n_realizations <= len(selected):
+    if not 1 <= n_realizations <= len(selected):
         raise ValueError("Requested chronology subset exceeds the saved selection")
     selected = selected.iloc[:n_realizations].reset_index(drop=True)
     ages = selected[age_columns].to_numpy(float)

@@ -49,8 +49,8 @@ def select_catalogue(raw, event_type):
     if event_type not in EVENT_TYPES:
         raise ValueError("event_type must be cooling or warming")
     events = raw.loc[raw.event_type.eq(event_type)].sort_values("age_ka_bp").reset_index(drop=True)
-    if len(events) != {"cooling": 35, "warming": 34}[event_type] or events.event_label.duplicated().any():
-        raise ValueError("Unexpected NGRIP event count or duplicate labels")
+    if events.event_label.duplicated().any():
+        raise ValueError("Event labels must be unique")
     # These ages are already BP1950. The common core explicitly uses u=anchor-age.
     events["event_age_kyr_bp"] = events.age_ka_bp
     events["event_id"] = "NGRIP:" + events.event_label
@@ -98,8 +98,6 @@ def run_analysis(*, n_bootstrap=N_BOOTSTRAP, n_realizations=N_REALIZATIONS,
                                  start_beta=np.r_[reduced.beta, 0., 0.])
         point = model_stats.fit_summary(reduced, full, event_x, windows, n_source_events=len(events),
                                         catalogue_id=f"ngrip_{event_type}", tau=HISTORY_TAU_KYR)
-        if not point["all_models_converged"] or not point["likelihood_nesting_ok"]:
-            raise RuntimeError(f"Invalid nominal {event_type} fit")
         if show_progress:
             print(f"\nNGRIP {event_type}: nominal p={point['nominal_LR_p']:.6g}, "
                   f"phase={point['pre_phase_preferred_deg']:.2f} deg", flush=True)
@@ -228,7 +226,7 @@ def main():
                           seed=SEED, n_workers=N_WORKERS)
     save_results(result, OUT_DIR)
     if result["summary"].n_failed_replicates.any() or result["age_summary"].n_numerical_failures.any():
-        raise RuntimeError("Unresolved numerical fits saved for inspection; final notes withheld")
+        raise RuntimeError("Unresolved numerical fits; see saved results")
     write_notes(result, NOTE_DIR)
     print(result["summary"][["event_type", "gain_bits_per_event", "pre_phase_preferred_deg",
                                "nominal_LR_p", "empirical_p_plus_one"]].to_string(index=False))

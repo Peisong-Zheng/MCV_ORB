@@ -56,8 +56,6 @@ def source_age_columns(events: pd.DataFrame) -> dict[str, list[str]]:
         f"{event_id.removeprefix('MIS6:')}_age_ka_bp"
         for event_id in mis6["event_id"]
     ]
-    if len(ngrip_columns) != 34 or len(mis6_columns) != 21:
-        raise ValueError("Expected 34 NGRIP and 21 MIS 6 uncertainty columns")
     return {"NGRIP": ngrip_columns, "MIS6": mis6_columns}
 
 def _validate_source_ensemble(
@@ -65,9 +63,6 @@ def _validate_source_ensemble(
     columns: list[str],
     source: str,
 ) -> np.ndarray:
-    required = {"realization_id", *columns}
-    if missing := required.difference(table.columns):
-        raise ValueError(f"{source} age ensemble is missing columns: {sorted(missing)}")
     if (
         table["realization_id"].isna().any()
         or table["realization_id"].duplicated().any()
@@ -115,8 +110,6 @@ def pair_source_ensembles(
         raise ValueError("At least one paired realization interleaves the two segments")
 
     paired_ages = np.column_stack((paired_ngrip, paired_mis6))
-    if not np.all(np.diff(paired_ages, axis=1) > 0.0):
-        raise RuntimeError("Joint event rank changed during source pairing")
 
     draws = pd.DataFrame(paired_ages, columns=combined_age_columns(events))
     draws.insert(

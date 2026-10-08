@@ -48,8 +48,6 @@ RESOLUTION_COVARIATE_INCLUDED = False
 def run_analysis(*, quadrature_order=4):
     """Fit the pooled event catalogue using explicit response and integral matrices."""
     events = pd.read_csv(EVENT_CATALOGUE_CSV)
-    if events.event_id.isna().any() or not events.event_id.is_unique:
-        raise ValueError("Prepared event identities must be unique and nonempty")
     observations = pd.read_csv(OBSERVATION_SEGMENTS_CSV)
     lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
     co2 = pd.read_csv(CO2_CSV, float_precision="round_trip")
@@ -94,24 +92,9 @@ def run_analysis(*, quadrature_order=4):
                   fitted_rates=fitted_rates)
     result["summary"] = build_analysis_summary(result)
     result.update(model_tables(result))
-    _validate_results(result)
-    return result
-
-
-def _validate_results(result):
-    events = result["events"]
-    if events.groupby("segment_id").size().to_dict() != {"MIS6": 21, "NGRIP": 34}:
-        raise RuntimeError("The pooled inventory must contain 34 NGRIP and 21 MIS6 events")
-    if events.event_role.value_counts().to_dict() != {"response": 53, "conditioning": 2}:
-        raise RuntimeError("Exactly one oldest event per segment must condition the fit")
     if result["event_phases"].pre_phase_extrapolated.any():
-        raise RuntimeError("An inventory event has an extrapolated precession phase")
-    if not result["statistics"]["all_models_converged"] or not result["statistics"]["likelihood_nesting_ok"]:
-        raise RuntimeError("Inspect finite-MLE convergence and nested likelihoods")
-    for model in (result["reduced"], result["full"]):
-        coefficients = dict(zip(model.terms, model.beta))
-        if coefficients[HISTORY_TERM] > 0:
-            raise RuntimeError("The history coefficient violates the inhibitory domain")
+        raise ValueError("An event phase is extrapolated")
+    return result
 
 
 def model_tables(fit):

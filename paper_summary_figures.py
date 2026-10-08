@@ -177,8 +177,9 @@ def phase_inputs(folder, color, label, fixed=False):
     radians = np.deg2rad(phase_deg)
     beta_sin, beta_cos = coefficients[["pre_phase_sin", "pre_phase_cos"]]
     multiplier = np.exp(beta_sin * np.sin(radians) + beta_cos * np.cos(radians))
-    np.testing.assert_allclose(np.exp(2 * np.hypot(beta_sin, beta_cos)),
-                               summary.pre_phase_rate_ratio_max_vs_min, rtol=1e-7)
+    if not np.isclose(np.exp(2 * np.hypot(beta_sin, beta_cos)),
+                      summary.pre_phase_rate_ratio_max_vs_min, rtol=1e-7, atol=0):
+        raise ValueError("Saved coefficients and phase-effect summary disagree")
     assert np.isfinite(phases).all() and ((phases >= 0) & (phases < 2 * np.pi)).all()
     return dict(phases=phases, summary=summary, phase=phase_deg, multiplier=multiplier,
                 color=color, label=label, fixed=fixed, coefficients=saved_coefficients)
@@ -234,7 +235,6 @@ def plot_phase_comparison():
         response = fig.add_subplot(grid[group, 1])
         for index, record in enumerate(records):
             counts, _ = np.histogram(record["phases"], edges)
-            assert counts.sum() == len(record["phases"])
             # Narrow sectors, white dividers and a common count scale
             # follow the earlier Rayleigh figure. Both Barker fills stay visible.
             polar.bar(edges[:-1], counts, width=np.diff(edges)[0], align="edge",

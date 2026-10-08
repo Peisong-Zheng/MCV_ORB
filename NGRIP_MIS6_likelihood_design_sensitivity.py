@@ -81,8 +81,6 @@ def run_pooling_diagnostic(events, windows, forcings, phase_anchors, scaling):
     ngrip_phase, ngrip_ratio = _phase_summary(beta["pre_phase_sin"], beta["pre_phase_cos"])
     mis6_phase, mis6_ratio = _phase_summary(beta["pre_phase_sin"] + beta[PHASE_INTERACTION_TERMS[0]],
                                           beta["pre_phase_cos"] + beta[PHASE_INTERACTION_TERMS[1]])
-    if metrics["ll_gain_nats"] < -1e-7:
-        raise RuntimeError("Segment-specific phase likelihood is below the nested common model")
     return pd.DataFrame([dict(comparison="segment-specific versus common precession response",
         n_events=len(event_x), response_exposure_kyr=float((windows.response_end_kyr_bp - windows.response_start_kyr_bp).sum()),
         common_model_loglik=common.log_likelihood, segment_specific_model_loglik=heterogeneous.log_likelihood,

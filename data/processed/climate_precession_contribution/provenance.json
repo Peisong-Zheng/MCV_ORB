@@ -4,10 +4,12 @@
   "inputs": [
     "data/curated/ngrip_mis6_warming_events.csv",
     "data/curated/observation_segments.csv",
-    "Barker2011/data/raw/Barker et al-2011-SOM.xls",
-    "data/raw/lr04.xlsx",
-    "data/raw/composite_co2.xlsx",
-    "data/raw/pre_1000_60_inter100.txt"
+    "Barker2011/data/processed/barker_events_variable_threshold.csv",
+    "Barker2011/data/processed/barker_events_fixed_threshold.csv",
+    "data/processed/forcings/lr04.csv",
+    "data/processed/forcings/co2.csv",
+    "data/processed/forcings/orbital.csv",
+    "data/processed/forcings/precession_phase_anchors.csv"
   ],
   "catalogues": {
     "primary": {

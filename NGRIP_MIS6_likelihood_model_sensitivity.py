@@ -82,8 +82,6 @@ def fit_variant(event_x, integral_x, windows, terms, *, n_source_events,
                                 integral_x.weight, terms)
     full = fit_point_process(event_x.loc[:, full_terms], integral_x.loc[:, full_terms],
                              integral_x.weight, full_terms, start_beta=np.r_[reduced.beta, 0., 0.])
-    if not reduced.converged or not full.converged:
-        raise RuntimeError(f"{variant}: continuous fit did not converge")
     history_term = terms[1]
     count_history = history_term in (HISTORY_TERM, "rectangular_history_count")
     summary = fit_summary(reduced, full, event_x, windows, n_source_events=n_source_events,

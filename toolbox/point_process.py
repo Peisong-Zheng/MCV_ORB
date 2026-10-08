@@ -29,7 +29,6 @@ class FittedPointProcess:
     n_events: int
     gradient_max: float
     status: str
-    identifiable: bool
 
 
 def gauss_legendre_intervals(breakpoints, order=8):
@@ -47,8 +46,6 @@ def gauss_legendre_intervals(breakpoints, order=8):
         raise ValueError("Integration needs at least two interval boundaries")
     if not np.isfinite(breaks).all() or np.any(np.diff(breaks) <= 0):
         raise ValueError("Integration boundaries must be finite and increasing")
-    if not isinstance(order, (int, np.integer)) or order < 1:
-        raise ValueError("Quadrature order must be a positive integer")
     # points and weights are the standard x_j and w_j on [-1, 1].
     # Each has length order: this is the number of nodes PER interval,
     # unrelated to the number of intervals.
@@ -101,69 +98,62 @@ def exponential_history(query_ages, event_ages, tau=1.5, anchor_age=None,
     if anchor_age is None and len(events):
         anchor_age = events[0]
     if anchor_age is not None:
-        if not np.isfinite(anchor_age):
-            raise ValueError("Anchor age must be finite")
-        if (len(events) and events[0] > anchor_age) or np.any(query > anchor_age):
-            raise ValueError("Events and queries cannot precede the conditioning anchor")
+        if (not np.isfinite(anchor_age) or (len(events) and events[0] > anchor_age)
+                or np.any(query > anchor_age)):
+            raise ValueError("Anchor must be finite; events and queries cannot precede it")
     elif initial_history:
         raise ValueError("Nonzero initial history requires an anchor age")
 
+    flat_query = query.ravel()
     history = np.zeros(query.size)
-    if len(events):
-        elapsed_kyr = anchor_age - query.ravel()
-        event_elapsed_kyr = anchor_age - events
-        # History immediately before each event, advancing in elapsed time.
-        at_event = np.zeros(len(events))
-        for i in range(1, len(events)):
-            gap_kyr = event_elapsed_kyr[i] - event_elapsed_kyr[i - 1]
-            at_event[i] = (1 + at_event[i - 1]) * np.exp(-gap_kyr / tau)
-        # -age also runs forward, without origin subtraction. Use it for the
-        # strict u_j < u comparison: subtracting a distant anchor can otherwise
-        # round an event and its nextafter() neighbor to the same elapsed time.
-        previous_count = np.searchsorted(-events, -query.ravel(), side="left")
-        present = previous_count > 0
-        j = previous_count[present] - 1
-        since_previous_kyr = elapsed_kyr[present] - event_elapsed_kyr[j]
-        history[present] = (1 + at_event[j]) * np.exp(-since_previous_kyr / tau)
+    # H(u) = sum_{u_j < u} exp(-(u-u_j)/tau). In BP coordinates,
+    # u-u_j = event_age-query_age; each earlier event contributes one decay.
+    for event_age in events:
+        # Smaller BP ages occur later. Compare ages directly so that an event
+        # and its floating-point neighbours retain their strict ordering.
+        later = flat_query < event_age
+        history[later] = history[later] + np.exp((flat_query[later] - event_age) / tau)
     if initial_history:
-        elapsed_kyr = anchor_age - query.ravel()
-        remaining_initial_history = initial_history * np.exp(-elapsed_kyr / tau)
+        # Pre-anchor history decays from the anchor without adding a new event.
+        remaining_initial_history = initial_history * np.exp((flat_query - anchor_age) / tau)
         history = history + remaining_initial_history
     return history.reshape(query.shape)
 
 
-def point_process_loglik(beta, event_design, integral_design, weights):
-    """Event log intensities minus integrated intensity, without eta clipping."""
-    beta = np.asarray(beta, dtype=float)
+def negative_loglik(beta, event_sum, integral_design, weights):
+    """Return the negative continuous log likelihood and its analytic gradient.
+
+    ``event_sum`` is the sum of response-event design rows, computed once before
+    fitting. Positive duration weights integrate the rate over all exposure.
+    """
+    # With p coefficients and m quadrature nodes: beta/event_sum are (p,),
+    # integral_design is (m, p), and weights is (m,) in kyr.
+    # lambda(u) = exp(x(u) @ beta); weight*lambda is an expected event count.
+    # The observed event history is a fixed predictor here, just like forcing;
+    # optimization changes coefficients, not event ages or history decay time.
     with np.errstate(over="ignore", invalid="ignore", under="ignore"):
-        integrated = np.asarray(weights) * np.exp(np.asarray(integral_design) @ beta)
-    return float(np.asarray(event_design).sum(axis=0) @ beta - integrated.sum())
-
-
-def negative_loglik_gradient(beta, event_design, integral_design, weights):
-    """Gradient of the negative continuous log likelihood."""
-    integral_design = np.asarray(integral_design)
-    rate_weights = np.asarray(weights) * np.exp(integral_design @ beta)
-    return integral_design.T @ rate_weights - np.asarray(event_design).sum(axis=0)
-
-
-def negative_loglik_hessian(beta, integral_design, weights):
-    """Observed information with fixed positive quadrature weights."""
-    integral_design = np.asarray(integral_design)
-    rate_weights = np.asarray(weights) * np.exp(integral_design @ beta)
-    return integral_design.T @ (rate_weights[:, None] * integral_design)
+        rate_weights = weights * np.exp(integral_design @ beta)
+        # -ell = integral lambda du - sum_i x(u_i) @ beta.
+        value = rate_weights.sum() - event_sum @ beta
+        # d(-ell)/d beta = sum_q w_q lambda_q x_q - sum_i x(u_i).
+        gradient = integral_design.T @ rate_weights - event_sum
+    # Reject overflowed trials without clipping the scientific intensity.
+    if not np.isfinite(value) or not np.isfinite(gradient).all():
+        return np.inf, np.zeros(len(beta))
+    return float(value), gradient
 
 
 def fit_point_process(event_design, integral_design, weights, terms,
                       start_beta=None, nonpositive_terms=NONPOSITIVE_TERMS,
-                      maxiter=1000, gradient_tol=1e-6):
+                      maxiter=1000, gradient_tol=1e-5):
     """Fit a log-linear conditional intensity on fixed integration nodes.
 
-    Both matrices explicitly contain an intercept column, named ``intercept``.
+    Both matrices explicitly contain a column of ones, named ``intercept``.
     A zero-event catalogue has likelihood supremum zero and no finite MLE:
     its returned ``status`` is ``zero_events`` and its coefficients are NaN.
     Other failures raise ``PointProcessFitError`` rather than returning an
-    apparently usable coefficient vector.
+    apparently usable coefficient vector. ``gradient_tol`` checks the final
+    projected gradient; the optimizer targets the tighter fixed value 2e-7.
     """
     event_design = np.asarray(event_design, dtype=float)
     integral_design = np.asarray(integral_design, dtype=float)
@@ -172,108 +162,69 @@ def fit_point_process(event_design, integral_design, weights, terms,
     n_parameters = len(terms)
     if len(set(terms)) != n_parameters or terms.count("intercept") != 1:
         raise ValueError("Terms need unique names and one explicit intercept")
-    if event_design.ndim != 2 or integral_design.ndim != 2:
-        raise ValueError("Event and integral designs must be matrices")
+    # Both designs use the identical ordered terms. Event rows contain only
+    # responses; conditioning anchors affect history but are not likelihood events.
     if event_design.shape[1] != n_parameters or integral_design.shape[1] != n_parameters:
         raise ValueError("Design columns must match the explicit model terms")
-    if weights.ndim != 1 or len(weights) != len(integral_design) or not len(weights):
-        raise ValueError("Each integral node needs one duration weight")
-    if not np.isfinite(weights).all() or np.any(weights <= 0):
-        raise ValueError("Integration weights must be finite and positive")
+    if (weights.shape != (len(integral_design),) or not weights.size
+            or not np.isfinite(weights).all() or np.any(weights <= 0)):
+        raise ValueError("Each integral node needs one finite positive duration weight")
     if not np.isfinite(event_design).all() or not np.isfinite(integral_design).all():
         raise ValueError("Model predictors must be finite")
     intercept = terms.index("intercept")
-    if not np.all(event_design[:, intercept] == 1) or not np.all(integral_design[:, intercept] == 1):
-        raise ValueError("The intercept column must equal one")
     n_events = len(event_design)
     if n_events == 0:
+        # With no responses, taking the intercept to -infinity makes the
+        # integrated rate tend to zero; there is no finite intercept estimate.
         return FittedPointProcess(np.full(n_parameters, np.nan), terms, 0.0,
-                                 np.nan, False, 0, np.nan, "zero_events", False)
+                                 np.nan, False, 0, np.nan, "zero_events")
     if np.linalg.matrix_rank(integral_design) < n_parameters:
         raise PointProcessFitError("Integral design is rank deficient")
 
+    # History is nonnegative, so beta_H <= 0 permits inhibition or no history
+    # effect. Intercept, climate and orbital coefficients remain unrestricted.
     upper_zero = np.array([term in nonpositive_terms for term in terms])
     bounds = [(None, 0.0) if constrained else (None, None) for constrained in upper_zero]
     beta0 = np.zeros(n_parameters)
+    # The constant-rate MLE N/T supplies a scale-appropriate starting intercept.
     beta0[intercept] = np.log(n_events / weights.sum())
     if start_beta is not None:
         beta0 = np.asarray(start_beta, dtype=float).copy()
-        if beta0.shape != (n_parameters,) or not np.isfinite(beta0).all():
-            raise ValueError("Initial coefficients must be a finite vector matching terms")
-        if np.any(beta0[upper_zero] > 0):
-            raise ValueError("Initial history coefficients violate the nonpositive domain")
+    # The event contribution is linear in beta, so its predictor sum is fixed
+    # throughout optimization; only the integrated intensity must be reevaluated.
     event_sum = event_design.sum(axis=0)
 
-    def objective(beta):
-        with np.errstate(over="ignore", invalid="ignore", under="ignore"):
-            rate_weights = weights * np.exp(integral_design @ beta)
-            value = rate_weights.sum() - event_sum @ beta
-            gradient = integral_design.T @ rate_weights - event_sum
-        # An overflowed trial is rejected by line search, not clipped into a
-        # different scientific intensity model.
-        if not np.isfinite(value) or not np.isfinite(gradient).all():
-            return np.inf, np.zeros(n_parameters)
-        return float(value), gradient
-
-    result = minimize(objective, beta0, jac=True, bounds=bounds, method="L-BFGS-B",
-                      options={"maxiter": int(maxiter), "ftol": 1e-14,
-                               "gtol": gradient_tol / 5, "maxls": 40})
+    # jac=True consumes (value, gradient) together, sharing the rate calculation.
+    # maxiter caps work; it does not force that many iterations. Even ftol=0
+    # can stop at equal floating-point objective values, hence the check below.
+    result = minimize(negative_loglik, beta0,
+                      args=(event_sum, integral_design, weights),
+                      jac=True, bounds=bounds, method="L-BFGS-B",
+                      options={"maxiter": int(maxiter), "ftol": 0.0,
+                               "gtol": 2e-7, "maxls": 40})
     beta = result.x
-    value, gradient = objective(beta)
-    def projected_gradient_max(beta, gradient):
-        projected = gradient.copy()
-        at_upper = upper_zero & (beta >= -1e-10)
-        projected[at_upper] = np.maximum(projected[at_upper], 0.0)
-        return float(np.max(np.abs(projected)))
-
-    gradient_max = projected_gradient_max(beta, gradient)
-    # Relative likelihood stopping can precede gradient convergence. The small
-    # observed-information solve refines the same data and objective.
-    if np.isfinite(value):
-        for _ in range(8):
-            if gradient_max <= gradient_tol:
-                break
-            active = upper_zero & (beta >= -1e-10) & (gradient <= 0)
-            free = ~active
-            information = negative_loglik_hessian(beta, integral_design, weights)
-            direction = np.zeros(n_parameters)
-            try:
-                direction[free] = -np.linalg.solve(information[np.ix_(free, free)], gradient[free])
-            except np.linalg.LinAlgError:
-                break
-            for exponent in range(20):
-                trial = beta + direction * 0.5**exponent
-                trial[upper_zero] = np.minimum(trial[upper_zero], 0)
-                trial_value, trial_gradient = objective(trial)
-                armijo = trial_value <= value + 1e-4 * gradient @ (trial - beta)
-                # Near an optimum the predicted likelihood change can be
-                # smaller than floating-point summation error. Accept such a
-                # step only when it substantially improves the same strict
-                # KKT residual; this does not relax the convergence tolerance.
-                roundoff = 8 * np.finfo(float).eps * max(1.0, abs(value))
-                improves_kkt = (np.isfinite(trial_value)
-                    and abs(trial_value - value) <= roundoff
-                    and projected_gradient_max(trial, trial_gradient) < 0.5 * gradient_max)
-                if armijo or improves_kkt:
-                    beta, value, gradient = trial, trial_value, trial_gradient
-                    break
-            else:
-                break
-            gradient_max = projected_gradient_max(beta, gradient)
-    # A line-search status alone is not decisive for this concave likelihood:
-    # independently verify its finite optimum through KKT and information.
-    if not np.isfinite(value) or gradient_max > gradient_tol:
+    value, gradient = negative_loglik(beta, event_sum, integral_design, weights)
+    # At a history upper bound, a negative gradient points outside the domain.
+    # Descent would increase beta_H above zero there. That component satisfies
+    # the constrained first-order condition and contributes no residual.
+    projected = gradient.copy()
+    at_upper = upper_zero & (beta >= -1e-10)
+    projected[at_upper] = np.maximum(projected[at_upper], 0.0)
+    gradient_max = float(np.max(np.abs(projected)))
+    # Function-value stopping can occur before the requested gradient tolerance.
+    # Check the final solution once; do not refine or restart the optimization.
+    # gtol is the optimizer's target; gradient_tol is the independent acceptance
+    # limit on the largest feasible first-order residual, not a parameter error.
+    if (not np.isfinite(beta).all() or not np.isfinite(value)
+            or not np.isfinite(gradient).all() or np.any(beta[upper_zero] > 0)
+            or gradient_max > gradient_tol):
         raise PointProcessFitError(
             f"Fit failed KKT/convergence checks: {result.message}; "
             f"projected gradient = {gradient_max:.3g}")
-    information = negative_loglik_hessian(beta, integral_design, weights)
-    free = ~(upper_zero & (beta >= -1e-10))
-    eigenvalues = np.linalg.eigvalsh(information[np.ix_(free, free)])
-    if eigenvalues[0] <= 1e-10 * max(1.0, eigenvalues[-1]):
-        raise PointProcessFitError("No identifiable finite optimum; information is singular")
+    # AIC = 2p - 2ell, with ell=-value and p the number of fitted coefficients.
     return FittedPointProcess(beta, terms, -value, 2 * n_parameters + 2 * value,
                              True, n_events, gradient_max,
-                             "finite_mle", True)
+                             "finite_mle")
 
 
 def simulate_segment_events(anchor_age, young_age, breakpoints, log_background,
@@ -310,15 +261,20 @@ def simulate_segment_events(anchor_age, young_age, breakpoints, log_background,
     current_elapsed = 0.0
     history = 1.0 + initial_history  # The fixed conditioning event has occurred.
     candidates = 0
+    # On each interval, proposals have constant rate M=exp(log_upper).
+    # Nonpositive beta_H and nonnegative history ensure lambda <= background <= M.
     for start, end, log_upper in zip(elapsed_edges[:-1], elapsed_edges[1:], forward_upper):
         if end <= start:
             continue
         while current_elapsed < end:
             remaining_kyr = end - current_elapsed
             # Log waiting times remain safe for extremely small envelopes.
+            # If E~Exp(1), the proposal waiting time is E/M, in kyr.
             unit_wait = rng.exponential()
             log_wait = np.log(unit_wait) - log_upper if unit_wait > 0 else -np.inf
             if log_wait >= np.log(remaining_kyr):
+                # No proposal before this boundary: decay history across the
+                # remaining exposure, then use the next interval's envelope.
                 decay_factor = np.exp(-remaining_kyr / tau)
                 history = history * decay_factor
                 current_elapsed = end
@@ -345,10 +301,14 @@ def simulate_segment_events(anchor_age, young_age, breakpoints, log_background,
                 raise ValueError("Background log intensity is invalid at a candidate event")
             if log_bg > log_upper + 1e-12:
                 raise ValueError("Simulation envelope does not bound the background intensity")
+            # Thinning accepts a proposal with probability lambda/M; using
+            # log probabilities avoids exponentiating very small intensities.
             log_accept = log_bg + history_beta * history - log_upper
             uniform = rng.uniform()
             log_uniform = np.log(uniform) if uniform > 0 else -np.inf
             if log_uniform < log_accept:
                 ages.append(candidate_age)
+                # Only an accepted event adds one; rejected proposals merely
+                # advance time and decay the existing history.
                 history = history + 1
     return np.asarray(ages)

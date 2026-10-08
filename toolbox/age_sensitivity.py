@@ -23,6 +23,7 @@ def _fit_ages(ages):
     events["event_age_kyr_bp"] = ages
     if "event_age_ka" in events:
         events["event_age_ka"] = ages
+    # Keep nominal observation support fixed; do not clip or redraw an unsupported chronology.
     for window in observations.itertuples(index=False):
         selected = ages[events.segment_id.eq(window.segment_id).to_numpy()]
         if (selected.min() < window.observation_start_kyr_bp
@@ -44,6 +45,7 @@ def _fit_ages(ages):
             event_x[reduced_terms], integral_x[reduced_terms], integral_x.weight, reduced_terms,
             nonpositive_terms=[term for term in reduced_terms if term == history],
         )
+        # Embed the reduced fit in the nested full model with zero coefficients for added terms.
         start = np.zeros(len(full_terms))
         if np.isfinite(reduced.beta).all():
             for term, beta in zip(reduced.terms, reduced.beta):
@@ -73,8 +75,7 @@ def fit_realizations(events, observations, forcings, phase_anchors, scaling,
     age = realizations.loc[:, age_columns].to_numpy(float)
     if not np.isfinite(age).all():
         raise ValueError("Chronology realizations must be finite")
-    if age.shape[1] != len(events):
-        raise ValueError("One age column is required for each event")
+    # Columns keep their event identities and within-segment BP-age order across all realizations.
     for name in observations.segment_id:
         mask = events.segment_id.eq(name).to_numpy()
         if not np.all(np.diff(age[:, mask], axis=1) > 0):
@@ -97,6 +98,7 @@ def fit_realizations(events, observations, forcings, phase_anchors, scaling,
         outputs = map(_fit_ages, age)
     try:
         for i, result in enumerate(outputs):
+            # Ordered map results retain the saved realization IDs even when a fit is invalid.
             rows.append({**realizations.iloc[i][identifiers].to_dict(), **result})
             if show_progress and (i + 1) % 1000 == 0:
                 print(f"Refitted {i+1:,}/{len(age):,} exact-age realizations", flush=True)
@@ -118,6 +120,7 @@ def summarize(results,point):
     results=results.copy()
     for name in metrics:
         if name not in results: results[name]=np.nan
+    # Fractions and quantiles use valid realizations; total and invalid counts stay explicit.
     valid=results.loc[results.fit_valid]
     row=dict(n_realizations=len(results),n_valid=len(valid),n_invalid=len(results)-len(valid),
              n_events=point['n_response_events'],catalogue_id=point['catalogue_id'],
@@ -130,6 +133,7 @@ def summarize(results,point):
                 'pre_phase_rate_ratio_max_vs_min','pre_phase_preferred_deg'):
         value=valid[key].to_numpy(float)
         if key=='pre_phase_preferred_deg':
+            # Chronology spread near 0 degrees must not become an artificial nearly 360-degree interval.
             value=unwrap_phase(value,point[key])
         for label,q in zip(('q025','median','q975'),(np.nanquantile(value,[.025,.5,.975]) if len(value) else [np.nan]*3)):
             row[f'{key}_{label}']=float(q)

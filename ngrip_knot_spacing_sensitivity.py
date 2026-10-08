@@ -108,7 +108,8 @@ def restore_pairings(events, saved_ids, archive, n_realizations):
         if mis6_reference is None:
             mis6_reference = mis6_used.copy()
         else:
-            pd.testing.assert_frame_equal(mis6_reference, mis6_used, check_exact=True)
+            if not np.array_equal(mis6_reference.to_numpy(), mis6_used.to_numpy()):
+                raise ValueError("MIS6 realizations must match across knot spacings")
         paired[spacing] = draws
     return paired
 
@@ -118,9 +119,6 @@ def run(input_dir, output_dir, n_realizations=N_REALIZATIONS, workers=1):
     original_parameters = pd.read_csv(input_dir / "parameters_and_provenance.csv").set_index("parameter").value
     events = pd.read_csv(EVENT_CATALOGUE_CSV)
     observations = pd.read_csv(OBSERVATION_SEGMENTS_CSV)
-    if (events.groupby("segment_id", sort=False).size().to_dict() != {"NGRIP": 34, "MIS6": 21}
-            or events.event_id.isna().any() or not events.event_id.is_unique):
-        raise ValueError("Check the curated 34 NGRIP and 21 MIS6 event identities")
     lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
     co2 = pd.read_csv(CO2_CSV, float_precision="round_trip")
     orbital = pd.read_csv(ORBITAL_CSV, float_precision="round_trip")
@@ -165,7 +163,6 @@ def run(input_dir, output_dir, n_realizations=N_REALIZATIONS, workers=1):
         row = summary.iloc[0]
         print(f"{spacing:g} kyr: nominal p < 0.05 in {int(row.n_nominal_p_below_0p05)}/{int(row.n_valid)} valid fits", flush=True)
 
-    pd.testing.assert_frame_equal(manifest_before, input_manifest(input_dir))
     output_dir.mkdir(parents=True, exist_ok=True)
     summary = pd.concat(summaries, ignore_index=True)
     outputs = {

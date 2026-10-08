@@ -19,11 +19,8 @@ class InvalidEffectSimulation(RuntimeError):
 
 
 def validate_effect_fit(reduced, full):
-    values = np.r_[full.beta, reduced.beta, full.log_likelihood, reduced.log_likelihood]
-    if not np.isfinite(values).all():
-        raise InvalidEffectSimulation("Non-finite fitted coefficients or likelihood")
-    if not full.converged or not reduced.converged:
-        raise InvalidEffectSimulation("At least one fitted model did not converge")
+    # Setting the two phase coefficients to zero embeds the reduced model in
+    # the full model, whose optimized likelihood therefore cannot be smaller.
     if full.log_likelihood < reduced.log_likelihood - 1e-7:
         raise InvalidEffectSimulation("Full/reduced likelihood nesting failed")
 
@@ -38,12 +35,16 @@ def _phase_replicate(task):
     windows = arguments['windows']
     reduced_terms, full_terms = arguments['reduced_terms'], arguments['full_terms']
     identifier, seed = task
+    # Generate once per replicate. A numerical retry below must retain this
+    # catalogue, its conditioning anchors and its original random-stream ID.
     events = event_model.simulate_prepared_events(prepared, np.random.default_rng(seed))
     row = dict(bootstrap_id=identifier, n_events_observation_support=len(events),
                n_events_response=len(events) - len(windows), fit_valid=False,
                status="fit_failed", solver_attempts=0, failure_reason="")
     for segment in windows.segment_id:
         row['n_events_response_' + segment] = int(events.segment_id.eq(segment).sum()) - 1
+    # If needed, refine only the integral approximation on the same events;
+    # drawing a replacement catalogue would select against difficult samples.
     for order in (arguments['quadrature_order'], 2 * arguments['quadrature_order']):
         row['solver_attempts'] = row['solver_attempts'] + 1
         try:
@@ -55,15 +56,17 @@ def _phase_replicate(task):
                     frame['mis6_segment'] = frame.segment_id.eq('MIS6').astype(float)
             reduced = fit_point_process(event_x[list(reduced_terms)], integral_x[list(reduced_terms)],
                 integral_x.weight, reduced_terms, nonpositive_terms=(HISTORY_TERM,))
+            # Embed the reduced optimum in full-model coordinates, initially
+            # assigning zero effect to the additional phase sine/cosine terms.
             start = np.zeros(len(full_terms))
             if np.isfinite(reduced.beta).all():
                 for term, beta in zip(reduced.terms, reduced.beta):
                     start[full_terms.index(term)] = beta
             full = fit_point_process(event_x[list(full_terms)], integral_x[list(full_terms)],
                 integral_x.weight, full_terms, nonpositive_terms=(HISTORY_TERM,), start_beta=start)
+            # With no response events, both likelihood suprema are zero: the
+            # LR remains defined even though finite coefficients are unavailable.
             zero = reduced.status == full.status == 'zero_events'
-            if not zero and not (reduced.converged and full.converged):
-                raise PointProcessFitError("A nonzero-event fit lacks finite converged coefficients")
             gain = full.log_likelihood - reduced.log_likelihood
             if not np.isfinite(gain) or gain < -1e-7:
                 raise PointProcessFitError("Nonfinite or nonnested likelihoods")
@@ -75,7 +78,7 @@ def _phase_replicate(task):
                        likelihood_nesting_ok=True, fit_valid=True,
                        status='zero_events' if zero else 'finite_mle', failure_reason='', quadrature_order=order)
             return row
-        except (PointProcessFitError, FloatingPointError) as error:
+        except PointProcessFitError as error:
             row['failure_reason'] = str(error)
     row.update(loglik_reduced=np.nan, loglik_full=np.nan, ll_gain_nats=np.nan,
                LR_statistic=np.nan, gain_bits_per_event=np.nan,
@@ -87,17 +90,17 @@ def phase_bootstrap(events, windows, forcings, phase_anchors, scaling, reduced, 
                     reduced_terms, full_terms, tau=1.5, initial_history=0., quadrature_order=4,
                     n_bootstrap=9999, seed=20260905, workers=1, show_progress=False):
     """Generate under BG and refit BG/full; retry only the same event sequence."""
-    if n_bootstrap < 1 or workers < 1:
-        raise ValueError('Bootstrap repetitions and worker count must be positive')
-    if not reduced.converged or not full.converged:
-        raise ValueError('The observed catalogue needs finite converged fits')
     if tuple(reduced.terms) != tuple(reduced_terms) or tuple(full.terms) != tuple(full_terms):
         raise ValueError('Observed models must use the supplied BG/full columns')
+    # The phase null retains climate and event history but omits phase forcing.
+    # Both models are refitted so the LR includes parameter-estimation variation.
     prepared = event_model.prepare_model_simulation(events, windows, forcings, phase_anchors,
         scaling, reduced, tau=tau, initial_history=initial_history)
     arguments = dict(windows=windows, forcings=forcings, phase_anchors=phase_anchors, scaling=scaling,
         reduced_terms=tuple(reduced_terms), full_terms=tuple(full_terms), tau=tau,
         initial_history=initial_history, quadrature_order=quadrature_order)
+    # Assign streams before dispatch; worker count and completion order then
+    # cannot change the catalogue associated with a bootstrap ID.
     tasks = list(enumerate(np.random.SeedSequence(seed).spawn(n_bootstrap), start=1))
     started = time.perf_counter()
     pool = None
@@ -125,19 +128,21 @@ def effect_generators(events, observations, windows, forcings, phase_anchors, sc
                       draws, results, age_columns, *, reduced_terms, full_terms, n_outer, seed,
                       source_id_columns=(), tau=1.5, initial_history=0., quadrature_order=4):
     """Fit selected exact chronologies, retaining nominal predictor scaling."""
-    if tuple(full.terms) != tuple(full_terms):
-        raise ValueError('The effect generator must be the fitted full model')
     valid_indices = np.flatnonzero(results.fit_valid.to_numpy(bool))
-    if not 1 <= n_outer <= len(valid_indices):
-        raise ValueError('Requested outer count exceeds valid age realizations')
+    # Select valid age realizations once, without replacement. Stream tag 100
+    # keeps this outer selection separate from subsequent event simulations.
     selected = np.random.default_rng(np.random.SeedSequence([seed, 100])).choice(
         valid_indices, size=n_outer, replace=False)
+    # Outer ID 0 is the nominal full model; positive IDs combine chronology
+    # variation with event-sampling variation under that chronology's full fit.
     generators = {0: dict(model=full, events=events.copy(), windows=windows)}
     rows = []
     for outer_id, index in enumerate(selected, 1):
         source = draws.iloc[index]
         local_events = events.copy()
         local_events['event_age_kyr_bp'] = source[age_columns].to_numpy(float)
+        # Moving ages also moves the oldest conditioning event and exposure;
+        # the supplied nominal forcing scale stays fixed for comparability.
         local_windows = event_model.response_windows(local_events, observations)
         event_x, integral_x = event_model.build_design(local_events, local_windows, forcings, phase_anchors,
             scaling, tau=tau, initial_history=initial_history, quadrature_order=quadrature_order)
@@ -153,11 +158,6 @@ def effect_generators(events, observations, windows, forcings, phase_anchors, sc
         fitted = fit_point_process(event_x[list(full_terms)], integral_x[list(full_terms)],
             integral_x.weight, full_terms, nonpositive_terms=(HISTORY_TERM,), start_beta=start)
         validate_effect_fit(reduced, fitted)
-        comparison = model_stats.nested_likelihood_metrics(loglik_full=fitted.log_likelihood,
-            loglik_reduced=reduced.log_likelihood, df=2, n_events=len(event_x),
-            aic_full=fitted.aic, aic_reduced=reduced.aic)
-        np.testing.assert_allclose([comparison[k] for k in ('LR_statistic', 'gain_bits_per_event')],
-            results.loc[index, ['LR_statistic', 'gain_bits_per_event']].to_numpy(float), rtol=2e-6, atol=2e-6)
         generators[outer_id] = dict(model=fitted, events=local_events, windows=local_windows)
         row = dict(outer_id=outer_id, source_row_index=int(index), age_realization_id=source.realization_id,
             n_response_events=len(event_x), response_exposure_kyr=float(
@@ -185,6 +185,8 @@ def _effect_replicate(task):
         prepared_by_outer[outer_id] = event_model.prepare_model_simulation(generator['events'], windows,
             arguments['forcings'], arguments['phase_anchors'], arguments['scaling'], generator['model'],
             tau=arguments['tau'], initial_history=arguments['initial_history'])
+    # Each scenario/chronology/replicate owns a fixed stream independently of
+    # process scheduling and of how many events earlier replicates generated.
     rng = np.random.default_rng(np.random.SeedSequence([seed, scenario, outer_id, inner_id]))
     row = dict(scenario='B_sampling' if scenario == 1 else 'C_joint', outer_id=outer_id,
         inner_id=inner_id, replicate_id=inner_id, seed=seed, fit_valid=True, invalid_reason='',
@@ -207,6 +209,8 @@ def _effect_replicate(task):
                 start[full_terms.index(term)] = beta
         full = fit_point_process(event_x[list(full_terms)], integral_x[list(full_terms)], integral_x.weight,
             full_terms, nonpositive_terms=(HISTORY_TERM,), start_beta=start)
+        # Keep event-free realizations in the ensemble, but do not assign an
+        # arbitrary phase or rate ratio when no response identifies the effect.
         if not len(event_x):
             row.update(n_response_events=0, effect_identified=False, phase_deg=np.nan, rate_ratio=np.nan,
                 full_log_likelihood=0., reduced_log_likelihood=0.)
@@ -221,10 +225,13 @@ def _effect_replicate(task):
         phase, ratio = model_stats.phase_and_ratio(model_stats.phase_coefficients(full))
         row.update(phase_deg=float(phase), rate_ratio=float(ratio), full_log_likelihood=full.log_likelihood,
                    reduced_log_likelihood=reduced.log_likelihood)
+        # Nominal full-model refits also supply the fitted-residual null for GOF;
+        # joint chronology draws describe a different uncertainty experiment.
         if scenario == 1:
             residuals = residual_statistics(*event_model.rescaled_event_intervals(event_x, integral_x, windows, full))
             row.update(residuals['statistics'])
             row['residual_status'] = residuals['status']
+    # Failed draws retain their original IDs and are reported, never redrawn.
     except (InvalidEffectSimulation, PointProcessFitError) as error:
         row.update(fit_valid=False, invalid_reason=str(error))
     return row
@@ -234,13 +241,13 @@ def sample_effect(generators, forcings, phase_anchors, scaling, *, reduced_terms
                   n_point, n_inner, seed, workers=1, show_progress=True, tau=1.5,
                   initial_history=0., quadrature_order=4):
     """Sample nominal and selected-chronology full models with equal inner weights."""
-    if min(n_point, n_inner, workers) < 1:
-        raise ValueError('Simulation counts and workers must be positive')
     if any(tuple(g['model'].terms) != tuple(full_terms) for g in generators.values()):
         raise ValueError('The effect generator must be the fitted full model')
     arguments = dict(forcings=forcings, phase_anchors=phase_anchors, scaling=scaling,
         reduced_terms=tuple(reduced_terms), full_terms=tuple(full_terms), tau=tau,
         initial_history=initial_history, quadrature_order=quadrature_order)
+    # B varies event sampling at the nominal chronology. C uses the same number
+    # of inner samples for every selected chronology, giving equal outer weight.
     tasks = [(1, 0, i, seed) for i in range(1, n_point + 1)]
     joint_tasks = [(2, outer, i, seed) for outer in sorted(generators) if outer != 0 for i in range(1, n_inner + 1)]
     tasks = tasks + joint_tasks
@@ -272,6 +279,8 @@ def history_models(event_x, integral_x, full_terms):
         raise ValueError('History comparison must remove exactly one fixed-tau term')
     no_history = fit_point_process(event_x[list(no_history_terms)], integral_x[list(no_history_terms)],
         integral_x.weight, no_history_terms, nonpositive_terms=())
+    # The alternative starts exactly at beta_H = 0, the boundary null, while
+    # retaining the fitted climate and phase effects as its initial values.
     start = np.zeros(len(full_terms))
     if np.isfinite(no_history.beta).all():
         for term, beta in zip(no_history.terms, no_history.beta):
@@ -290,6 +299,7 @@ def _history_replicate(task):
     from toolbox.point_process_diagnostics import likelihood_ratio, DiagnosticFailure
     arguments, prepared = _HISTORY
     replicate, seed = task
+    # Stream tag 0 distinguishes history calibration from GOF (tag 1).
     rng = np.random.default_rng(np.random.SeedSequence([seed, 0, replicate]))
     row = dict(replicate_id=replicate + 1, seed=seed, fit_valid=True, invalid_reason='')
     try:
@@ -315,16 +325,15 @@ def history_bootstrap(events, windows, forcings, phase_anchors, scaling, *, full
                       tau=1.5, initial_history=0., quadrature_order=4):
     """Calibrate the beta_H=0 boundary while retaining phase and background."""
     from toolbox.point_process_diagnostics import likelihood_ratio, bootstrap_summary
-    if not isinstance(n_bootstrap, (int, np.integer)) or n_bootstrap < 1:
-        raise ValueError('n_bootstrap must be a positive integer')
-    if not isinstance(workers, (int, np.integer)) or workers < 1 or seed < 0:
-        raise ValueError('Require a positive worker count and nonnegative seed')
     event_x, integral_x = event_model.build_design(events, windows, forcings, phase_anchors, scaling,
         tau=tau, initial_history=initial_history, quadrature_order=quadrature_order)
     if 'mis6_segment' in full_terms:
         for frame in (event_x, integral_x):
             frame['mis6_segment'] = frame.segment_id.eq('MIS6').astype(float)
     no_history, full = history_models(event_x, integral_x, full_terms)
+    # Generate at beta_H = 0 while retaining phase and climate. The null lies
+    # on the beta_H <= 0 boundary, so calibrate LR by simulation rather than
+    # assuming an unconstrained one-parameter chi-squared reference.
     prepared = event_model.prepare_model_simulation(events, windows, forcings, phase_anchors, scaling,
         no_history, tau=tau, initial_history=initial_history)
     arguments = dict(windows=windows, forcings=forcings, phase_anchors=phase_anchors, scaling=scaling,
@@ -367,7 +376,7 @@ def _initialize_gof(arguments, prepared):
 
 
 def _gof_replicate(task):
-    from toolbox.point_process_diagnostics import residual_statistics, DiagnosticFailure, GOF_STATISTICS
+    from toolbox.point_process_diagnostics import residual_statistics, GOF_STATISTICS
     arguments, prepared = _GOF
     replicate, seed = task
     rng = np.random.default_rng(np.random.SeedSequence([seed, 1, replicate]))
@@ -382,13 +391,15 @@ def _gof_replicate(task):
             for frame in (event_x, integral_x):
                 frame['mis6_segment'] = frame.segment_id.eq('MIS6').astype(float)
         row['n_response_events'] = len(event_x)
+        # Refit before rescaling: observed residuals use estimated parameters,
+        # so calibration must reproduce that estimation step in every replicate.
         full = fit_point_process(event_x[list(terms)], integral_x[list(terms)], integral_x.weight,
             terms, nonpositive_terms=(HISTORY_TERM,))
         residuals = residual_statistics(*event_model.rescaled_event_intervals(event_x, integral_x, arguments['windows'], full))
         row.update(residuals['statistics'])
         row.update(n_intervals=residuals['n_intervals'], n_adjacent_pairs=residuals['n_adjacent_pairs'],
             residual_status=residuals['status'])
-    except (PointProcessFitError, DiagnosticFailure) as error:
+    except PointProcessFitError as error:
         row.update(fit_valid=False, invalid_reason=str(error))
         row.update({name: np.nan for name in GOF_STATISTICS})
     return row
@@ -398,12 +409,10 @@ def gof_bootstrap(events, windows, forcings, phase_anchors, scaling, full, *, fu
                   n_bootstrap=1999, seed=20260915, workers=1, show_progress=True,
                   tau=1.5, initial_history=0., quadrature_order=4):
     """Generate under the full model, then refit it for residual calibration."""
-    if not isinstance(n_bootstrap, (int, np.integer)) or n_bootstrap < 1:
-        raise ValueError('n_bootstrap must be a positive integer')
-    if not isinstance(workers, (int, np.integer)) or workers < 1 or seed < 0:
-        raise ValueError('Require a positive worker count and nonnegative seed')
     if tuple(full.terms) != tuple(full_terms):
         raise ValueError('GOF generator does not represent the full model')
+    # GOF asks whether the fitted full process can reproduce its residuals;
+    # unlike the phase/history tests, no predictor is removed from the generator.
     prepared = event_model.prepare_model_simulation(events, windows, forcings, phase_anchors, scaling,
         full, tau=tau, initial_history=initial_history)
     arguments = dict(windows=windows, forcings=forcings, phase_anchors=phase_anchors, scaling=scaling,

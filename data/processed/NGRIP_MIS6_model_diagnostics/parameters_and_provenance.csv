@@ -10,7 +10,6 @@ fixed_response_exposure_kyr,165.058
 history_bootstrap_replicates,4999
 history_seed,20260914
 gof_source,/Users/pz/VScode/MCV_ORB/data/processed/NGRIP_MIS6_effect_uncertainty/effect_replicates.csv
-gof_source_sha256,362bb545bc5c1fe6716f628f4ee9762fdc471d21b870d2f02528f9179d6eb9dd
 gof_bootstrap_replicates,5000
 gof_seed,20260908
 gof_source_role,S4 nominal B_sampling full-model refits only

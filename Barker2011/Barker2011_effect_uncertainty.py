@@ -68,27 +68,16 @@ def load_age_inputs(events):
     return draws, results, columns
 
 
-def validate_simulation_ids(replicates, selected, n_point, n_outer, n_inner, seed):
-    """Require the requested nominal draws and every chronology's inner sample."""
-    if set(replicates.scenario) != {"B_sampling", "C_joint"}:
-        raise ValueError("Expected nominal sampling and joint scenarios")
-    if not replicates.seed.eq(seed).all():
-        raise ValueError("Simulation seeds differ from the requested experiment")
-    if (not selected.age_realization_id.is_unique or
-            not np.array_equal(np.sort(selected.outer_id), np.arange(1, n_outer + 1))):
-        raise ValueError("Selected chronology generators are incomplete or duplicated")
-    sampling = replicates.loc[replicates.scenario.eq("B_sampling")]
-    if (not sampling.outer_id.eq(0).all() or
-            not np.array_equal(np.sort(sampling.replicate_id), np.arange(1, n_point + 1))):
-        raise ValueError("Nominal sampling ensemble is incomplete or duplicated")
+def validate_simulation_ids(replicates, selected, n_point, n_outer, n_inner):
+    """Require the complete requested sampling and chronology ensembles."""
+    nominal = replicates.loc[replicates.scenario.eq("B_sampling")]
+    if len(nominal) != n_point:
+        raise ValueError("Nominal sampling ensemble is incomplete")
     joint = replicates.loc[replicates.scenario.eq("C_joint")]
-    if set(joint.outer_id) != set(selected.outer_id):
+    if len(selected) != n_outer or set(joint.outer_id) != set(selected.outer_id):
         raise ValueError("Joint ensemble does not match the selected chronologies")
-    for outer_id, group in joint.groupby("outer_id"):
-        if not np.array_equal(np.sort(group.replicate_id), np.arange(1, n_inner + 1)):
-            raise ValueError(f"Chronology {outer_id} has incomplete or duplicate inner draws")
-        exposure = selected.set_index("outer_id").loc[outer_id, "response_exposure_kyr"]
-        np.testing.assert_allclose(group.response_exposure_kyr, exposure, rtol=1e-10, atol=1e-10)
+    if not joint.groupby("outer_id").size().eq(n_inner).all():
+        raise ValueError("A chronology has incomplete inner draws")
 
 
 def save_figure(summary, curves, regions, figure_dir, export=False, *, compact_ratio_ticks=False):
@@ -105,8 +94,6 @@ def save_figure(summary, curves, regions, figure_dir, export=False, *, compact_r
 
 
 def main():
-    if N_POINT_DRAWS < 20 or min(N_OUTER_DRAWS, N_INNER_DRAWS, N_WORKERS) < 1 or RANDOM_SEED < 0:
-        raise ValueError("Require at least 20 nominal draws, positive counts/workers and a nonnegative seed")
     root = OUTPUT_ROOT / "Barker2011"
     data_dir = root / "data/processed" / RUN_NAME
     figure_dir = root / "figures" / RUN_NAME
@@ -136,10 +123,6 @@ def main():
     event_definition = "variable_threshold"
     quadrature_order = 4
     events = pd.read_csv(BARKER_EVENT_CSVS[event_definition], float_precision="round_trip")
-    if (len(events) != {"variable_threshold": 70, "fixed_threshold": 59}[event_definition]
-            or events.event_id.isna().any() or not events.event_id.is_unique
-            or not np.all(np.diff(events.event_age_kyr_bp) > 0)):
-        raise ValueError("Check prepared Barker event count, identities and increasing ages")
     events["segment_id"] = "Barker2011"
     observations = pd.DataFrame([dict(segment_id="Barker2011", observation_start_kyr_bp=0.,
                                       observation_end_kyr_bp=400.)])
@@ -196,7 +179,7 @@ def main():
                     n_failed=int((~replicates.fit_valid).sum()))
     pd.DataFrame(settings.items(), columns=["parameter", "value"]).to_csv(
         data_dir / "parameters_and_provenance.csv", index=False)
-    validate_simulation_ids(replicates, selected, N_POINT_DRAWS, N_OUTER_DRAWS, N_INNER_DRAWS, RANDOM_SEED)
+    validate_simulation_ids(replicates, selected, N_POINT_DRAWS, N_OUTER_DRAWS, N_INNER_DRAWS)
     summary, regions = summarize_effects(full, ages, replicates)
     curves = build_curve_table(full, regions)
     summary.to_csv(data_dir / "effect_summary.csv", index=False, float_format="%.12g")

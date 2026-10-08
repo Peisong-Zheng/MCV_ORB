@@ -16,4 +16,4 @@ support_scaling,fixed to nominal undeleted catalogue
 interpretation,extra independent deletion stress test; not inferred missingness or chronology uncertainty
 scenario_pairing,same replicate uniforms across probabilities and eligible scopes
 nested_bootstrap,False
-elapsed_seconds,29.497080249944702
+elapsed_seconds,30.589032375020906

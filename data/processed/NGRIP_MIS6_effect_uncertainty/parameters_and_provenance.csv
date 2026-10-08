@@ -4,8 +4,8 @@ n_outer,200
 n_inner,50
 seed,20260908
 workers,3
-output_root,.
-age_results,data/processed/NGRIP_MIS6_event_uncertainty_sensitivity/gain_realizations.csv
+output_root,/Users/pz/VScode/MCV_ORB
+age_results,/Users/pz/VScode/MCV_ORB/data/processed/NGRIP_MIS6_event_uncertainty_sensitivity/gain_realizations.csv
 no_paper_export,True
 redraw,False
 model_version,continuous_exponential_inhibition_2026-09-12
@@ -18,15 +18,15 @@ C_response_exposure_min_kyr,158.283236
 C_response_exposure_max_kyr,171.82674200000002
 age_rows,10000
 age_valid,9982
-elapsed_seconds,143.73211875010747
+elapsed_seconds,140.70813687500777
 generator,fitted continuous full model; event-driven exponential history
 initialization,exact oldest event fixed; earlier history zero; independent segments
 C_support,selected chronology determines its own anchor; younger endpoints remain fixed
 B_interval,approximate_95_joint_confidence_region_projection
+A_interval,95_joint_working_region_projection
 C_interval,95_joint_working_region_projection
 C_outer,uniform valid chronologies without replacement; equal inner weights
 failures,retain each original replicate; withhold intervals if failures remain
 python,3.13.5
 numpy,2.1.3
 scipy,1.15.3
-A_interval,95_joint_working_region_projection

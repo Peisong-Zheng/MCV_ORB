@@ -38,10 +38,6 @@ def main():
     quadrature_order = QUADRATURE_ORDER
     event_definition = "variable_threshold"
     events = pd.read_csv(BARKER_EVENT_CSVS[event_definition], float_precision="round_trip")
-    if (len(events) != {"variable_threshold": 70, "fixed_threshold": 59}[event_definition]
-            or events.event_id.isna().any() or not events.event_id.is_unique
-            or not np.all(np.diff(events.event_age_kyr_bp) > 0)):
-        raise ValueError("Check prepared Barker event count, identities and increasing ages")
     events["segment_id"] = "Barker2011"
     observations = pd.DataFrame([dict(segment_id="Barker2011", observation_start_kyr_bp=0.,
                                       observation_end_kyr_bp=400.)])
@@ -98,11 +94,9 @@ def main():
         gof_seed=gof_parameters["gof_seed"], gof_scenario="B_sampling")
     result["gof_summary"].to_csv(data_dir / "gof_summary.csv", index=False, float_format="%.17g")
     print(result["gof_summary"].to_string(index=False))
-    print("Observed residual segments:")
-    print(result["residual_segments"].to_string(index=False))
     print(f"Saved {data_dir}")
     if any(not frame.fit_valid.all() for name, frame in result.items() if name.endswith("replicates")):
-        raise RuntimeError("Model-check failures are saved; resolve or report them before publication")
+        raise RuntimeError("Model checks have failed fits; see saved results")
 
 
 if __name__ == "__main__":

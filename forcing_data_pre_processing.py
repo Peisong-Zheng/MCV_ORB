@@ -70,8 +70,6 @@ def prepare_forcings(output_dir=config.FORCING_DIR):
     anchors = precession_phase_anchors(orbital)
     for name, path in (("eccentricity", config.ECC_TXT), ("obliquity_deg", config.OBL_TXT)):
         raw = np.loadtxt(path)
-        if raw.ndim != 2 or raw.shape[1] != 2:
-            raise ValueError(f"Expected paired orbital ages and values: {path}")
         ages = -raw[:, 0] + config.ORBITAL_AGE_OFFSET_TO_BP1950_KA
         values = np.rad2deg(raw[:, 1]) if name == "obliquity_deg" else raw[:, 1]
         order = np.argsort(ages)

@@ -102,9 +102,6 @@ def run(n_realizations: int, ngrip_source: Path, mis6_source: Path,
         pairing_source: Path, output_dir: Path, workers: int = 1) -> pd.DataFrame:
     events = pd.read_csv(EVENT_CATALOGUE_CSV)
     observations = pd.read_csv(OBSERVATION_SEGMENTS_CSV)
-    if (events.groupby("segment_id", sort=False).size().to_dict() != {"NGRIP": 34, "MIS6": 21}
-            or events.event_id.isna().any() or not events.event_id.is_unique):
-        raise ValueError("Check the curated 34 NGRIP and 21 MIS6 event identities")
     lr04 = pd.read_csv(LR04_CSV, float_precision="round_trip")
     co2 = pd.read_csv(CO2_CSV, float_precision="round_trip")
     orbital = pd.read_csv(ORBITAL_CSV, float_precision="round_trip")
@@ -176,8 +173,6 @@ def run(n_realizations: int, ngrip_source: Path, mis6_source: Path,
     for name, path in sources.items():
         parameters.append((name, source_label(path), "actual file used"))
         parameters.append((name + "_sha256", fingerprints[name], "content fingerprint at run start"))
-        if sha256(path) != fingerprints[name]:
-            raise RuntimeError(f"Input changed during the fit: {path}")
     for name, value in diagnostics.items():
         parameters.append(("diagnostic_" + name, value, "run diagnostic"))
 

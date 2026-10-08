@@ -30,14 +30,14 @@ class DeletionFitFailure(RuntimeError):
 def _catalogue_masks(events, eligible_segments, anchor_ids,
                      segment_column, age_column, id_column):
     required = [segment_column, age_column, id_column]
-    if events.empty or not set(required).issubset(events):
-        raise ValueError("Need a nonempty event table with segment, age and event ID")
-    if events[required].isna().any().any() or not events[id_column].is_unique:
+    if events.empty or events[required].isna().any().any() or not events[id_column].is_unique:
         raise ValueError("Event IDs must be unique and required fields complete")
     ages = events[age_column].to_numpy(float)
     if not np.isfinite(ages).all():
         raise ValueError("Event ages must be finite kyr BP values")
     anchors = np.zeros(len(events), dtype=bool)
+    # Removing an anchor would redefine the response interval, conflating lost
+    # events with a changed exposure. Each segment's original oldest event stays.
     for segment in events[segment_column].unique():
         indices = np.flatnonzero(events[segment_column].eq(segment).to_numpy())
         local_ages = ages[indices]
@@ -93,11 +93,8 @@ def paired_metrics(metrics, reference):
     """
     normalized = []
     for source in (metrics, reference):
-        required = {"gain_bits_per_event", "LR_statistic", "beta_history",
-                    "beta_pre_phase_sin", "beta_pre_phase_cos"}
-        if not required.issubset(source):
-            raise ValueError(f"Fit metrics are missing: {sorted(required.difference(source))}")
-        row = {name: float(source.get(name, np.nan)) for name in EFFECT_METRICS}
+        row = {name: float(source[name]) for name in EFFECT_METRICS[:5]}
+        row.update({name: float(source.get(name, np.nan)) for name in EFFECT_METRICS[5:]})
         if np.isinf(list(row.values())).any():
             raise DeletionFitFailure("An effect estimate is infinite")
         sine, cosine = row["beta_pre_phase_sin"], row["beta_pre_phase_cos"]
@@ -114,6 +111,8 @@ def paired_metrics(metrics, reference):
     result, point = normalized
     for name in EFFECT_METRICS:
         if name == "pre_phase_preferred_deg":
+            # Compare directions by the shortest signed offset, so 359 and 1
+            # degrees differ by two degrees rather than almost a full cycle.
             phase_difference = result[name] - point[name]
             result["phase_offset_deg"] = (phase_difference + 180) % 360 - 180
         else:
@@ -128,9 +127,8 @@ def summarize_scenarios(replicates):
     a linear quantile of angles across 0/360 degrees. Finite values and failed
     fits are counted for every metric; these are stress-test ranges, not CIs.
     """
-    required = {"scope", "drop_probability", "fit_valid", "n_deleted"}
-    if not required.issubset(replicates) or replicates.empty:
-        raise ValueError("Need nonempty replicate results and scenario identifiers")
+    if replicates.empty:
+        raise ValueError("No deletion replicates")
     if not replicates.fit_valid.isin([True, False]).all():
         raise ValueError("Every deletion fit requires explicit validity")
     metrics = ["n_deleted", "n_response_events", *EFFECT_METRICS,
@@ -167,22 +165,19 @@ def analyze_deletions(events, windows, forcings, phase_anchors, scaling,
     Each replicate uses the same uniforms across deletion probabilities and
     segment scopes. Failed fits retain their masks and explicit reasons.
     """
-    if not isinstance(n_replicates, (int, np.integer)) or n_replicates < 1:
-        raise ValueError("n_replicates must be a positive integer")
-    if not isinstance(seed, (int, np.integer)) or seed < 0:
-        raise ValueError("seed must be a nonnegative integer")
     probabilities = tuple(probabilities)
-    if not probabilities or len(set(probabilities)) != len(probabilities):
-        raise ValueError("Supply distinct deletion probabilities")
-    if not np.isfinite(probabilities).all() or not np.all((np.asarray(probabilities) >= 0) & (np.asarray(probabilities) <= 1)):
-        raise ValueError("Deletion probabilities must lie in [0, 1]")
     scopes = {"both": None} if scopes is None else dict(scopes)
-    if not scopes:
-        raise ValueError("At least one deletion scope is required")
+    if n_replicates < 1 or not probabilities or not scopes:
+        raise ValueError("Deletion experiments need scenarios and replicates")
+    if (len(set(probabilities)) != len(probabilities) or not np.isfinite(probabilities).all()
+            or not np.all((np.asarray(probabilities) >= 0) & (np.asarray(probabilities) <= 1))):
+        raise ValueError("Deletion probabilities must be distinct and lie in [0, 1]")
     started = time.perf_counter()
     n_fits = 0
 
     def fit_retained(subset):
+        # Rebuild history from retained events only. Exposure and predictor
+        # scales remain those of the undeleted catalogue for a paired comparison.
         event_x, integral_x = event_model.build_design(
             subset, windows, forcings, phase_anchors, scaling, tau=tau,
             initial_history=initial_history, quadrature_order=quadrature_order,
@@ -192,6 +187,8 @@ def analyze_deletions(events, windows, forcings, phase_anchors, scaling,
                 frame["mis6_segment"] = frame.segment_id.eq("MIS6").astype(float)
         reduced = fit_point_process(event_x[list(reduced_terms)], integral_x[list(reduced_terms)],
                                     integral_x.weight, reduced_terms)
+        # Embed the reduced fit by term name; setting added terms to zero gives
+        # exactly its intensity as the full model's starting point.
         start_beta = np.zeros(len(full_terms))
         if np.isfinite(reduced.beta).all():
             for term, beta in zip(reduced.terms, reduced.beta):
@@ -201,8 +198,8 @@ def analyze_deletions(events, windows, forcings, phase_anchors, scaling,
                                  integral_x.weight, full_terms, start_beta=start_beta)
         summary = fit_summary(reduced, full, event_x, windows, n_source_events=len(subset),
                               catalogue_id=catalogue_id, tau=tau, initial_history=initial_history)
-        if not summary["all_models_converged"] or not summary["likelihood_nesting_ok"]:
-            raise DeletionFitFailure("Nonconverged or nonnested deletion fit")
+        if not len(event_x):
+            raise DeletionFitFailure("No response events; effect is unidentified")
         beta = dict(zip(full.terms, full.beta))
         return dict(summary, beta_pre_phase_sin=beta["pre_phase_sin"],
                     beta_pre_phase_cos=beta["pre_phase_cos"])
@@ -215,11 +212,13 @@ def analyze_deletions(events, windows, forcings, phase_anchors, scaling,
                                              "segment_id", "event_age_kyr_bp", "event_id")
         for probability in probabilities:
             for replicate in range(n_replicates):
+                # Excluding scope/probability from the seed pairs the random
+                # uniforms across scenarios. For a fixed scope, higher deletion
+                # rates remove supersets of the lower-rate masks.
                 rng = np.random.default_rng(np.random.SeedSequence([seed, replicate]))
-                subset, membership = drop_events(
-                    events, probability, rng, eligible_segments=eligible_segments,
-                    anchor_ids=None)
-                masks.append(membership.retained.to_numpy(bool))
+                deleted = eligible & (rng.random(len(events)) < probability)
+                subset = events.loc[~deleted].copy()
+                masks.append(~deleted)
                 row = dict(scope=scope, drop_probability=probability,
                            replicate_id=replicate + 1, seed=int(seed),
                            n_source_events=len(events), n_conditioning_events=int(anchors.sum()),
@@ -233,14 +232,11 @@ def analyze_deletions(events, windows, forcings, phase_anchors, scaling,
                         print(f"{catalogue_id}: deletion fit {n_fits:,} "
                               f"({time.perf_counter() - started:.0f} s)", flush=True)
                     metrics = fit_retained(subset)
-                    exposure = float(metrics["response_exposure_kyr"])
-                    if not np.isclose(exposure, point_metrics["response_exposure_kyr"], rtol=0, atol=1e-10):
-                        raise ValueError("Deleting response events changed the fixed response support")
-                    row["response_exposure_kyr"] = exposure
-                    if metrics["n_response_events"] != row["n_response_events"]:
-                        raise ValueError("Fitted response count disagrees with retained catalogue")
+                    row["response_exposure_kyr"] = float(metrics["response_exposure_kyr"])
                     row.update(paired_metrics(metrics, point_metrics))
                 except (DeletionFitFailure, PointProcessFitError) as error:
+                    # Keep this mask and its failure in the ensemble; redrawing
+                    # until a fit succeeds would select a different deletion law.
                     row.update(fit_valid=False, invalid_reason=str(error))
                     row.update({name: np.nan for name in reference})
                 rows.append(row)

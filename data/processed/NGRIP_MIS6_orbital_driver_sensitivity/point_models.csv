@@ -1,9 +1,9 @@
 model_id,terms,n_parameters,converged,fit_valid,invalid_reason,log_likelihood,AIC,pre_phase_preferred_deg,pre_phase_rate_ratio_max_vs_min,n_events,exposure_kyr,fit_status
-B,same_type_exponential_history;lr04_scaled;co2_scaled;mis6_segment,5,True,True,,-111.2417975859055,232.483595171811,,,53,165.05800000000002,finite_mle
-BP,same_type_exponential_history;lr04_scaled;co2_scaled;mis6_segment;pre_phase_sin;pre_phase_cos,7,True,True,,-102.12285757375503,218.24571514751005,328.08368244245503,7.182865381876795,53,165.05800000000002,finite_mle
-B_ecc,same_type_exponential_history;lr04_scaled;co2_scaled;mis6_segment;ecc_scaled,6,True,True,,-109.02666481885186,230.0533296377037,,,53,165.05800000000002,finite_mle
-BP_ecc,same_type_exponential_history;lr04_scaled;co2_scaled;mis6_segment;pre_phase_sin;pre_phase_cos;ecc_scaled,8,True,True,,-101.3126402183888,218.6252804367776,326.4524854694985,6.204056638607836,53,165.05800000000002,finite_mle
-B_obl,same_type_exponential_history;lr04_scaled;co2_scaled;mis6_segment;obl_scaled,6,True,True,,-111.22429559794618,234.44859119589236,,,53,165.05800000000002,finite_mle
-BP_obl,same_type_exponential_history;lr04_scaled;co2_scaled;mis6_segment;pre_phase_sin;pre_phase_cos;obl_scaled,8,True,True,,-101.1872687264745,218.374537452949,328.1447445721073,8.730794866653918,53,165.05800000000002,finite_mle
+B,same_type_exponential_history;lr04_scaled;co2_scaled;mis6_segment,5,True,True,,-111.24179758590546,232.48359517181092,,,53,165.05800000000002,finite_mle
+BP,same_type_exponential_history;lr04_scaled;co2_scaled;mis6_segment;pre_phase_sin;pre_phase_cos,7,True,True,,-102.12285757375506,218.2457151475101,328.0836824312526,7.1828653579046335,53,165.05800000000002,finite_mle
+B_ecc,same_type_exponential_history;lr04_scaled;co2_scaled;mis6_segment;ecc_scaled,6,True,True,,-109.0266648188518,230.0533296377036,,,53,165.05800000000002,finite_mle
+BP_ecc,same_type_exponential_history;lr04_scaled;co2_scaled;mis6_segment;pre_phase_sin;pre_phase_cos;ecc_scaled,8,True,True,,-101.31264021838876,218.62528043677753,326.4524845556861,6.204056410056379,53,165.05800000000002,finite_mle
+B_obl,same_type_exponential_history;lr04_scaled;co2_scaled;mis6_segment;obl_scaled,6,True,True,,-111.2242955979462,234.4485911958924,,,53,165.05800000000002,finite_mle
+BP_obl,same_type_exponential_history;lr04_scaled;co2_scaled;mis6_segment;pre_phase_sin;pre_phase_cos;obl_scaled,8,True,True,,-101.18726872647451,218.37453745294903,328.14474421051125,8.730794880474498,53,165.05800000000002,finite_mle
 B_insol65n,same_type_exponential_history;lr04_scaled;co2_scaled;mis6_segment;insol65n_scaled,6,True,True,,-104.47517259797235,220.9503451959447,,,53,165.05800000000002,finite_mle
-BP_insol65n,same_type_exponential_history;lr04_scaled;co2_scaled;mis6_segment;pre_phase_sin;pre_phase_cos;insol65n_scaled,8,True,True,,-100.3098070118358,216.6196140236716,303.72864232994283,4.163197324161382,53,165.05800000000002,finite_mle
+BP_insol65n,same_type_exponential_history;lr04_scaled;co2_scaled;mis6_segment;pre_phase_sin;pre_phase_cos;insol65n_scaled,8,True,True,,-100.30980701183577,216.61961402367155,303.72864169012075,4.163197321557567,53,165.05800000000002,finite_mle

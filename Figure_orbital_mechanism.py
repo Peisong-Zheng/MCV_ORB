@@ -28,7 +28,8 @@ OUTPUT = PROJECT / "figures/Figure_orbital_mechanism/Figure_orbital_mechanism"
 COLOR = dict(ink="#152C45", quiet="#566778", land="#B8BBBF", coast="#9AA6AF",
              ocean="#B3E1F4", water="#B3E1F4", deep="#75BBD8", blue="#5066B8",
              red="#D84858", warm="#F4D293", gold="#EDA927", ice="#FFFFFF",
-             red_ink="#A32639", blue_ink="#304890", export="#008769")
+             red_ink="#A32639", blue_ink="#304890", export="#008769",
+             atmosphere="#70657F")
 MAP_CENTER = (-35, 30)  # Central longitude and latitude of the orthographic globe.
 FONT_SCALE = 1.25
 SUN_RADIUS_PT = 9
@@ -375,7 +376,7 @@ def show_ice_controls(ax):
 
 
 def draw_atlantic(ax):
-    ax.set(xlim=(-1.23, 1.02), ylim=(-1.04, 1.17), aspect="equal")
+    ax.set(xlim=(-1.32, 1.02), ylim=(-1.04, 1.17), aspect="equal")
     ax.axis("off")
     globe = Circle((0, 0), 1, facecolor=COLOR["ocean"], edgecolor=COLOR["ink"], lw=.6)
     ax.add_patch(globe)
@@ -404,10 +405,18 @@ def draw_atlantic(ax):
     text(ax, -.70, -.36, "Moisture\nexport ↓\nto Pacific", size=7.0, color=COLOR["export"])
 
     # Solar forcing is outside the globe and reaches both latitude bands.
-    sun(ax, -1.09, .39, radius=SUN_RADIUS_PT)
+    sun(ax, -1.09, .45, radius=SUN_RADIUS_PT)
     text(ax, -.99, .78, "Low precession\nNH summer\ninsolation ↑", size=7.3)
     arrow(ax, (-.95,.45), (-.07,.50), COLOR["gold"], width=1.55, curve=-.13)
     arrow(ax, (-1.0,.26), (-.52,.06), COLOR["gold"], width=1.55, curve=.1)
+
+    # Pacific-to-Atlantic atmospheric link; the off-map source and curved path
+    # are schematic, not a diagnosed wave train or an ice-margin pathway.
+    teleconnection = arrow(ax, (-1.16,.25), (-.02,.38), COLOR["atmosphere"],
+                           width=1.2, curve=-.07, dashed=True)
+    teleconnection.set_mutation_scale(7.5)
+    text(ax, -1.24, .03, "Possible\nENSO-related\nteleconnection", size=5.8,
+         color=COLOR["atmosphere"])
     text(ax, 0, 1.10, "Stadial", size=8.4, color="black")
 
 
@@ -452,8 +461,8 @@ def draw_section(ax):
     text(ax, 71, 35.5, "Shorter warm\ninterval possible", size=6.8, color=COLOR["blue"])
 
     # Fohlmeister et al. (2023): a proposed lower temperature threshold,
-    # not faster subsurface heat accumulation. Dashed to distinguish this link.
-    arrow(ax, (48,30), (48,58.5), COLOR["red"], width=1.5, curve=-0.04, dashed=True)
+    # not faster subsurface heat accumulation. The arrow marks the warming transition.
+    arrow(ax, (48,34), (48,49), COLOR["red"], width=1.4, curve=-0.12)
     text(ax, 22, 49, "Sea ice Retreat\nThreshold ↓", size=7.2, color=COLOR["red"])
     text(ax, 22, 37, "Earlier warming\npossible", size=6.8, color=COLOR["red"])
 

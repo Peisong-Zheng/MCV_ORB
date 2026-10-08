@@ -74,9 +74,6 @@ class SofularChronologyContext:
 def _finite_numeric(frame: pd.DataFrame, columns: list[str], label: str) -> None:
     """Reject missing or nonnumeric inputs rather than dropping source rows."""
 
-    missing = set(columns).difference(frame.columns)
-    if missing:
-        raise ValueError(f"{label} missing columns: {sorted(missing)}")
     for column in columns:
         frame[column] = pd.to_numeric(frame[column], errors="raise")
     if not np.isfinite(frame[columns].to_numpy(float)).all():
@@ -86,16 +83,7 @@ def _finite_numeric(frame: pd.DataFrame, columns: list[str], label: str) -> None
 def _validate_source(source: SofularSource) -> None:
     """Check the depth and segment contract without sorting or repairing ages."""
 
-    if source.component not in SOURCE_FILES:
-        raise ValueError(f"Unknown Sofular component: {source.component}")
     series, controls = source.series, source.controls
-    required_series = {"depth_mm", "age_ka_bp", "d13C", "d18O", "segment_id"}
-    required_controls = {
-        "control_id", "depth_mm", "age_ka_bp", "age_error_2sigma_ka",
-        "chronology_sigma_ka", "segment_id",
-    }
-    if not required_series.issubset(series) or not required_controls.issubset(controls):
-        raise ValueError(f"{source.component} source schema is incomplete")
     for label, frame, numeric in (
         ("proxy", series, ["depth_mm", "age_ka_bp", "d13C", "d18O", "segment_id"]),
         ("U--Th", controls, ["depth_mm", "age_ka_bp", "age_error_2sigma_ka",
@@ -109,10 +97,9 @@ def _validate_source(source: SofularSource) -> None:
     # Preserve those values; a query exactly on a plateau is not invertible.
     if np.any(np.diff(series["age_ka_bp"].to_numpy(float)) < 0.0):
         raise ValueError(f"{source.component} published proxy ages must not reverse")
-    if controls["control_id"].isna().any() or controls["control_id"].duplicated().any():
+    if (controls["control_id"].isna().any() or controls["control_id"].duplicated().any()
+            or controls["control_id"].astype(str).str.strip().eq("").any()):
         raise ValueError(f"{source.component} control IDs must be present and unique")
-    if controls["control_id"].astype(str).str.strip().eq("").any():
-        raise ValueError(f"{source.component} control IDs cannot be blank")
     if (controls["age_error_2sigma_ka"] <= 0.0).any():
         raise ValueError(f"{source.component} U--Th uncertainties must be positive")
     if not np.allclose(controls["chronology_sigma_ka"], controls["age_error_2sigma_ka"] / 2):
@@ -241,12 +228,11 @@ def build_context(
     if not np.isscalar(mapping_lag_ka) or not np.isfinite(mapping_lag_ka):
         raise ValueError("Mapping lag must be a finite scalar in kyr")
     source_map = load_sources() if sources is None else sources
-    if component not in source_map:
-        raise ValueError(f"Unavailable Sofular component: {component}")
     source = source_map[component]
     if source.component != component:
         raise ValueError("Source component does not match its dictionary key")
-    _validate_source(source)
+    if sources is not None:
+        _validate_source(source)
     projected = ages + float(mapping_lag_ka)
     depths = np.empty(len(ages))
     event_segments = np.empty(len(ages), dtype=int)
@@ -329,7 +315,6 @@ def control_diagnostics(sources: dict[str, SofularSource]) -> pd.DataFrame:
 
     frames = []
     for component, source in sources.items():
-        _validate_source(source)
         frame = source.controls.copy()
         frame["component"] = component
         frame["nominal_model_age_ka_bp"] = _model_ages_at_controls(source)
@@ -339,8 +324,6 @@ def control_diagnostics(sources: dict[str, SofularSource]) -> pd.DataFrame:
         frame["source_path"] = str(source.source_path)
         frame["age_epoch"] = "BP1950"
         frames.append(frame)
-    if not frames:
-        raise ValueError("Control diagnostics require at least one source")
     return pd.concat(frames, ignore_index=True)
 
 
