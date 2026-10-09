@@ -1,0 +1,583 @@
+{
+  "created_utc": "20261009T192439Z",
+  "source_root": "/Users/pz/VScode/MCV_ORB",
+  "scope": "Active source code, notebooks, tests, build/environment configuration, README files, AGENTS.md and figure mapping; includes ignored and untracked source files.",
+  "excludes": [
+    "backups",
+    "archive",
+    "agent_work",
+    ".git",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".venv",
+    "venv",
+    "node_modules",
+    "__pycache__",
+    ".ipynb_checkpoints"
+  ],
+  "selection_patterns": [
+    "*.py",
+    "*.ipynb",
+    "*.sh",
+    "*.R",
+    "*.r",
+    "*.m",
+    "*.jl",
+    "*.toml",
+    "*.yaml",
+    "*.yml",
+    "requirements*.txt",
+    "uv.lock",
+    "poetry.lock",
+    "Pipfile",
+    "Pipfile.lock",
+    "Makefile",
+    ".gitignore",
+    ".gitattributes",
+    "README*",
+    "AGENTS.md",
+    "paper_figure_manifest.csv"
+  ],
+  "file_count": 89,
+  "source_bytes": 2068707,
+  "archive_bytes": 1086854,
+  "archive_sha256": "e6636c32f9fd67ab5da4a8f3a940cd62f44359cab26518c0924aadaaf3df1114",
+  "verification": "Each tar member matches its SHA256 and source contents; no extraction or source mutation.",
+  "files": [
+    {
+      "path": ".gitignore",
+      "kind": "file",
+      "bytes": 372,
+      "sha256": "be1c938c452818013fe46536f40f9ec6c0cf6fce09995844d22f320562decb8c"
+    },
+    {
+      "path": ".pytest_cache/.gitignore",
+      "kind": "file",
+      "bytes": 37,
+      "sha256": "3ed731b65d06150c138e2dadb0be0697550888a6b47eb8c45ecc9adba8b8e9bd"
+    },
+    {
+      "path": ".pytest_cache/README.md",
+      "kind": "file",
+      "bytes": 302,
+      "sha256": "73fd6fccdd802c419a6b2d983d6c3173b7da97558ac4b589edec2dfe443db9ad"
+    },
+    {
+      "path": "AGENTS.md",
+      "kind": "file",
+      "bytes": 1969,
+      "sha256": "8a98351451a9653ee7f463ca6dd52654a954294f3e9931f2bd8e7839c30aa0aa"
+    },
+    {
+      "path": "Barker2011/Barker2011_effect_uncertainty.py",
+      "kind": "file",
+      "bytes": 11437,
+      "sha256": "a5cba644841c4d1f9355a37ec365a2e89a1958d8d70829c06ac693a272c6b308"
+    },
+    {
+      "path": "Barker2011/Barker2011_event_age_uncertainty.py",
+      "kind": "file",
+      "bytes": 13126,
+      "sha256": "b7c6652b95404f59bd5e5b8386bada170c8f1335e8c989835fbb5e04cfc039dc"
+    },
+    {
+      "path": "Barker2011/Barker2011_event_detection_sensitivity.py",
+      "kind": "file",
+      "bytes": 5587,
+      "sha256": "688ce0d4095f046b8a3aebf6aa5f084bbe1dca57edb1fbfbfcb9559fa330004b"
+    },
+    {
+      "path": "Barker2011/Barker2011_event_phase_analysis.py",
+      "kind": "file",
+      "bytes": 15304,
+      "sha256": "0eff2ed1aff3c0a69c128eec0c614f5b3181a48cf7c02e5cfb3fde9d80b687e6"
+    },
+    {
+      "path": "Barker2011/Barker2011_event_uncertainty_sensitivity.py",
+      "kind": "file",
+      "bytes": 5964,
+      "sha256": "f5c24e5bb349a656e9bfdcb289d11ec28d54c0589782a820a136271ae2373776"
+    },
+    {
+      "path": "Barker2011/Barker2011_likelihood_bootstrap.py",
+      "kind": "file",
+      "bytes": 9153,
+      "sha256": "8d1e911c193b14e17a5b39a6528900716826fb705c1be90461971e5c632796a0"
+    },
+    {
+      "path": "Barker2011/Barker2011_model_diagnostics.py",
+      "kind": "file",
+      "bytes": 5717,
+      "sha256": "c01359b8ccc8c9af6c07d6f621e5c4cb85ac39e5cf4381107ce960fec4e79394"
+    },
+    {
+      "path": "Barker2011/Barker2011_orbital_driver_sensitivity.py",
+      "kind": "file",
+      "bytes": 7222,
+      "sha256": "87e91a5fed329fc029213680c49e57cfd001a5686297f0851307d6a9fae31ef7"
+    },
+    {
+      "path": "Barker2011/README.md",
+      "kind": "file",
+      "bytes": 2809,
+      "sha256": "020e8737fcb2002eb23274e7d65afaa2fc8b3d823a44ab512884829944894775"
+    },
+    {
+      "path": "Barker2011/data_pre_processing.py",
+      "kind": "file",
+      "bytes": 2717,
+      "sha256": "68d9105f8d6da91743967864482d63e339787d960fc37bf95200d150555cf86d"
+    },
+    {
+      "path": "Figure_likelihood_bootstrap.py",
+      "kind": "file",
+      "bytes": 2936,
+      "sha256": "8f45586892c3bff1c2560e7a5d90a3ab4cbe1b2e61bd8fc7d25398b9df0d041c"
+    },
+    {
+      "path": "Figure_orbital_mechanism.py",
+      "kind": "file",
+      "bytes": 20634,
+      "sha256": "1a6c8dda162c9bbe319c2685e75aa4cda552316cfdb581fad8c21eafdc76bc41"
+    },
+    {
+      "path": "MIS6/MIS6_composite_event_record.ipynb",
+      "kind": "file",
+      "bytes": 65696,
+      "sha256": "434adf08b927fdc72c77770b289083b4b246bda0fb7b748562e6ec4e8a861418"
+    },
+    {
+      "path": "MIS6/MIS6_event_age_uncertainty.ipynb",
+      "kind": "file",
+      "bytes": 145995,
+      "sha256": "3e4c95d6f450c1c23ac884ef03518f3b0c1f4ae2f8c48ff426f1b0fb677f5131"
+    },
+    {
+      "path": "MIS6/README.md",
+      "kind": "file",
+      "bytes": 2947,
+      "sha256": "33e1e75e273d9899c4d7bd717ae5f254d2864082928d7e4c32903d3cbe30a112"
+    },
+    {
+      "path": "MIS6/Sofular_chronology_comparison.py",
+      "kind": "file",
+      "bytes": 7325,
+      "sha256": "182bdfac3dd8d96bcd9c307dddbcf624fdebb678d8a15ff0523a97140d39b063"
+    },
+    {
+      "path": "MIS6/Speleothem_published_event_plot.ipynb",
+      "kind": "file",
+      "bytes": 437413,
+      "sha256": "14931ce305a1afe77d207df026b735f295edf9ae303cdf70e53ca7dc60538260"
+    },
+    {
+      "path": "MIS6/data/processed/MIS6_event_age_uncertainty/README.md",
+      "kind": "file",
+      "bytes": 1109,
+      "sha256": "5e447346e02b6bb7b74c08b9cd93edf076fe143fd954374fce733cc6b38951b3"
+    },
+    {
+      "path": "MIS6/data/raw/Held2024/README.md",
+      "kind": "file",
+      "bytes": 957,
+      "sha256": "7f5c3173835fcea50324c602ecd998d5f7e2efadedb56040c33853635995dc88"
+    },
+    {
+      "path": "MIS6/event_detection.py",
+      "kind": "file",
+      "bytes": 8997,
+      "sha256": "f5f3331c5b5a7e71eb29cdc10822dfcb2ba64213131b8d94fe3ab2843c31fa0c"
+    },
+    {
+      "path": "MIS6/sofular_chronology.py",
+      "kind": "file",
+      "bytes": 20462,
+      "sha256": "83689d0ca38b8c6755418f9c09471ec19322c6956d0db3d7d2c6eabca70901f7"
+    },
+    {
+      "path": "MIS6/tests/diagnostics/MIS6_event_age_uncertainty/README.md",
+      "kind": "file",
+      "bytes": 736,
+      "sha256": "ac615ebf5bde1ffdd0fc64f428fa40cce669b82852560d948d032a366eb15f8e"
+    },
+    {
+      "path": "MIS6/tests/test_mis6_composite_notebook.py",
+      "kind": "file",
+      "bytes": 4004,
+      "sha256": "3f2f834fbe2178b0e022249c1a6f7673f65d732bcd9b11ba6805b6b5583cbfe8"
+    },
+    {
+      "path": "MIS6/tests/test_mis6_event_age_uncertainty.py",
+      "kind": "file",
+      "bytes": 15439,
+      "sha256": "18b7d082db1c16193f74cb79277c5c85a48754ca44dfaf45fbea9af108a71ff7"
+    },
+    {
+      "path": "MIS6/tests/test_sofular_chronology.py",
+      "kind": "file",
+      "bytes": 8043,
+      "sha256": "42ea957430d716383359811f7ac676ac8e0e93abd4124787877b70897235f6e3"
+    },
+    {
+      "path": "MIS6/tests/test_speleothem_published_event_plot.py",
+      "kind": "file",
+      "bytes": 2707,
+      "sha256": "d4458b42451d24608e58d1f0822e63ea9c22b17879aaecc547870edd33fee25a"
+    },
+    {
+      "path": "NGRIP/README.md",
+      "kind": "file",
+      "bytes": 3308,
+      "sha256": "0a23bcd66d3897217e991ed3642e352de2c9b2b3637fdd28e904ab8e4c55ce9f"
+    },
+    {
+      "path": "NGRIP/ngrip_data_preparation.ipynb",
+      "kind": "file",
+      "bytes": 32588,
+      "sha256": "e17f7d34fb9f164c64740aa80b2b2a26271fd9b82a8b0b156751d76bd0df2b38"
+    },
+    {
+      "path": "NGRIP/ngrip_event_age_uncertainty.py",
+      "kind": "file",
+      "bytes": 13615,
+      "sha256": "03fa1950e0933564dae373f782dcab0f98cd5ad63ebfa3e3a85948379899feaf"
+    },
+    {
+      "path": "NGRIP/ngrip_transition_phase_sensitivity.py",
+      "kind": "file",
+      "bytes": 17063,
+      "sha256": "6b3a2a1ecc6f3ff73fb69ebda06b37f8e58395f78f0c1215a4b0a070f1450913"
+    },
+    {
+      "path": "NGRIP/tests/test_ngrip_transition_phase_sensitivity.py",
+      "kind": "file",
+      "bytes": 6434,
+      "sha256": "f7bdbabf9b93ff40faaafe098fe08d7fd3b504d76253cf05b6e91396e6163e55"
+    },
+    {
+      "path": "NGRIP_MIS6_effect_uncertainty.py",
+      "kind": "file",
+      "bytes": 14412,
+      "sha256": "3f7cfff40049855f763872eaba663ed84d19ef22e6adcd2eed82b44ef1f7684c"
+    },
+    {
+      "path": "NGRIP_MIS6_event_detection_sensitivity.py",
+      "kind": "file",
+      "bytes": 6748,
+      "sha256": "4ac68f13a7edf6d4d3054d1b7f98e1ea060a295742777009a175debbd7eba808"
+    },
+    {
+      "path": "NGRIP_MIS6_event_phase_analysis.py",
+      "kind": "file",
+      "bytes": 22349,
+      "sha256": "f33c1eae5fa5bd1a62c3c85d32f5ba8505f1d7bffed348ace76f564953b37f98"
+    },
+    {
+      "path": "NGRIP_MIS6_event_uncertainty_sensitivity.py",
+      "kind": "file",
+      "bytes": 10433,
+      "sha256": "78a13e9aae11eec39cdeedf37e397656456142a93c6785f2c491f4379e2fe820"
+    },
+    {
+      "path": "NGRIP_MIS6_likelihood_bootstrap.py",
+      "kind": "file",
+      "bytes": 12959,
+      "sha256": "487744733f9e1c858f6bcdf4e7760ec33ae8c2fe20d23017830e8278faf9a755"
+    },
+    {
+      "path": "NGRIP_MIS6_likelihood_design_sensitivity.py",
+      "kind": "file",
+      "bytes": 16304,
+      "sha256": "416aea8c224980a4f284dceb9652bde8e243effb2aea1e0dc2c5fd9601303c16"
+    },
+    {
+      "path": "NGRIP_MIS6_likelihood_model_sensitivity.py",
+      "kind": "file",
+      "bytes": 18402,
+      "sha256": "3319c6ccf8862ece1b1fc76c7bc228103fd0258f2666be084bb19884ec9c2ded"
+    },
+    {
+      "path": "NGRIP_MIS6_model_diagnostics.py",
+      "kind": "file",
+      "bytes": 9125,
+      "sha256": "10cdf7c9dd1b7073d9b810a48c1da86bce798f7c9a1cab9ebd1e5a26e1c7478a"
+    },
+    {
+      "path": "NGRIP_MIS6_orbital_driver_sensitivity.py",
+      "kind": "file",
+      "bytes": 20600,
+      "sha256": "0b7ef552ec751e2b7bb17d11d413019669ff0970694ca84ad42dc7d0f2ba8f54"
+    },
+    {
+      "path": "README.md",
+      "kind": "file",
+      "bytes": 6644,
+      "sha256": "c3669a39817cb53993775584872edb23cdd0375a3a33fede6a5e46947541b98a"
+    },
+    {
+      "path": "background_orbital_spectra.ipynb",
+      "kind": "file",
+      "bytes": 230181,
+      "sha256": "621033f76cde061307e71231c0f9e4174edd4f5ca0fdeaa64c67e12ea7c40196"
+    },
+    {
+      "path": "climate_precession_contribution.py",
+      "kind": "file",
+      "bytes": 14566,
+      "sha256": "77d684c5c8ec88a07977e9e15419491525191ba787fd92791506483e0c728885"
+    },
+    {
+      "path": "data/curated/README.md",
+      "kind": "file",
+      "bytes": 1417,
+      "sha256": "98ce34eed46d420ad19f300c4fb7aeb71bc6c341c6c2a2a1e7d41b19e6c6add7"
+    },
+    {
+      "path": "data/raw/maps/README.md",
+      "kind": "file",
+      "bytes": 627,
+      "sha256": "5a2d8083d4a2dbd7a4665facdc479ce278dc707bb73cc43496722a84d9ebfb9f"
+    },
+    {
+      "path": "forcing_data_pre_processing.py",
+      "kind": "file",
+      "bytes": 5503,
+      "sha256": "ab3873e68ede484d9b8cae6cf5fb2a65968f80130b29bb6d4c9d119feb3a6fdb"
+    },
+    {
+      "path": "ngrip_knot_spacing_sensitivity.py",
+      "kind": "file",
+      "bytes": 12698,
+      "sha256": "329f3df420d3bef78e4eb43cd05c2bbb129c856d7b664d9bf05a3652e9d466e0"
+    },
+    {
+      "path": "orbital_event_paper/Makefile",
+      "kind": "file",
+      "bytes": 669,
+      "sha256": "7b43042392ac2c32043af616b067eb998c30f6704ceaa2af4abf78872fc129b4"
+    },
+    {
+      "path": "orbital_event_paper/README.md",
+      "kind": "file",
+      "bytes": 864,
+      "sha256": "2a5cd4d2b262c57ad00fd316ac7b642444cf10d06da415878d82a0a09e3ccf01"
+    },
+    {
+      "path": "paper_figure_export.py",
+      "kind": "file",
+      "bytes": 3884,
+      "sha256": "649bc1f5c222ee7afaee1383f2bea5b57f03cc330fe62f85a8e071979c6907b3"
+    },
+    {
+      "path": "paper_figure_manifest.csv",
+      "kind": "file",
+      "bytes": 1600,
+      "sha256": "c502855c2ab74e45f82274dd6f2ed1ddcbeb88e351f5468d75a8b9abea316f8b"
+    },
+    {
+      "path": "paper_summary_figures.py",
+      "kind": "file",
+      "bytes": 22382,
+      "sha256": "e02c7982083d691cb02271a8dc44018dfba8ec56cb018001a80b5da46ec74900"
+    },
+    {
+      "path": "requirements.txt",
+      "kind": "file",
+      "bytes": 200,
+      "sha256": "76d9f9c8c2fc747a6890132ac946f5ad11038e24b25f4ba6f758f5590d447b93"
+    },
+    {
+      "path": "sofular_component_likelihood_sensitivity.py",
+      "kind": "file",
+      "bytes": 11509,
+      "sha256": "bbc93cfa9f6943042642ac9fc68ec5aaf79a9301e2e962b018e441230ab7edaa"
+    },
+    {
+      "path": "test.ipynb",
+      "kind": "file",
+      "bytes": 430875,
+      "sha256": "b5d6fa45a409dd68cd825aaa50c8228c2413fede0f81ef7dca95e85aed8c3276"
+    },
+    {
+      "path": "test.py",
+      "kind": "file",
+      "bytes": 620,
+      "sha256": "bb145b48e773149fca180b8589d42157752d9031a122510c2036902957ff3ff9"
+    },
+    {
+      "path": "tests/test_age_epochs.py",
+      "kind": "file",
+      "bytes": 5796,
+      "sha256": "9ff0311e28d0e0e6dc90b672ac18cd96b9a410a1b6c566fc4c81ab3c1c6e288f"
+    },
+    {
+      "path": "tests/test_barker2011_likelihood_bootstrap.py",
+      "kind": "file",
+      "bytes": 4103,
+      "sha256": "a54b77a974835194173e8ca1f1ca5761aaf53469fdca3dd3edbb109b801cc6c0"
+    },
+    {
+      "path": "tests/test_curated_event_catalogue.py",
+      "kind": "file",
+      "bytes": 4952,
+      "sha256": "fc39efb7f28053b723970624162b3646bf466ae94cd47ba30f2df7ec1c3ae5a7"
+    },
+    {
+      "path": "tests/test_effect_uncertainty.py",
+      "kind": "file",
+      "bytes": 18374,
+      "sha256": "e3f3548adc3675b47f9b5e22155ca8075ea764a3fc996b70835b4841021d66a4"
+    },
+    {
+      "path": "tests/test_event_detection_sensitivity.py",
+      "kind": "file",
+      "bytes": 9334,
+      "sha256": "3f6c6786f32161ff88bdfa9c22f7e12969561a0040c13fe72cdb8b5a1aabd06a"
+    },
+    {
+      "path": "tests/test_event_model.py",
+      "kind": "file",
+      "bytes": 4379,
+      "sha256": "8fc6d79cfe341240db0873fa85e91a6eed204d185ccb05965829ade87f265840"
+    },
+    {
+      "path": "tests/test_event_model_likelihood.py",
+      "kind": "file",
+      "bytes": 11425,
+      "sha256": "2fc190bdff30c3bd3390e637664a6410ccdce71e5f78f2fe89cd79056068c4be"
+    },
+    {
+      "path": "tests/test_ngrip_event_age_uncertainty.py",
+      "kind": "file",
+      "bytes": 8513,
+      "sha256": "c51f004768d50a6353ba566d593b2d9eca09ac85bd4099d72197aa8b70b9298d"
+    },
+    {
+      "path": "tests/test_ngrip_mis6_event_phase_analysis.py",
+      "kind": "file",
+      "bytes": 4276,
+      "sha256": "bb56becc0167b3076e41537de72046b8d784c72e35c43120a070ee17a177a790"
+    },
+    {
+      "path": "tests/test_ngrip_mis6_event_uncertainty_sensitivity.py",
+      "kind": "file",
+      "bytes": 12875,
+      "sha256": "497d5a7ee3020549635d0ec92e8cf7393fa83efbb4a96e9a8205d50ca64b7aad"
+    },
+    {
+      "path": "tests/test_ngrip_mis6_likelihood_bootstrap.py",
+      "kind": "file",
+      "bytes": 6815,
+      "sha256": "d4646653cc2b3d2cb052173cf424549477d060505585bd26b00dafa4ad115624"
+    },
+    {
+      "path": "tests/test_ngrip_mis6_likelihood_design_sensitivity.py",
+      "kind": "file",
+      "bytes": 2829,
+      "sha256": "45e3004db27086a68448fdd30691b1922f7bf7aebbec0114fadbdb9aea634f09"
+    },
+    {
+      "path": "tests/test_ngrip_mis6_likelihood_model_sensitivity.py",
+      "kind": "file",
+      "bytes": 3656,
+      "sha256": "b1f912372530265e05e609df7ef400cb7bfa8b1e904bfbb8d2d1e4b68376a37a"
+    },
+    {
+      "path": "tests/test_orbital_driver_sensitivity.py",
+      "kind": "file",
+      "bytes": 14300,
+      "sha256": "368fdd3e3d392ab348d29d477b7d1476748352594e9892c52efa194358fb37b1"
+    },
+    {
+      "path": "tests/test_paper_summary_bootstrap.py",
+      "kind": "file",
+      "bytes": 1877,
+      "sha256": "20104f6dcfaf3cfceeba9e08f3dd8b14d858c724f9db9dde52bcf50e268ed2cc"
+    },
+    {
+      "path": "tests/test_point_process.py",
+      "kind": "file",
+      "bytes": 12465,
+      "sha256": "217e1435716c1b4772175664b41581c81e937bc29a6c7af0f2d7f68cbfe932b7"
+    },
+    {
+      "path": "tests/test_point_process_diagnostics.py",
+      "kind": "file",
+      "bytes": 10641,
+      "sha256": "3e46f2e988013f4135ce73afa3a1352a5e304f844c7ad2e6388066d8f34cb9ec"
+    },
+    {
+      "path": "tests/test_sofular_component_likelihood_sensitivity.py",
+      "kind": "file",
+      "bytes": 1510,
+      "sha256": "2b354d4118a4b276223b701ff42579e1a2cf45df2181ba9cc87c8a345059ad3b"
+    },
+    {
+      "path": "toolbox/__init__.py",
+      "kind": "file",
+      "bytes": 71,
+      "sha256": "423b7b400de57dd7353a8b02411750aafcc031feebb4f9faaf4f0c971d4d4193"
+    },
+    {
+      "path": "toolbox/age_sensitivity.py",
+      "kind": "file",
+      "bytes": 8536,
+      "sha256": "b1d3d672bbac032664f02d6a7c8619a6c0f2aafecde601b6b7b3509217e37cbe"
+    },
+    {
+      "path": "toolbox/event_detection_sensitivity.py",
+      "kind": "file",
+      "bytes": 14913,
+      "sha256": "bf69b0c1cafecfe38208bfac14e1fa49d6a1416339b0bdd676a959c184bf0ea2"
+    },
+    {
+      "path": "toolbox/event_model.py",
+      "kind": "file",
+      "bytes": 24206,
+      "sha256": "6de2552d831cf3c47a8e182e73e0e4c05bc450964b2f83c81c8be4ffc2be4987"
+    },
+    {
+      "path": "toolbox/model_stats.py",
+      "kind": "file",
+      "bytes": 19753,
+      "sha256": "dc4973297941dafe4732a837727646b33555af8dca1165b965e80fc588bfdd42"
+    },
+    {
+      "path": "toolbox/orbital_driver_sensitivity.py",
+      "kind": "file",
+      "bytes": 15809,
+      "sha256": "474a0cbff9725a3330bd04ea8f9cff3bcbf3404c102387dec91107343d52e01f"
+    },
+    {
+      "path": "toolbox/plotting.py",
+      "kind": "file",
+      "bytes": 14810,
+      "sha256": "55b36efae435f0a5f73571f4828d399b114b5224f70bf2374913ef0fab75aac0"
+    },
+    {
+      "path": "toolbox/point_process.py",
+      "kind": "file",
+      "bytes": 16957,
+      "sha256": "a931f3adbb57c43ddc69214e94aa5b11d6c2f9853a41995c9510250501e0439e"
+    },
+    {
+      "path": "toolbox/point_process_diagnostics.py",
+      "kind": "file",
+      "bytes": 10947,
+      "sha256": "23d549091e3d6d48bc78c3523bb9b8295c0a28c6ee6201fc9988494224d7c567"
+    },
+    {
+      "path": "toolbox/project_config.py",
+      "kind": "file",
+      "bytes": 3095,
+      "sha256": "ba355955e7bce2b26c5653dc195a134f48e1610dd0d59c447e3b7e5392e7e97b"
+    },
+    {
+      "path": "toolbox/sampling.py",
+      "kind": "file",
+      "bytes": 25795,
+      "sha256": "57d64debb4b94b957ddf5a7dd7a3e67fda3fc3924caa1b683217568ad5a4f0bc"
+    }
+  ]
+}

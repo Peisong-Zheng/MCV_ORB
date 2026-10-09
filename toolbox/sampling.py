@@ -48,7 +48,7 @@ def _phase_replicate(task):
     for order in (arguments['quadrature_order'], 2 * arguments['quadrature_order']):
         row['solver_attempts'] = row['solver_attempts'] + 1
         try:
-            event_x, integral_x = event_model.build_design(events, windows, arguments['forcings'],
+            event_x, integral_x = event_model.build_likelihood_tables(events, windows, arguments['forcings'],
                 arguments['phase_anchors'], arguments['scaling'], tau=arguments['tau'],
                 initial_history=arguments['initial_history'], quadrature_order=order)
             if 'mis6_segment' in full_terms:
@@ -144,7 +144,7 @@ def effect_generators(events, observations, windows, forcings, phase_anchors, sc
         # Moving ages also moves the oldest conditioning event and exposure;
         # the supplied nominal forcing scale stays fixed for comparability.
         local_windows = event_model.response_windows(local_events, observations)
-        event_x, integral_x = event_model.build_design(local_events, local_windows, forcings, phase_anchors,
+        event_x, integral_x = event_model.build_likelihood_tables(local_events, local_windows, forcings, phase_anchors,
             scaling, tau=tau, initial_history=initial_history, quadrature_order=quadrature_order)
         if 'mis6_segment' in full_terms:
             for frame in (event_x, integral_x):
@@ -176,7 +176,7 @@ def _initialize_effect(arguments, generators):
 
 
 def _effect_replicate(task):
-    from toolbox.point_process_diagnostics import residual_statistics
+    from toolbox.point_process_diagnostics import residual_statistics, rescaled_event_intervals
     arguments, generators, prepared_by_outer = _EFFECT
     scenario, outer_id, inner_id, seed = task
     generator = generators[outer_id]
@@ -195,7 +195,7 @@ def _effect_replicate(task):
     try:
         events = event_model.simulate_prepared_events(prepared_by_outer[outer_id], rng)
         row['n_observation_events'] = len(events)
-        event_x, integral_x = event_model.build_design(events, windows, arguments['forcings'],
+        event_x, integral_x = event_model.build_likelihood_tables(events, windows, arguments['forcings'],
             arguments['phase_anchors'], arguments['scaling'], tau=arguments['tau'],
             initial_history=arguments['initial_history'], quadrature_order=arguments['quadrature_order'])
         if 'mis6_segment' in full_terms:
@@ -222,13 +222,14 @@ def _effect_replicate(task):
         row['effect_identified'] = True
         row['n_response_events'] = len(event_x)
         row.update({f'beta__{term}': beta for term, beta in zip(full.terms, full.beta)})
-        phase, ratio = model_stats.phase_and_ratio(model_stats.phase_coefficients(full))
+        phase_beta = np.asarray([full.beta[full.terms.index(term)] for term in model_stats.PHASE_TERMS])
+        phase, ratio = model_stats.phase_and_ratio(phase_beta)
         row.update(phase_deg=float(phase), rate_ratio=float(ratio), full_log_likelihood=full.log_likelihood,
                    reduced_log_likelihood=reduced.log_likelihood)
         # Nominal full-model refits also supply the fitted-residual null for GOF;
         # joint chronology draws describe a different uncertainty experiment.
         if scenario == 1:
-            residuals = residual_statistics(*event_model.rescaled_event_intervals(event_x, integral_x, windows, full))
+            residuals = residual_statistics(*rescaled_event_intervals(event_x, integral_x, windows, full))
             row.update(residuals['statistics'])
             row['residual_status'] = residuals['status']
     # Failed draws retain their original IDs and are reported, never redrawn.
@@ -304,7 +305,7 @@ def _history_replicate(task):
     row = dict(replicate_id=replicate + 1, seed=seed, fit_valid=True, invalid_reason='')
     try:
         events = event_model.simulate_prepared_events(prepared, rng)
-        event_x, integral_x = event_model.build_design(events, arguments['windows'], arguments['forcings'],
+        event_x, integral_x = event_model.build_likelihood_tables(events, arguments['windows'], arguments['forcings'],
             arguments['phase_anchors'], arguments['scaling'], tau=arguments['tau'],
             initial_history=arguments['initial_history'], quadrature_order=arguments['quadrature_order'])
         if 'mis6_segment' in arguments['full_terms']:
@@ -325,7 +326,7 @@ def history_bootstrap(events, windows, forcings, phase_anchors, scaling, *, full
                       tau=1.5, initial_history=0., quadrature_order=4):
     """Calibrate the beta_H=0 boundary while retaining phase and background."""
     from toolbox.point_process_diagnostics import likelihood_ratio, bootstrap_summary
-    event_x, integral_x = event_model.build_design(events, windows, forcings, phase_anchors, scaling,
+    event_x, integral_x = event_model.build_likelihood_tables(events, windows, forcings, phase_anchors, scaling,
         tau=tau, initial_history=initial_history, quadrature_order=quadrature_order)
     if 'mis6_segment' in full_terms:
         for frame in (event_x, integral_x):
@@ -376,14 +377,14 @@ def _initialize_gof(arguments, prepared):
 
 
 def _gof_replicate(task):
-    from toolbox.point_process_diagnostics import residual_statistics, GOF_STATISTICS
+    from toolbox.point_process_diagnostics import residual_statistics, rescaled_event_intervals, GOF_STATISTICS
     arguments, prepared = _GOF
     replicate, seed = task
     rng = np.random.default_rng(np.random.SeedSequence([seed, 1, replicate]))
     row = dict(replicate_id=replicate + 1, seed=seed, fit_valid=True, invalid_reason='')
     try:
         events = event_model.simulate_prepared_events(prepared, rng)
-        event_x, integral_x = event_model.build_design(events, arguments['windows'], arguments['forcings'],
+        event_x, integral_x = event_model.build_likelihood_tables(events, arguments['windows'], arguments['forcings'],
             arguments['phase_anchors'], arguments['scaling'], tau=arguments['tau'],
             initial_history=arguments['initial_history'], quadrature_order=arguments['quadrature_order'])
         terms = arguments['full_terms']
@@ -395,7 +396,7 @@ def _gof_replicate(task):
         # so calibration must reproduce that estimation step in every replicate.
         full = fit_point_process(event_x[list(terms)], integral_x[list(terms)], integral_x.weight,
             terms, nonpositive_terms=(HISTORY_TERM,))
-        residuals = residual_statistics(*event_model.rescaled_event_intervals(event_x, integral_x, arguments['windows'], full))
+        residuals = residual_statistics(*rescaled_event_intervals(event_x, integral_x, arguments['windows'], full))
         row.update(residuals['statistics'])
         row.update(n_intervals=residuals['n_intervals'], n_adjacent_pairs=residuals['n_adjacent_pairs'],
             residual_status=residuals['status'])

@@ -178,7 +178,7 @@ def analyze_deletions(events, windows, forcings, phase_anchors, scaling,
     def fit_retained(subset):
         # Rebuild history from retained events only. Exposure and predictor
         # scales remain those of the undeleted catalogue for a paired comparison.
-        event_x, integral_x = event_model.build_design(
+        event_x, integral_x = event_model.build_likelihood_tables(
             subset, windows, forcings, phase_anchors, scaling, tau=tau,
             initial_history=initial_history, quadrature_order=quadrature_order,
         )

@@ -38,7 +38,7 @@ PHASE_INTERACTION_TERMS = ("mis6_x_pre_phase_sin", "mis6_x_pre_phase_cos")
 
 def _fit_row(events, windows, forcings, phase_anchors, scaling, experiment,
              *, tau=1.5, initial_history=0.0):
-    event_x, integral_x = event_model.build_design(
+    event_x, integral_x = event_model.build_likelihood_tables(
         events, windows, forcings, phase_anchors, scaling, tau=tau, initial_history=initial_history,
     )
     for frame in (event_x, integral_x):
@@ -64,7 +64,7 @@ def _phase_summary(beta_sin, beta_cos):
 
 def run_pooling_diagnostic(events, windows, forcings, phase_anchors, scaling):
     """Compare common and segment-specific phase coefficients on identical ages."""
-    event_x, integral_x = event_model.build_design(events, windows, forcings, phase_anchors, scaling)
+    event_x, integral_x = event_model.build_likelihood_tables(events, windows, forcings, phase_anchors, scaling)
     for frame in (event_x, integral_x):
         frame["mis6_segment"] = frame.segment_id.eq("MIS6").astype(float)
         frame["mis6_x_pre_phase_sin"] = frame.mis6_segment * frame.pre_phase_sin
@@ -108,7 +108,7 @@ def run_analysis():
     }
     phase_anchors = (anchors.age_kyr_bp.to_numpy(), anchors.phase_unwrapped_rad.to_numpy())
     windows = event_model.response_windows(events, observations)
-    scaling = event_model.nominal_scaling({name: forcings[name] for name in ("lr04", "co2")}, windows)
+    scaling = event_model.scale_forcing_v2({name: forcings[name] for name in ("lr04", "co2")}, windows)
     design = pd.DataFrame([
         _fit_row(events, windows, forcings, phase_anchors, scaling, "history_decay", tau=tau)
         for tau in HISTORY_TAUS_KYR

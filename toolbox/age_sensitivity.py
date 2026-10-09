@@ -32,7 +32,7 @@ def _fit_ages(ages):
                     "invalid_reason": f"outside_{window.segment_id}_observation_support"}
     # Each chronology moves its anchor and history; nominal scaling stays fixed.
     windows = event_model.response_windows(events, observations)
-    event_x, integral_x = event_model.build_design(
+    event_x, integral_x = event_model.build_likelihood_tables(
         events, windows, forcings, phase_anchors, scaling, tau=tau,
         initial_history=initial_history, quadrature_order=quadrature_order,
     )

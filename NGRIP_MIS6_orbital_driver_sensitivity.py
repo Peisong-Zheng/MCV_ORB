@@ -51,7 +51,7 @@ def run_analysis(n_realizations=N_REALIZATIONS, show_progress=True, quadrature_o
     }
     phase_anchors = (anchors.age_kyr_bp.to_numpy(), anchors.phase_unwrapped_rad.to_numpy())
     windows = event_model.response_windows(events, observations)
-    scaling = event_model.nominal_scaling(
+    scaling = event_model.scale_forcing_v2(
         {name: source for name, source in forcings.items() if name != "precession_index"}, windows)
     baseline = ("intercept", "same_type_exponential_history", "lr04_scaled", "co2_scaled", "mis6_segment")
     age_columns = [f"age_kyr_bp__{event_id}" for event_id in events.event_id]

@@ -59,8 +59,8 @@ def run_analysis(event_definition="variable_threshold", *, quadrature_order=4):
         observation_end_kyr_bp=ANALYSIS_END_KA,
     )])
     windows = event_model.response_windows(events, observations)
-    scaling = event_model.nominal_scaling({name: forcings[name] for name in ("lr04", "co2")}, windows)
-    event_x, integral_x = event_model.build_design(
+    scaling = event_model.scale_forcing_v2({name: forcings[name] for name in ("lr04", "co2")}, windows)
+    event_x, integral_x = event_model.build_likelihood_tables(
         events, windows, forcings, phase_anchors, scaling,
         tau=HISTORY_TAU_KA, quadrature_order=quadrature_order,
     )
@@ -120,11 +120,12 @@ def _add_panel_label(axis: plt.Axes, label: str, *, x: float = -0.12):
         fontsize=11,
     )
 
-def _plot_rayleigh(axis, results):
-    """Overlay sector counts and mean vectors on one common radial scale."""
+# def _plot_rayleigh(axis, results):
+def _plot_event_phases(axis, results):
+    """Overlay phase counts; the retired Rayleigh mean vectors remain commented."""
     edges = np.linspace(0, 2 * np.pi, 13)
     histograms = [np.histogram(r["event_phases"]["pre_phase_rad"], bins=edges)[0] for r in results]
-    maximum = max(max(counts) for counts in histograms)
+    # maximum = max(max(counts) for counts in histograms)
     for result, counts in zip(results, histograms):
         definition = result["summary"].iloc[0].event_definition
         color = DEFINITION_COLORS[definition]
@@ -134,11 +135,11 @@ def _plot_rayleigh(axis, results):
                  facecolor="none" if fixed else color, edgecolor=color,
                  alpha=1 if fixed else 0.40, linewidth=1.0 if fixed else 0.5,
                  linestyle="--" if fixed else "-", zorder=3 if fixed else 2)
-        rayleigh = result["rayleigh"]
-        axis.annotate("", xy=(rayleigh["mean_phase_rad"], rayleigh["mean_resultant_length"] * maximum),
-                      xytext=(rayleigh["mean_phase_rad"], 0),
-                      arrowprops=dict(arrowstyle="->", lw=1.4, color=color,
-                                      linestyle="--" if fixed else "-"), zorder=5)
+        # rayleigh = result["rayleigh"]
+        # axis.annotate("", xy=(rayleigh["mean_phase_rad"], rayleigh["mean_resultant_length"] * maximum),
+        #               xytext=(rayleigh["mean_phase_rad"], 0),
+        #               arrowprops=dict(arrowstyle="->", lw=1.4, color=color,
+        #                               linestyle="--" if fixed else "-"), zorder=5)
     axis.set_theta_zero_location("E")
     axis.set_theta_direction(1)
     axis.set_xticks([0, np.pi / 2, np.pi, 3 * np.pi / 2])
@@ -167,7 +168,10 @@ def plot_results(result, fixed_result=None):
     response = fig.add_subplot(grid[1, 1])
     support = result["windows"].iloc[0]
     ages = np.linspace(ANALYSIS_START_KA, ANALYSIS_END_KA, 2400)
-    precession = event_model.interpolate_checked(ages, *result["forcings"]["precession_index"], context="Barker precession timeline")
+    source_age, source_value = result["forcings"]["precession_index"]
+    if ages[0] < source_age[0] or ages[-1] > source_age[-1]:
+        raise ValueError("Precession source does not cover the plotted observation window")
+    precession = np.interp(ages, source_age, source_value)
 
     # Gray exposure supplies history but is excluded from the response likelihood.
     timeline.axvspan(support.response_end_kyr_bp, ANALYSIS_END_KA, color="#E6E6E6", lw=0, zorder=0)
@@ -195,10 +199,10 @@ def plot_results(result, fixed_result=None):
                       f"Preferred phase: {s.pre_phase_preferred_deg:.1f}°; max/min: {s.pre_phase_rate_ratio_max_vs_min:.2f}",
                       color=color, transform=response.transAxes, ha="left", va="top", fontsize=7.2,
                       bbox=dict(facecolor="white", edgecolor="none", alpha=0.85, pad=1))
-        rayleigh = current["rayleigh"]
-        polar.text(0.02, -0.20 - 0.10 * index,
-                   rf"$\bar{{R}}$ = {rayleigh['mean_resultant_length']:.2f}; p = {rayleigh['rayleigh_p']:.3f}",
-                   color=color, transform=polar.transAxes, ha="left", va="top", fontsize=8)
+        # rayleigh = current["rayleigh"]
+        # polar.text(0.02, -0.20 - 0.10 * index,
+        #            rf"$\bar{{R}}$ = {rayleigh['mean_resultant_length']:.2f}; p = {rayleigh['rayleigh_p']:.3f}",
+        #            color=color, transform=polar.transAxes, ha="left", va="top", fontsize=8)
 
     timeline.set_title("Barker 2011 · SpeleoAge", loc="left", fontsize=9, pad=12)
     timeline.legend(loc="lower right", bbox_to_anchor=(1.01, 1.02), frameon=False,
@@ -207,7 +211,8 @@ def plot_results(result, fixed_result=None):
     timeline.set(xlim=(ANALYSIS_END_KA, ANALYSIS_START_KA), xlabel="Age (kyr BP)", ylabel="Precession index")
     timeline.grid(axis="y", color="#D9D9D9", lw=0.55)
     timeline.spines[["top", "right"]].set_visible(False)
-    _plot_rayleigh(polar, results)
+    # _plot_rayleigh(polar, results)
+    _plot_event_phases(polar, results)
 
     response.axhline(1, color="#777777", lw=0.9, ls=":")
     format_phase_response_axis(response)

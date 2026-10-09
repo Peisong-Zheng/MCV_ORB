@@ -87,8 +87,8 @@ def run_analysis(*, n_bootstrap=N_BOOTSTRAP, n_realizations=N_REALIZATIONS,
     for index, event_type in enumerate(EVENT_TYPES):
         events = select_catalogue(raw, event_type)
         windows = event_model.response_windows(events, observations)
-        scaling = event_model.nominal_scaling({name: forcings[name] for name in ("lr04", "co2")}, windows)
-        event_x, integral_x = event_model.build_design(
+        scaling = event_model.scale_forcing_v2({name: forcings[name] for name in ("lr04", "co2")}, windows)
+        event_x, integral_x = event_model.build_likelihood_tables(
             events, windows, forcings, phase_anchors, scaling, tau=HISTORY_TAU_KYR,
         )
         reduced = fit_point_process(event_x[REDUCED_TERMS], integral_x[REDUCED_TERMS],

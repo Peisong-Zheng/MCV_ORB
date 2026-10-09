@@ -108,8 +108,8 @@ def main():
                 "precession_index": (orbital.age_kyr_bp.to_numpy(), orbital.precession_index.to_numpy())}
     phase_anchors = (anchors.age_kyr_bp.to_numpy(), anchors.phase_unwrapped_rad.to_numpy())
     windows = event_model.response_windows(events, observations)
-    scaling = event_model.nominal_scaling({name: forcings[name] for name in ("lr04", "co2")}, windows)
-    event_x, integral_x = event_model.build_design(events, windows, forcings, phase_anchors, scaling,
+    scaling = event_model.scale_forcing_v2({name: forcings[name] for name in ("lr04", "co2")}, windows)
+    event_x, integral_x = event_model.build_likelihood_tables(events, windows, forcings, phase_anchors, scaling,
                                                   quadrature_order=quadrature_order)
     for frame in (event_x, integral_x):
         frame["mis6_segment"] = frame.segment_id.eq("MIS6").astype(float)

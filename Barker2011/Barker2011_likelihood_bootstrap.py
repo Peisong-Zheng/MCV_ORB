@@ -68,8 +68,8 @@ def run_analysis(*, n_bootstrap=N_BOOTSTRAP, seed=RANDOM_SEED,
                 "precession_index": (orbital.age_kyr_bp.to_numpy(), orbital.precession_index.to_numpy())}
     phase_anchors = (anchors.age_kyr_bp.to_numpy(), anchors.phase_unwrapped_rad.to_numpy())
     windows = event_model.response_windows(events, observations)
-    scaling = event_model.nominal_scaling({name: forcings[name] for name in ("lr04", "co2")}, windows)
-    event_x, integral_x = event_model.build_design(events, windows, forcings, phase_anchors, scaling,
+    scaling = event_model.scale_forcing_v2({name: forcings[name] for name in ("lr04", "co2")}, windows)
+    event_x, integral_x = event_model.build_likelihood_tables(events, windows, forcings, phase_anchors, scaling,
                                                   quadrature_order=quadrature_order)
     reduced_terms = ("intercept", HISTORY_TERM, "lr04_scaled", "co2_scaled")
     full_terms = reduced_terms + ("pre_phase_sin", "pre_phase_cos")

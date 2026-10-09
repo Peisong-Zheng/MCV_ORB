@@ -114,8 +114,8 @@ def run_analysis():
     }
     phase_anchors = (anchors.age_kyr_bp.to_numpy(), anchors.phase_unwrapped_rad.to_numpy())
     windows = event_model.response_windows(events, observations)
-    scaling = event_model.nominal_scaling({name: forcings[name] for name in ("lr04", "co2")}, windows)
-    event_x, integral_x = event_model.build_design(
+    scaling = event_model.scale_forcing_v2({name: forcings[name] for name in ("lr04", "co2")}, windows)
+    event_x, integral_x = event_model.build_likelihood_tables(
         events, windows, forcings, phase_anchors, scaling, history_variants=True,
     )
     for frame in (event_x, integral_x):
@@ -152,8 +152,20 @@ def run_analysis():
         curves.append(pd.DataFrame(dict(experiment=row.experiment, variant=row.variant, phase_deg=phase,
             relative_rate=np.exp(beta[PHASE_TERMS[0]] * np.sin(np.deg2rad(phase))
                                + beta[PHASE_TERMS[1]] * np.cos(np.deg2rad(phase))))))
+    # Preserve record order and label the fixed anchor separately from responses.
+    event_roles = pd.concat([
+        events.loc[events.segment_id.eq(segment)].sort_values("event_age_kyr_bp")
+        for segment in windows.segment_id
+    ], ignore_index=True)
+    support = windows.set_index("segment_id")
+    ages = event_roles.event_age_kyr_bp
+    segment = event_roles.segment_id
+    response = (ages < segment.map(support.response_end_kyr_bp)) & (ages >= segment.map(support.response_start_kyr_bp))
+    event_roles["event_role"] = np.where(ages == segment.map(support.anchor_age_kyr_bp),
+                                       "conditioning", np.where(response, "response", "history_only"))
+    event_roles["included_in_response"] = response
     return dict(summary=summary, coefficients=coefficient_table, event_inputs=event_x, integration_features=integral_x,
-        segment_support=windows, event_roles=event_model.mark_event_roles(events, windows),
+        segment_support=windows, event_roles=event_roles,
         forcing_scaling=scaling.reset_index().assign(weighting="nominal response time"),
         phase_curves=pd.concat(curves, ignore_index=True))
 

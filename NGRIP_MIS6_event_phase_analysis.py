@@ -19,7 +19,8 @@ import pandas as pd
 from toolbox import model_stats, event_model
 from toolbox.point_process import fit_point_process
 from toolbox.project_config import EVENT_CATALOGUE_CSV, OBSERVATION_SEGMENTS_CSV, MODEL_VERSION
-from toolbox.model_stats import rayleigh_rbar_threshold, rayleigh_test
+from toolbox.model_stats import rayleigh_test
+# from toolbox.model_stats import rayleigh_rbar_threshold  # Retired plot reference.
 from toolbox.plotting import format_phase_response_axis, mark_preferred_phase
 from toolbox.project_config import (
     PROJECT_ROOT,
@@ -60,8 +61,8 @@ def run_analysis(*, quadrature_order=4):
     }
     phase_anchors = (anchors.age_kyr_bp.to_numpy(), anchors.phase_unwrapped_rad.to_numpy())
     windows = event_model.response_windows(events, observations)
-    scaling = event_model.nominal_scaling({name: forcings[name] for name in ("lr04", "co2")}, windows)
-    event_x, integral_x = event_model.build_design(
+    scaling = event_model.scale_forcing_v2({name: forcings[name] for name in ("lr04", "co2")}, windows)
+    event_x, integral_x = event_model.build_likelihood_tables(
         events, windows, forcings, phase_anchors, scaling,
         tau=HISTORY_TAU_KYR, quadrature_order=quadrature_order,
     )
@@ -78,7 +79,17 @@ def run_analysis(*, quadrature_order=4):
         reduced, full, event_x, windows, n_source_events=len(events),
         catalogue_id=CATALOGUE_ID, tau=HISTORY_TAU_KYR,
     )
-    events = event_model.mark_event_roles(events, windows)
+    # Retain window order and ascending ages in the exported catalogue.
+    event_frames = []
+    for window in windows.itertuples(index=False):
+        selected = events.loc[events.segment_id.eq(window.segment_id)].sort_values("event_age_kyr_bp").copy()
+        ages = selected.event_age_kyr_bp.to_numpy(float)
+        response = (ages < window.response_end_kyr_bp) & (ages >= window.response_start_kyr_bp)
+        selected["event_role"] = np.where(ages == window.anchor_age_kyr_bp, "conditioning",
+                                          np.where(response, "response", "history_only"))
+        selected["included_in_response"] = response
+        event_frames.append(selected)
+    events = pd.concat(event_frames, ignore_index=True)
     event_phases = event_model.sample_event_phases(events, forcings["precession_index"], phase_anchors)
     rayleigh = rayleigh_test(event_phases.pre_phase_rad.to_numpy(float))
     fitted_rates = event_model.fitted_rate_table(
@@ -239,9 +250,10 @@ def _plot_segment_timeline(axis, segment, event_phases, precession_source):
     """Plot one observed segment without implying exposure across the gap."""
     segment_id = segment.segment_id
     ages = np.linspace(segment.observation_start_kyr_bp, segment.observation_end_kyr_bp, 1200)
-    precession = event_model.interpolate_checked(
-        ages, *precession_source, context="precession timeline"
-    )
+    source_age, source_value = precession_source
+    if ages[0] < source_age[0] or ages[-1] > source_age[-1]:
+        raise ValueError("Precession source does not cover the plotted observation window")
+    precession = np.interp(ages, source_age, source_value)
     phases = event_phases.loc[event_phases["segment_id"].eq(segment_id)]
     color = CATALOGUE_COLORS["primary"]
 
@@ -300,12 +312,13 @@ def _mark_discontinuous_axis(left: plt.Axes, right: plt.Axes) -> None:
     right.plot((-size, +size), (1 - size, 1 + size), transform=right.transAxes, **line)
 
 
-def _plot_rayleigh(axis, phases, rayleigh):
-    """Draw the descriptive phase histogram and mean resultant vector."""
+# def _plot_rayleigh(axis, phases, rayleigh):
+def _plot_event_phases(axis, phases):
+    """Draw phase counts; the retired Rayleigh overlays remain commented below."""
     edges = np.linspace(0.0, 2.0 * np.pi, 13)
     counts, _ = np.histogram(phases, bins=edges)
-    maximum = max(int(counts.max()), 1)
-    threshold = rayleigh_rbar_threshold(len(phases), alpha=0.05)
+    # maximum = max(int(counts.max()), 1)
+    # threshold = rayleigh_rbar_threshold(len(phases), alpha=0.05)
 
     axis.bar(
         edges[:-1],
@@ -317,39 +330,40 @@ def _plot_rayleigh(axis, phases, rayleigh):
         edgecolor="white",
         linewidth=0.7,
     )
-    theta = np.linspace(0.0, 2.0 * np.pi, 361)
-    axis.plot(
-        theta,
-        np.full_like(theta, threshold * maximum),
-        color="#555555",
-        lw=1.0,
-        ls=(0, (4, 2)),
-    )
-    axis.annotate(
-        "",
-        xy=(rayleigh["mean_phase_rad"], rayleigh["mean_resultant_length"] * maximum),
-        xytext=(rayleigh["mean_phase_rad"], 0.0),
-        arrowprops={"arrowstyle": "->", "lw": 1.8, "color": "#202020"},
-    )
+    # theta = np.linspace(0.0, 2.0 * np.pi, 361)
+    # axis.plot(
+    #     theta,
+    #     np.full_like(theta, threshold * maximum),
+    #     color="#555555",
+    #     lw=1.0,
+    #     ls=(0, (4, 2)),
+    # )
+    # axis.annotate(
+    #     "",
+    #     xy=(rayleigh["mean_phase_rad"], rayleigh["mean_resultant_length"] * maximum),
+    #     xytext=(rayleigh["mean_phase_rad"], 0.0),
+    #     arrowprops={"arrowstyle": "->", "lw": 1.8, "color": "#202020"},
+    # )
     axis.set_theta_zero_location("E")
     axis.set_theta_direction(1)
     axis.set_xticks([0.0, np.pi / 2.0, np.pi, 3.0 * np.pi / 2.0])
     axis.set_xticklabels(["min", "90°", "max", "270°"])
     axis.tick_params(axis="x", pad=3)
     axis.tick_params(axis="y", labelsize=7.5)
-    axis.set_title("Rayleigh test (descriptive)", pad=20, fontsize=10)
-    axis.text(
-        0.5,
-        -0.17,
-        (
-            rf"$\bar{{R}}$ = {rayleigh['mean_resultant_length']:.2f}; "
-            f"p = {rayleigh['rayleigh_p']:.3f}"
-        ),
-        transform=axis.transAxes,
-        ha="center",
-        va="top",
-        fontsize=8.5,
-    )
+    # axis.set_title("Rayleigh test (descriptive)", pad=20, fontsize=10)
+    axis.set_title("Event phase (descriptive)", pad=20, fontsize=10)
+    # axis.text(
+    #     0.5,
+    #     -0.17,
+    #     (
+    #         rf"$\bar{{R}}$ = {rayleigh['mean_resultant_length']:.2f}; "
+    #         f"p = {rayleigh['rayleigh_p']:.3f}"
+    #     ),
+    #     transform=axis.transAxes,
+    #     ha="center",
+    #     va="top",
+    #     fontsize=8.5,
+    # )
 
 
 def _plot_phase_response(axis: plt.Axes, fit) -> None:
@@ -413,7 +427,7 @@ def plot_results(result):
     timeline = grid[0, :].subgridspec(1, 2, width_ratios=(72, 111), wspace=0.07)
     mis6_axis = fig.add_subplot(timeline[0, 0])
     ngrip_axis = fig.add_subplot(timeline[0, 1], sharey=mis6_axis)
-    rayleigh_axis = fig.add_subplot(grid[1, 0], projection="polar")
+    phase_axis = fig.add_subplot(grid[1, 0], projection="polar")
     response_axis = fig.add_subplot(grid[1, 1])
 
     event_phases = result["event_phases"]
@@ -422,11 +436,12 @@ def plot_results(result):
     _plot_segment_timeline(mis6_axis, result["windows"].set_index("segment_id", drop=False).loc["MIS6"], event_phases, precession_source)
     mis6_axis.set_ylabel("Precession index")
     _mark_discontinuous_axis(mis6_axis, ngrip_axis)
-    _plot_rayleigh(rayleigh_axis, event_phases.pre_phase_rad.to_numpy(float), result["rayleigh"])
+    # _plot_rayleigh(phase_axis, event_phases.pre_phase_rad.to_numpy(float), result["rayleigh"])
+    _plot_event_phases(phase_axis, event_phases.pre_phase_rad.to_numpy(float))
     _plot_phase_response(response_axis, result)
 
     _add_panel_label(mis6_axis, "a", x=-0.14)
-    _add_panel_label(rayleigh_axis, "b", x=-0.21)
+    _add_panel_label(phase_axis, "b", x=-0.21)
     _add_panel_label(response_axis, "c", x=-0.22)
     return fig
 
@@ -478,9 +493,8 @@ def write_notes(result, notes_dir):
 (a) All {summary.n_source_events} inventory events on the La2004 precession index.
 Gray intervals precede the conditioning events and carry no response exposure.
 The broken age axis omits the record gap; ages decrease toward the right.
-(b) Descriptive event counts in twelve phase sectors and the mean direction.
-Phase zero is a precession minimum; 180 degrees is a maximum. The mean arrow
-and dashed Rayleigh reference are scaled by the largest sector count.
+(b) Descriptive event counts in twelve phase sectors.
+Phase zero is a precession minimum; 180 degrees is a maximum.
 (c) Conditional phase multiplier exp(beta_sin sin(phi) + beta_cos cos(phi)).
 The models use {summary.n_response_events} response events over
 {summary.response_exposure_kyr:.3f} kyr, conditional on each record's oldest event.

@@ -31,95 +31,6 @@ class FittedPointProcess:
     status: str
 
 
-def gauss_legendre_intervals(breakpoints, order=8):
-    """Return interior nodes and positive kyr weights on increasing intervals.
-
-    Standard formula for one interval [a, b]:
-        integral_a^b f(t) dt ≈ (b-a)/2 * sum_j w_j * f(t_j)
-        t_j = (a+b)/2 + (b-a)/2 * x_j
-
-    Apply this formula to every adjacent pair of breakpoints. The caller
-    evaluates f at the returned nodes and sums durations * f(nodes).
-    """
-    breaks = np.asarray(breakpoints, dtype=float)
-    if breaks.ndim != 1 or len(breaks) < 2:
-        raise ValueError("Integration needs at least two interval boundaries")
-    if not np.isfinite(breaks).all() or np.any(np.diff(breaks) <= 0):
-        raise ValueError("Integration boundaries must be finite and increasing")
-    # points and weights are the standard x_j and w_j on [-1, 1].
-    # Each has length order: this is the number of nodes PER interval,
-    # unrelated to the number of intervals.
-    points, weights = leggauss(order)
-
-    # For all intervals: a = breaks[:-1], b = breaks[1:].
-    # np.diff(breaks) gives b-a, so this is exactly (b-a)/2.
-    half_width = np.diff(breaks) / 2
-
-    # a + (b-a)/2 = (a+b)/2: this is the midpoint in the standard formula.
-    middle = breaks[:-1] + half_width
-
-    # Transform each standard node: t_j = (a+b)/2 + (b-a)/2 * x_j.
-    # If there are m intervals, [:, None] changes (m,) into a column (m, 1).
-    # Broadcasting with points of shape (order,) gives (m, order):
-    # nodes[i, j] = middle[i] + half_width[i] * points[j].
-    # Each row is one interval; each column is one of its Gaussian nodes.
-    nodes = middle[:, None] + half_width[:, None] * points
-
-    # The integral's prefactor (b-a)/2 is included in these weights:
-    # durations[i, j] = (b_i-a_i)/2 * w_j, from dt = (b-a)/2 * dx.
-    # The caller must not multiply by (b-a)/2 again when summing f(nodes).
-    # These are duration weights, not distances between adjacent nodes.
-    durations = half_width[:, None] * weights
-
-    # Flatten row by row: all nodes of the first interval, then the next.
-    # Flatten weights in the same order to preserve their pairing with nodes.
-    return nodes.ravel(), durations.ravel()
-
-
-def exponential_history(query_ages, event_ages, tau=1.5, anchor_age=None,
-                        initial_history=0.0):
-    """Evaluate earlier-event history from BP ages, preserving query order.
-
-    ``event_ages`` includes the observed conditioning event. ``initial_history``
-    is the unknown pre-anchor weighted history, fixed to zero in the main model.
-    At an event's exact age, that event has not yet entered its own history.
-    """
-    query = np.asarray(query_ages, dtype=float)
-    events = np.asarray(event_ages, dtype=float)
-    if events.ndim != 1 or not np.isfinite(events).all() or not np.isfinite(query).all():
-        raise ValueError("Event and query ages must be finite")
-    if not np.isfinite(tau) or tau <= 0:
-        raise ValueError("History decay time must be positive")
-    if not np.isfinite(initial_history) or initial_history < 0:
-        raise ValueError("Pre-anchor history must be finite and nonnegative")
-    events = np.sort(events)[::-1]  # Chronological order: oldest to youngest.
-    if np.any(np.diff(events) == 0):
-        raise ValueError("Coincident events require review of source-age precision")
-    if anchor_age is None and len(events):
-        anchor_age = events[0]
-    if anchor_age is not None:
-        if (not np.isfinite(anchor_age) or (len(events) and events[0] > anchor_age)
-                or np.any(query > anchor_age)):
-            raise ValueError("Anchor must be finite; events and queries cannot precede it")
-    elif initial_history:
-        raise ValueError("Nonzero initial history requires an anchor age")
-
-    flat_query = query.ravel()
-    history = np.zeros(query.size)
-    # H(u) = sum_{u_j < u} exp(-(u-u_j)/tau). In BP coordinates,
-    # u-u_j = event_age-query_age; each earlier event contributes one decay.
-    for event_age in events:
-        # Smaller BP ages occur later. Compare ages directly so that an event
-        # and its floating-point neighbours retain their strict ordering.
-        later = flat_query < event_age
-        history[later] = history[later] + np.exp((flat_query[later] - event_age) / tau)
-    if initial_history:
-        # Pre-anchor history decays from the anchor without adding a new event.
-        remaining_initial_history = initial_history * np.exp((flat_query - anchor_age) / tau)
-        history = history + remaining_initial_history
-    return history.reshape(query.shape)
-
-
 def negative_loglik(beta, event_sum, integral_design, weights):
     """Return the negative continuous log likelihood and its analytic gradient.
 
@@ -160,12 +71,8 @@ def fit_point_process(event_design, integral_design, weights, terms,
     weights = np.asarray(weights, dtype=float)
     terms = tuple(terms)
     n_parameters = len(terms)
-    if len(set(terms)) != n_parameters or terms.count("intercept") != 1:
-        raise ValueError("Terms need unique names and one explicit intercept")
     # Both designs use the identical ordered terms. Event rows contain only
     # responses; conditioning anchors affect history but are not likelihood events.
-    if event_design.shape[1] != n_parameters or integral_design.shape[1] != n_parameters:
-        raise ValueError("Design columns must match the explicit model terms")
     if (weights.shape != (len(integral_design),) or not weights.size
             or not np.isfinite(weights).all() or np.any(weights <= 0)):
         raise ValueError("Each integral node needs one finite positive duration weight")
@@ -227,6 +134,79 @@ def fit_point_process(event_design, integral_design, weights, terms,
                              "finite_mle")
 
 
+def gauss_legendre_intervals(breakpoints, order=8):
+    """Return interior nodes and positive kyr weights on increasing intervals.
+
+    Standard formula for one interval [a, b]:
+        integral_a^b f(t) dt ≈ (b-a)/2 * sum_j w_j * f(t_j)
+        t_j = (a+b)/2 + (b-a)/2 * x_j
+
+    Apply this formula to every adjacent pair of breakpoints. The caller
+    evaluates f at the returned nodes and sums durations * f(nodes).
+    """
+    breaks = np.asarray(breakpoints, dtype=float)
+    # points and weights are the standard x_j and w_j on [-1, 1].
+    # Each has length order: this is the number of nodes PER interval,
+    # unrelated to the number of intervals.
+    points, weights = leggauss(order)
+
+    # For all intervals: a = breaks[:-1], b = breaks[1:].
+    # np.diff(breaks) gives b-a, so this is exactly (b-a)/2.
+    half_width = np.diff(breaks) / 2
+
+    # a + (b-a)/2 = (a+b)/2: this is the midpoint in the standard formula.
+    middle = breaks[:-1] + half_width
+
+    # Transform each standard node: t_j = (a+b)/2 + (b-a)/2 * x_j.
+    # If there are m intervals, [:, None] changes (m,) into a column (m, 1).
+    # Broadcasting with points of shape (order,) gives (m, order):
+    # nodes[i, j] = middle[i] + half_width[i] * points[j].
+    # Each row is one interval; each column is one of its Gaussian nodes.
+    nodes = middle[:, None] + half_width[:, None] * points
+
+    # The integral's prefactor (b-a)/2 is included in these weights:
+    # durations[i, j] = (b_i-a_i)/2 * w_j, from dt = (b-a)/2 * dx.
+    # The caller must not multiply by (b-a)/2 again when summing f(nodes).
+    # These are duration weights, not distances between adjacent nodes.
+    durations = half_width[:, None] * weights
+
+    # Flatten row by row: all nodes of the first interval, then the next.
+    # Flatten weights in the same order to preserve their pairing with nodes.
+    return nodes.ravel(), durations.ravel()
+
+
+def exponential_history(query_ages, event_ages, tau=1.5, anchor_age=None,
+                        initial_history=0.0):
+    """Evaluate earlier-event history on a 1D array of BP ages, in query order.
+
+    ``event_ages`` includes the observed conditioning event. ``initial_history``
+    is the unknown pre-anchor weighted history, fixed to zero in the main model.
+    At an event's exact age, that event has not yet entered its own history.
+    """
+    query = np.asarray(query_ages, dtype=float)
+    events = np.asarray(event_ages, dtype=float)
+    if not np.isfinite(tau) or tau <= 0:
+        raise ValueError("History decay time must be positive")
+    if not np.isfinite(initial_history) or initial_history < 0:
+        raise ValueError("Pre-anchor history must be finite and nonnegative")
+    events = np.sort(events)[::-1]  # Chronological order: oldest to youngest.
+    if anchor_age is None and initial_history:
+        anchor_age = events[0]
+    history = np.zeros(len(query))
+    # H(u) = sum_{u_j < u} exp(-(u-u_j)/tau). In BP coordinates,
+    # u-u_j = event_age-query_age; each earlier event contributes one decay.
+    for event_age in events:
+        # Smaller BP ages occur later. Compare ages directly so that an event
+        # and its floating-point neighbours retain their strict ordering.
+        later = query < event_age
+        history[later] = history[later] + np.exp((query[later] - event_age) / tau)
+    if initial_history:
+        # Pre-anchor history decays from the anchor without adding a new event.
+        remaining_initial_history = initial_history * np.exp((query - anchor_age) / tau)
+        history = history + remaining_initial_history
+    return history
+
+
 def simulate_segment_events(anchor_age, young_age, breakpoints, log_background,
                             log_upper_bounds, history_beta, tau, rng,
                             initial_history=0.0, max_candidates=1_000_000):
@@ -240,18 +220,8 @@ def simulate_segment_events(anchor_age, young_age, breakpoints, log_background,
     """
     breaks = np.asarray(breakpoints, dtype=float)
     upper = np.asarray(log_upper_bounds, dtype=float)
-    if not np.isfinite([anchor_age, young_age]).all() or anchor_age <= young_age:
-        raise ValueError("Conditioning anchor must be older than the response endpoint")
-    if breaks.ndim != 1 or len(breaks) < 2 or not np.isfinite(breaks).all() or np.any(np.diff(breaks) <= 0):
-        raise ValueError("Simulation breakpoints must be finite and increasing")
-    if upper.shape != (len(breaks) - 1,) or np.isnan(upper).any() or np.isposinf(upper).any():
-        raise ValueError("One finite or negative-infinite log bound is required per interval")
-    if breaks[0] > young_age or breaks[-1] < anchor_age:
-        raise ValueError("Background envelopes must cover the complete response support")
     if not np.isfinite(history_beta) or history_beta > 0:
         raise ValueError("This thinning envelope requires a nonpositive history coefficient")
-    if not np.isfinite(tau) or tau <= 0 or not np.isfinite(initial_history) or initial_history < 0:
-        raise ValueError("Positive decay time and nonnegative initial history are required")
 
     # Clip the BP support before conversion. Reverse the paired interval bounds
     # together with their edges so that simulation advances from u=0 to T.

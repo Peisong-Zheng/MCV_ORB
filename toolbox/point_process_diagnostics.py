@@ -19,6 +19,39 @@ class DiagnosticFailure(RuntimeError):
     """A diagnosed numerical failure; retain its replicate without redrawing."""
 
 
+def rescaled_event_intervals(event_features, integration_features, windows, model):
+    """Cumulative fitted intensities at responses plus terminal censored waits."""
+    events, cumulative, tails = {}, {}, {}
+    frame = integration_features
+    rate = np.exp(frame.loc[:, model.terms].to_numpy(float) @ model.beta)
+    if model.status == "zero_events":
+        rate = np.zeros(len(frame))
+    for window in windows.itertuples(index=False):
+        name = window.segment_id
+        response_ages = event_features.loc[event_features.segment_id.eq(name), "age_kyr_bp"].to_numpy(float)
+        response_ages = np.sort(response_ages)[::-1]
+        response_elapsed = window.anchor_age_kyr_bp - response_ages
+        mask = frame.segment_id.eq(name).to_numpy()
+        node_ages = frame.loc[mask, "age_kyr_bp"].to_numpy(float)
+        # Accumulate from the anchor toward the present, keeping nodes and
+        # masses aligned. Incoming table row order has no time meaning.
+        order = np.argsort(-node_ages)
+        node_ages = node_ages[order]
+        mass = rate[mask] * frame.loc[mask, "weight"].to_numpy(float)
+        mass = mass[order]
+        # Integrated rate is dimensionless. Differences of cumulative intensity
+        # at successive response events give time-rescaled inter-event waits.
+        cumulative_mass = np.r_[0.0, np.cumsum(mass)]
+        # Compare on -BP before subtracting the origin to retain precision.
+        indices = np.searchsorted(-node_ages, -response_ages, side="left")
+        events[name] = response_elapsed
+        cumulative[name] = cumulative_mass[indices]
+        # Exposure after the last event is a censored wait, not another event;
+        # keep it separate from the completed waits used for residual tests.
+        tails[name] = float(mass[indices[-1]:].sum() if len(indices) else mass.sum())
+    return events, cumulative, tails
+
+
 def residual_statistics(events_by_segment, cumulative_at_events_by_segment,
                         tail_integrals=None):
     """Return completed-interval statistics and inspectable residual tables.
@@ -182,8 +215,6 @@ def select_sampling_gof_replicates(draws, settings, saved_generator, full_model,
 
 def gof_results(event_features, integration_features, windows, full_model, replicates, *, catalogue_id):
     """Summarize observed residuals against nominal full-model refits."""
-    from toolbox.event_model import rescaled_event_intervals
-
     # Observed and simulated statistics both use fitted intensities, accounting for parameter fitting.
     observed = residual_statistics(*rescaled_event_intervals(
         event_features, integration_features, windows, full_model))

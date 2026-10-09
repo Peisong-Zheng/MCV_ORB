@@ -65,8 +65,8 @@ def run_analysis(*, n_bootstrap=N_BOOTSTRAP, seed=RANDOM_SEED,
                 "precession_index": (orbital.age_kyr_bp.to_numpy(), orbital.precession_index.to_numpy())}
     phase_anchors = (anchors.age_kyr_bp.to_numpy(), anchors.phase_unwrapped_rad.to_numpy())
     windows = event_model.response_windows(events, observations)
-    scaling = event_model.nominal_scaling({name: forcings[name] for name in ("lr04", "co2")}, windows)
-    event_x, integral_x = event_model.build_design(events, windows, forcings, phase_anchors, scaling,
+    scaling = event_model.scale_forcing_v2({name: forcings[name] for name in ("lr04", "co2")}, windows)
+    event_x, integral_x = event_model.build_likelihood_tables(events, windows, forcings, phase_anchors, scaling,
                                                   quadrature_order=quadrature_order)
     for frame in (event_x, integral_x):
         frame["mis6_segment"] = frame.segment_id.eq("MIS6").astype(float)
@@ -84,7 +84,19 @@ def run_analysis(*, n_bootstrap=N_BOOTSTRAP, seed=RANDOM_SEED,
         workers=n_workers, show_progress=show_progress)
     summary = model_stats.phase_bootstrap_summary(point_summary, replicates, failures)
     summary["seed"] = seed
-    return dict(events=event_model.mark_event_roles(events, windows), windows=windows, scaling=scaling,
+    # Preserve record order and label the fixed anchor separately from responses.
+    event_roles = pd.concat([
+        events.loc[events.segment_id.eq(segment)].sort_values("event_age_kyr_bp")
+        for segment in windows.segment_id
+    ], ignore_index=True)
+    support = windows.set_index("segment_id")
+    ages = event_roles.event_age_kyr_bp
+    segment = event_roles.segment_id
+    response = (ages < segment.map(support.response_end_kyr_bp)) & (ages >= segment.map(support.response_start_kyr_bp))
+    event_roles["event_role"] = np.where(ages == segment.map(support.anchor_age_kyr_bp),
+                                       "conditioning", np.where(response, "response", "history_only"))
+    event_roles["included_in_response"] = response
+    return dict(events=event_roles, windows=windows, scaling=scaling,
         reduced=reduced, full=full, event_features=event_x, integration_features=integral_x,
         forcings=forcings, phase_anchors=phase_anchors, observations=observations,
         replicates=replicates, summary=summary, rejected_reasons=failures,

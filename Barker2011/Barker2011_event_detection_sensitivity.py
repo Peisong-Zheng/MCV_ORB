@@ -87,7 +87,7 @@ def run_analysis(n_replicates=500, seed=20260913, *, quadrature_order=4, show_pr
     }
     phase_anchors = (anchors.age_kyr_bp.to_numpy(), anchors.phase_unwrapped_rad.to_numpy())
     windows = event_model.response_windows(events, observations)
-    scaling = event_model.nominal_scaling({name: forcings[name] for name in ("lr04", "co2")}, windows)
+    scaling = event_model.scale_forcing_v2({name: forcings[name] for name in ("lr04", "co2")}, windows)
     background = ("intercept", "same_type_exponential_history", "lr04_scaled", "co2_scaled")
     catalogue_id = "barker_variable_threshold_speleo_0_400"
     scopes = {"all": None}

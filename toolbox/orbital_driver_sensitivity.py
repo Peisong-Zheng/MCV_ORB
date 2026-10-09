@@ -171,7 +171,7 @@ def analyze_chronologies(events, windows, forcings, phase_anchors, scaling,
                          baseline_terms, selected, age_columns, *, tau=1.5,
                          initial_history=0.0, quadrature_order=4, show_progress=True):
     """Refit the same eight models on each draw, keeping nominal forcing scales."""
-    event_x, integral_x = event_model.build_design(
+    event_x, integral_x = event_model.build_likelihood_tables(
         events, windows, forcings, phase_anchors, scaling, tau=tau,
         initial_history=initial_history, quadrature_order=quadrature_order,
         history_variants=True,
@@ -201,7 +201,7 @@ def analyze_chronologies(events, windows, forcings, phase_anchors, scaling,
             # Age perturbations move each conditioning anchor and hence its
             # response exposure; observation bounds and nominal scales stay fixed.
             draw_windows = event_model.response_windows(shifted, observations)
-            draw_event_x, draw_integral_x = event_model.build_design(
+            draw_event_x, draw_integral_x = event_model.build_likelihood_tables(
                 shifted, draw_windows, forcings, phase_anchors, scaling, tau=tau,
                 initial_history=initial_history, quadrature_order=quadrature_order,
             )
@@ -222,7 +222,19 @@ def analyze_chronologies(events, windows, forcings, phase_anchors, scaling,
                   f"({time.perf_counter() - started:.0f} s)", flush=True)
     mc_models = pd.concat(mc_models, ignore_index=True)
     mc_comparisons = pd.concat(mc_comparisons, ignore_index=True)
-    return dict(events=event_model.mark_event_roles(events, windows), windows=windows,
+    # Preserve record order and label the fixed anchor separately from responses.
+    event_roles = pd.concat([
+        events.loc[events.segment_id.eq(segment)].sort_values("event_age_kyr_bp")
+        for segment in windows.segment_id
+    ], ignore_index=True)
+    support = windows.set_index("segment_id")
+    ages = event_roles.event_age_kyr_bp
+    segment = event_roles.segment_id
+    response = (ages < segment.map(support.response_end_kyr_bp)) & (ages >= segment.map(support.response_start_kyr_bp))
+    event_roles["event_role"] = np.where(ages == segment.map(support.anchor_age_kyr_bp),
+                                       "conditioning", np.where(response, "response", "history_only"))
+    event_roles["included_in_response"] = response
+    return dict(events=event_roles, windows=windows,
         event_features=event_x, integration_features=integral_x,
         point_models=point["models"], point_comparisons=point["comparisons"], point_fits=point["fits"],
         selected_realizations=selected, realization_status=pd.DataFrame(status),

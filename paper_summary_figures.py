@@ -15,7 +15,7 @@ from matplotlib.patches import Patch
 from matplotlib.ticker import MultipleLocator
 import numpy as np
 import pandas as pd
-from toolbox import event_model, project_config
+from toolbox import project_config
 
 from paper_figure_export import copy_pdf_to_paper
 from toolbox.project_config import CATALOGUE_COLORS
@@ -83,9 +83,10 @@ def plot_data_overview():
         (orbital, "obl_deg", orbit, "obliquity_deg"),
         (orbital, "insol65n_Wm2", insolation, "insolation_Wm2"),
     ):
-        frame[name] = event_model.interpolate_checked(
-            age, source.age_kyr_bp.to_numpy(), source[column].to_numpy(), context="overview",
-        )
+        source_age = source.age_kyr_bp.to_numpy()
+        if age[0] < source_age[0] or age[-1] > source_age[-1]:
+            raise ValueError(f"{name} does not cover the overview ages")
+        frame[name] = np.interp(age, source_age, source[column].to_numpy())
     INPUTS.update((project_config.LR04_CSV, project_config.CO2_CSV,
                    project_config.ORBITAL_CSV, project_config.INSOLATION_65N_CSV))
     assert events.groupby("source_record").size().to_dict() == {"MF": 16, "NGRIP": 34, "Sofular": 5}

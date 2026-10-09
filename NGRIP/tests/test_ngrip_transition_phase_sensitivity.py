@@ -70,7 +70,7 @@ def test_saved_realizations_keep_label_alignment_order_and_outside_support(catal
 
 @pytest.fixture(scope="module")
 def small_run():
-    build = event_model.build_design
+    build = event_model.build_likelihood_tables
     calls = []
     def inspect(events, windows, forcings, anchors, scaling, **kwargs):
         event_x, integral_x = build(events, windows, forcings, anchors, scaling, **kwargs)
@@ -81,7 +81,7 @@ def small_run():
         calls.append((windows.copy(), scaling.copy()))
         return event_x, integral_x
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(event_model, "build_design", inspect)
+        patch.setattr(event_model, "build_likelihood_tables", inspect)
         result = analysis.run_analysis(n_bootstrap=2, n_realizations=3,
                                        seed=20260921, n_workers=1, show_progress=False)
     return result, calls

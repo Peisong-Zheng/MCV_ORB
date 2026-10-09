@@ -1,0 +1,4 @@
+?? background_orbital_spectra.ipynb
+?? backups/
+?? data/processed/background_orbital_spectra/
+?? figures/background_orbital_spectra/
